@@ -10,4 +10,4 @@ WORKDIR /processing-service
 ###############################################################################
 COPY ./oversightmr ./
 
-CMD ["sh", "-c", "python3 model_runner.py -iq ${image_queue} -ft ${feature_table} -jt ${job_table} -wpc ${workers_per_cpu}"]
+CMD ["sh", "-c", "python3 model_runner.py -iq ${image_queue} -rq ${region_queue} -ft ${feature_table} -jt ${job_table} -wpc ${workers_per_cpu}"]

@@ -4,8 +4,11 @@ import boto3
 
 #bucket_name = "spacenet-dataset"
 #object_prefix = "AOIs/AOI_1_Rio/srcData/mosaic_3band/"
-bucket_name = "spacenet-parrised-devaccount"
-object_prefix = "AOI_1_Rio/srcData/rasterData/3-Band/"
+#bucket_name = "spacenet-parrised-devaccount"
+#object_prefix = "AOI_1_Rio/srcData/rasterData/3-Band/"
+bucket_name = "spacenet-dataset"
+object_prefix = "AOIs/AOI_7_Moscow/PS-RGB/"
+
 
 s3_client = boto3.client('s3')
 sqs_client = boto3.client('sqs')
@@ -25,7 +28,7 @@ if __name__ == "__main__":
         message_body = {
             'imageURL': "s3://" + bucket_name + "/" + key,
             'outputBucket': "spacenet-parrised-devaccount",
-            'outputPrefix': "oversight/AOI_1_Rio",
+            'outputPrefix': "oversight",
             'modelName': "charon-xview-endpoint"
         }
 

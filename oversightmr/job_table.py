@@ -29,21 +29,57 @@ class JobTable:
             if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
                 raise
 
-    def image_stats(self, image_id: str, total_tile_count: int, width: int, height: int):
+    def region_complete(self, image_id: str, error: bool = False):
+        try:
+            if error:
+                error_count = 1
+                success_count = 0
+            else:
+                error_count = 0
+                success_count = 1
+
+            self.ddb_job_table.update_item(
+                Key={
+                    'image_id': image_id,
+                },
+                UpdateExpression="SET region_success = region_success + :success_count, region_error = region_error + :error_count",
+                ExpressionAttributeValues={
+                    ':success_count': success_count,
+                    ':error_count': error_count
+                }
+            )
+
+        except botocore.exceptions.ClientError as e:
+            raise
+
+    def is_image_complete(self, image_id: str) -> bool:
+        try:
+            get_response = self.ddb_job_table.get_item(Key={'image_id': image_id})
+            if 'Item' in get_response:
+                job_status = get_response['Item']
+                return int(job_status['region_count']) <= (
+                        int(job_status['region_success']) + int(job_status['region_error']))
+
+        except botocore.exceptions.ClientError as e:
+            raise
+
+    def image_stats(self, image_id: str, region_count: int, width: int, height: int):
         try:
             result = self.ddb_job_table.update_item(
                 Key={
                     'image_id': image_id,
                 },
-                UpdateExpression="SET tile_count = :tile_count, width = :width, height = :height",
+                UpdateExpression="SET region_count = :region_count, width = :width, height = :height, region_success = :region_success, region_error = :region_error",
                 ExpressionAttributeValues={
-                    ':tile_count': total_tile_count,
+                    ':region_count': region_count,
                     ':width': width,
-                    ':height': height
+                    ':height': height,
+                    ':region_success': 0,
+                    ':region_error': 0
                 }
             )
         except botocore.exceptions.ClientError as e:
-                raise
+            raise
 
     def image_ended(self, image_id: str):
         end_time_millisec = int(time.time() * 1000)
@@ -64,4 +100,3 @@ class JobTable:
             # other exceptions.
             if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
                 raise
-

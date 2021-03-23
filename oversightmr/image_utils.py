@@ -96,7 +96,8 @@ def generate_crops_for_region(region: ImageRegion,
             ul_y = region[0][0] + r * stride_y
             w = min(chip_size[0], (region[0][1] + region[1][0]) - ul_x)
             h = min(chip_size[1], (region[0][0] + region[1][1]) - ul_y)
-            yield ((ul_y, ul_x), (w, h))
+            if w > overlap[0] and h > overlap[1]:
+                yield ((ul_y, ul_x), (w, h))
 
 
 @lru_cache(maxsize=32)

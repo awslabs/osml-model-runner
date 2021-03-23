@@ -2,10 +2,12 @@ import logging
 
 import boto3
 import geojson
-from metrics import metric_scope
+import botocore
 from botocore.config import Config
 from geojson import FeatureCollection
+from json import JSONDecodeError
 
+from metrics import metric_scope
 from metrics import now
 
 
@@ -13,7 +15,7 @@ class FeatureDetector:
 
     def __init__(self, model_endpoint: str):
         config = Config(
-            retries = {
+            retries={
                 'max_attempts': 30,
                 'mode': 'adaptive'
             }
@@ -40,20 +42,24 @@ class FeatureDetector:
             ml_endpoint_end = now()
             metrics.put_metric("EndpointLatency", (ml_endpoint_end - ml_endpoint_start), "Microseconds")
 
-            decode_start = now()
+            # decode_start = now()
             feature_collection = geojson.loads(model_response['Body'].read())
-            decode_end = now()
+            # decode_end = now()
 
             # Excluding this metric, as measured it was very much in the weeds
             # metrics.put_metric("ResultDecodeLatency", (decode_end - decode_start), "Microseconds")
 
             return feature_collection
 
-        except Exception as e:
+        except botocore.exceptions.ClientError as de:
             self.error_count += 1
             metrics.put_metric("ModelErrors", 1, "Count")
             logging.error("Unable to get detections from model endpoint.")
-            logging.exception(e)
+            logging.exception(de)
+        except JSONDecodeError as de:
+            self.error_count += 1
+            metrics.put_metric("ModelErrors", 1, "Count")
+            logging.error("Unable to decode response from model endpoint.")
+            logging.exception(de)
 
         return FeatureCollection([])
-
