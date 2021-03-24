@@ -9,6 +9,7 @@ from queue import Queue
 
 from osgeo import gdal, gdalconst
 
+from exceptions import RetryableJobException
 from detection_service import FeatureDetector
 from feature_table import FeatureTable
 from image_utils import generate_crops_for_region
@@ -34,8 +35,10 @@ def monitor_work_queues():
             try:
                 process_region_request(region_request)
                 region_work_queue.finish_request(receipt_handle)
-            except Exception as e:
+            except RetryableJobException as re:
                 region_work_queue.reset_request(receipt_handle, visibility=0)
+            except Exception as e:
+                region_work_queue.finish_request(receipt_handle)
         else:
 
             logging.debug("Checking SQS queue for images to process ...")
@@ -45,85 +48,90 @@ def monitor_work_queues():
                 try:
                     process_image_request(image_request, region_work_queue)
                     image_work_queue.finish_request(receipt_handle)
-                except Exception as e:
+                except RetryableJobException as re:
                     image_work_queue.reset_request(receipt_handle, visibility=0)
+                except Exception as e:
+                    image_work_queue.finish_request(receipt_handle)
 
 
 @metric_scope
 def process_image_request(image_request, region_work_queue, metrics) -> None:
-    job_table = JobTable(args.job_table)
+    job_table = None
+    image_url = None
+    try:
 
-    # Region size chosen to break large images into pieces that can be handled by a single tile worker
-    region_size = (20480, 20480)
-    region_overlap = (100, 100)
-    tile_size = (1024, 1024)
-    overlap = (100, 100)
+        # Region size chosen to break large images into pieces that can be handled by a single tile worker
+        region_size = (20480, 20480)
+        region_overlap = (100, 100)
+        tile_size = (1024, 1024)
+        overlap = (100, 100)
 
-    image_url = image_request['imageURL']
+        image_url = image_request['imageURL']
 
-    job_table.image_started(image_url)
+        job_table.image_started(image_url)
 
-    logging.info('Starting processing of {}'.format(image_url))
+        logging.info('Starting processing of {}'.format(image_url))
 
-    image_type = get_image_type(image_url)
-    metrics.put_dimensions({"ImageFormat": image_type})
+        image_type = get_image_type(image_url)
+        metrics.put_dimensions({"ImageFormat": image_type})
 
-    # Use GDAL to open the image object in S3. Note that we're using GDALs s3 driver to
-    # read directly from the object store as needed to complete the image operations
-    metadata_start_time = now()
-    image_gdalvfs = image_url.replace("s3:/", "/vsis3", 1)
-    logging.info('Loading image with GDAL virtual file system {}'.format(image_gdalvfs))
-    ds = gdal.Open(image_gdalvfs)
-    if ds is None:
-        logging.info("Skipping: %s - GDAL Unable to Process", image_gdalvfs)
-        return
-    logging.info("GDAL Parsed Image of size: %d x %d", ds.RasterXSize, ds.RasterYSize)
-    metadata_end_time = now()
-    metrics.put_metric("MetadataLatency", (metadata_end_time - metadata_start_time), "Microseconds")
+        ds = load_gdal_dataset(image_url, metrics)
 
-    # Calculate a set of ML engine sized regions that we need to process for this image and
-    # setup a temporary directory to store the temporary files. The entire directory will be
-    # deleted at the end of this image's processing
-    # Bounds are: UL corner (row, column) , dimensions (w, h)
-    full_image_bounds = ((0, 0), (ds.RasterXSize, ds.RasterYSize))
+        # Calculate a set of ML engine sized regions that we need to process for this image and
+        # setup a temporary directory to store the temporary files. The entire directory will be
+        # deleted at the end of this image's processing
+        # Bounds are: UL corner (row, column) , dimensions (w, h)
+        full_image_bounds = ((0, 0), (ds.RasterXSize, ds.RasterYSize))
 
-    regions = list(generate_crops_for_region(full_image_bounds, region_size, region_overlap))
+        regions = list(generate_crops_for_region(full_image_bounds, region_size, region_overlap))
 
-    job_table.image_stats(image_url, len(regions), ds.RasterXSize, ds.RasterYSize)
+        job_table.image_stats(image_url, len(regions), ds.RasterXSize, ds.RasterYSize)
 
-    region_request = {
-        'imageURL': image_request['imageURL'],
-        'outputBucket': image_request['outputBucket'],
-        'outputPrefix': image_request['outputPrefix'],
-        'modelName': image_request['modelName']
-    }
+        region_request = {
+            'imageURL': image_request['imageURL'],
+            'outputBucket': image_request['outputBucket'],
+            'outputPrefix': image_request['outputPrefix'],
+            'modelName': image_request['modelName']
+        }
 
-    for region_number in range(1, len(regions)):
-        logging.info("Queue region {}: {}".format(region_number, regions[region_number]))
-        region_request['region_bounds'] = regions[region_number]
-        region_work_queue.send_request(region_request)
+        for region_number in range(1, len(regions)):
+            logging.info("Queue region {}: {}".format(region_number, regions[region_number]))
+            region_request['region_bounds'] = regions[region_number]
+            region_work_queue.send_request(region_request)
 
-    logging.info("Processing region {}: {}".format(0, regions[0]))
-    region_request['region_bounds'] = regions[0]
-    process_region_request(region_request, ds=ds)
+        logging.info("Processing region {}: {}".format(0, regions[0]))
+        region_request['region_bounds'] = regions[0]
+        process_region_request(region_request, raster_dataset=ds)
 
-    while not job_table.is_image_complete(image_url):
-        # TODO: This is a hack, at a minimum put in a max retries or some other way to avoid hanging this worker
-        logging.info("Waiting for other regions to complete ...")
-        time.sleep(5)
+        while not job_table.is_image_complete(image_url):
+            # TODO: This is a hack, at a minimum put in a max retries or some other way to avoid hanging this worker
+            logging.info("Waiting for other regions to complete ...")
+            time.sleep(5)
 
-    # Read all the features from DDB and write the results to S3
-    result_storage = ResultStorage(region_request['outputBucket'], region_request['outputPrefix'])
-    feature_table = FeatureTable(args.feature_table, tile_size, overlap)
-    features = feature_table.get_all_features(image_url)
-    result_storage.write_to_s3(image_url, features)
+        # Read all the features from DDB and write the results to S3
+        result_storage = ResultStorage(region_request['outputBucket'], region_request['outputPrefix'])
+        feature_table = FeatureTable(args.feature_table, tile_size, overlap)
+        features = feature_table.get_all_features(image_url)
+        result_storage.write_to_s3(image_url, features)
 
-    # Record completion time of this image
-    job_table.image_ended(image_url)
+        # Record completion time of this image
+        job_table.image_ended(image_url)
 
+    except Exception as e:
+        logging.error("Failed to process image!")
+        logging.exception(e)
+
+        try:
+            if job_table is not None and image_url is not None:
+                job_table.image_ended(image_url)
+        except Exception as status_error:
+            logging.error("Unable to update region status in job table")
+            logging.exception(status_error)
+
+        raise
 
 @metric_scope
-def process_region_request(region_request, ds=None, metrics=None) -> None:
+def process_region_request(region_request, raster_dataset=None, metrics=None) -> None:
     job_table = None
     image_url = None
     try:
@@ -153,38 +161,27 @@ def process_region_request(region_request, ds=None, metrics=None) -> None:
             tile_workers.append(worker)
         logging.info("Setup pool of {} tile workers".format(len(tile_workers)))
 
-        if ds is None:
-            # Use GDAL to open the image object in S3. Note that we're using GDALs s3 driver to
-            # read directly from the object store as needed to complete the image operations
-            metadata_start_time = now()
-            image_gdalvfs = image_url.replace("s3:/", "/vsis3", 1)
-            logging.info('Loading image with GDAL virtual file system {}'.format(image_gdalvfs))
-            ds = gdal.Open(image_gdalvfs)
-            if ds is None:
-                logging.info("Skipping: %s - GDAL Unable to Process", image_gdalvfs)
-                return
-            logging.info("GDAL Parsed Image of size: %d x %d", ds.RasterXSize, ds.RasterYSize)
-            metadata_end_time = now()
-            metrics.put_metric("MetadataLatency", (metadata_end_time - metadata_start_time), "Microseconds")
+        if raster_dataset is None:
+            raster_dataset = load_gdal_dataset(image_url, metrics)
 
-        # Calculate a set of ML engine sized regions that we need to process for this image and
-        # setup a temporary directory to store the temporary files. The entire directory will be
-        # deleted at the end of this image's processing
         # Bounds are: UL corner (row, column) , dimensions (w, h)
         region_bounds = region_request['region_bounds']
 
         # Figure out what type of image this is. If we have values that don't fit in an 8 bit byte
         # assume that the image is 11+ bits per pixel and output it as an unsigned short.
         scale_params = []
-        num_bands = ds.RasterCount
+        num_bands = raster_dataset.RasterCount
         for band_num in range(1, num_bands + 1):
-            band = ds.GetRasterBand(band_num)
+            band = raster_dataset.GetRasterBand(band_num)
             (lo, hi, avg, std) = band.GetStatistics(True, True)
             scale_params.append([lo, hi, lo, hi])
             output_type = gdalconst.GDT_Byte
             if hi > 255:
                 output_type = gdalconst.GDT_UInt16
 
+        # Calculate a set of ML engine sized regions that we need to process for this image and
+        # setup a temporary directory to store the temporary files. The entire directory will be
+        # deleted at the end of this image's processing
         total_tile_count = 0
         with tempfile.TemporaryDirectory() as tmp:
 
@@ -204,7 +201,7 @@ def process_region_request(region_request, ds=None, metrics=None) -> None:
                 #   format --- output format ("GTiff", etc...)
                 tiling_start_time = now()
                 logging.info("Creating image tile: %s", tmp_image_path.absolute())
-                gdal.Translate(str(tmp_image_path.absolute()), ds,
+                gdal.Translate(str(tmp_image_path.absolute()), raster_dataset,
                                srcWin=[tile_bounds[0][1], tile_bounds[0][0], tile_bounds[1][0], tile_bounds[1][1]],
                                scaleParams=scale_params,
                                outputType=output_type,
@@ -240,7 +237,7 @@ def process_region_request(region_request, ds=None, metrics=None) -> None:
                 worker.join()
 
         logging.info("Model Runner Stats Processed {} image tiles for a {} x {} image.".format(
-            total_tile_count, ds.RasterXSize, ds.RasterYSize))
+            total_tile_count, raster_dataset.RasterXSize, raster_dataset.RasterYSize))
 
         job_table.region_complete(image_url)
 
@@ -252,7 +249,7 @@ def process_region_request(region_request, ds=None, metrics=None) -> None:
         metrics.put_metric("RegionLatency", (region_end_time - region_start_time), "Microseconds")
 
     except Exception as e:
-        logging.error("Failed to process image!")
+        logging.error("Failed to process image region!")
         logging.exception(e)
 
         try:
@@ -261,6 +258,26 @@ def process_region_request(region_request, ds=None, metrics=None) -> None:
         except Exception as status_error:
             logging.error("Unable to update region status in job table")
             logging.exception(status_error)
+
+        raise
+
+
+def load_gdal_dataset(image_url, metrics = None):
+
+    # Use GDAL to open the image object in S3. Note that we're using GDALs s3 driver to
+    # read directly from the object store as needed to complete the image operations
+    metadata_start_time = now()
+    image_gdalvfs = image_url.replace("s3:/", "/vsis3", 1)
+    logging.info('Loading image with GDAL virtual file system {}'.format(image_gdalvfs))
+    ds = gdal.Open(image_gdalvfs)
+    if ds is None:
+        logging.info("Skipping: %s - GDAL Unable to Process", image_gdalvfs)
+        raise ValueError("GDAL Unable to Load: {}".format(image_url))
+    logging.info("GDAL Parsed Image of size: %d x %d", ds.RasterXSize, ds.RasterYSize)
+    metadata_end_time = now()
+    if metrics is not None:
+        metrics.put_metric("MetadataLatency", (metadata_end_time - metadata_start_time), "Microseconds")
+    return ds
 
 
 def get_image_type(image_url) -> str:
