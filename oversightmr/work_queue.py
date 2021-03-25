@@ -28,7 +28,7 @@ class WorkQueue:
                     WaitTimeSeconds=self.wait_seconds
                 )
 
-                logging.info("Dequeued region processing request {}".format(str(queue_response)))
+                logging.debug("Dequeued processing request {}".format(str(queue_response)))
 
                 if 'Messages' in queue_response:
                     for message in queue_response['Messages']:
@@ -43,6 +43,8 @@ class WorkQueue:
                         except json.JSONDecodeError:
                             logging.warning("Skipping message that is not valid JSON: {}".format(message_body))
                             yield None, None
+                else:
+                    yield None, None
 
             except botocore.exceptions.ClientError as error:
                 logging.error("Unable to retrieve messaage from queue: {}".format(error))

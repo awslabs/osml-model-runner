@@ -23,12 +23,12 @@ from work_queue import WorkQueue
 def monitor_work_queues():
     image_work_queue = WorkQueue(args.image_queue, wait_seconds=0, visible_seconds=20 * 60)
     image_requests_iter = iter(image_work_queue)
-    region_work_queue = WorkQueue(args.region_queue, wait_seconds=20, visible_seconds=20 * 60)
+    region_work_queue = WorkQueue(args.region_queue, wait_seconds=10, visible_seconds=20 * 60)
     region_requests_iter = iter(region_work_queue)
 
     while True:
 
-        logging.debug("Checking SQS queue for regions to process ...")
+        logging.info("Checking work queue for regions to process ...")
         (receipt_handle, region_request) = next(region_requests_iter)
 
         if region_request is not None:
@@ -41,7 +41,7 @@ def monitor_work_queues():
                 region_work_queue.finish_request(receipt_handle)
         else:
 
-            logging.debug("Checking SQS queue for images to process ...")
+            logging.info("Checking work queue for images to process ...")
             (receipt_handle, image_request) = next(image_requests_iter)
 
             if image_request is not None:
@@ -59,6 +59,7 @@ def process_image_request(image_request, region_work_queue, metrics) -> None:
     job_table = None
     image_url = None
     try:
+        job_table = JobTable(args.job_table)
 
         # Region size chosen to break large images into pieces that can be handled by a single tile worker
         region_size = (20480, 20480)
@@ -167,17 +168,10 @@ def process_region_request(region_request, raster_dataset=None, metrics=None) ->
         # Bounds are: UL corner (row, column) , dimensions (w, h)
         region_bounds = region_request['region_bounds']
 
-        # Figure out what type of image this is. If we have values that don't fit in an 8 bit byte
-        # assume that the image is 11+ bits per pixel and output it as an unsigned short.
-        scale_params = []
-        num_bands = raster_dataset.RasterCount
-        for band_num in range(1, num_bands + 1):
-            band = raster_dataset.GetRasterBand(band_num)
-            (lo, hi, avg, std) = band.GetStatistics(True, True)
-            scale_params.append([lo, hi, lo, hi])
-            output_type = gdalconst.GDT_Byte
-            if hi > 255:
-                output_type = gdalconst.GDT_UInt16
+        # Figure out what type of image this is and calculate a scale that does not force any range remapping
+        # TODO: Consider adding an option to have this driver perform the DRA. That option would change the
+        #       scale_params output by this calculation
+        output_type, scale_params = get_type_and_scales(raster_dataset)
 
         # Calculate a set of ML engine sized regions that we need to process for this image and
         # setup a temporary directory to store the temporary files. The entire directory will be
@@ -278,6 +272,38 @@ def load_gdal_dataset(image_url, metrics = None):
     if metrics is not None:
         metrics.put_metric("MetadataLatency", (metadata_end_time - metadata_start_time), "Microseconds")
     return ds
+
+
+def get_type_and_scales(raster_dataset):
+    scale_params = []
+    num_bands = raster_dataset.RasterCount
+    output_type = gdalconst.GDT_Byte
+    min = 0
+    max = 255
+    for band_num in range(1, num_bands + 1):
+        band = raster_dataset.GetRasterBand(band_num)
+        output_type = band.DataType
+        if output_type == gdalconst.GDT_Byte:
+            min = 0
+            max = 255
+        elif output_type == gdalconst.GDT_UInt16:
+            min = 0
+            max = 65535
+        elif output_type == gdalconst.GDT_Int16:
+            min = -32768
+            max = 32767
+        elif output_type == gdalconst.GDT_UInt32:
+            min = 0
+            max = 4294967295
+        elif output_type == gdalconst.GDT_Int32:
+            min = -2147483648
+            max = 2147483647
+        else:
+            logging.warning("Image uses unsupported GDAL datatype {}. Defaulting to [0,255] range".format(output_type))
+
+        scale_params.append([min, max, min, max])
+
+    return output_type, scale_params
 
 
 def get_image_type(image_url) -> str:
