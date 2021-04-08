@@ -1,26 +1,95 @@
 package.AWSOversightMLModelRunner = {
     interfaces = (1.0);
 
-    # Use NoOpBuild. See https://w.amazon.com/index.php/BrazilBuildSystem/NoOpBuild
-    build-system = no-op;
+    deploy = {
+        generic = true;
+    };
+
+    build-environment = {
+        chroot = basic;
+        network-access = blocked;
+    };
+
+    # See https://w.amazon.com/?BrazilPython3
+    build-system = brazilpython;
     build-tools = {
         1.0 = {
-            NoOpBuild = 1.0;
+            BrazilPython = 3.0;
         };
     };
 
-    # Use runtime-dependencies for when you want to bring in additional
-    # packages when deploying.
-    # Use dependencies instead if you intend for these dependencies to
-    # be exported to other packages that build against you.
     dependencies = {
         1.0 = {
+            # Deploy the default python interpreter for your versionset. This
+            # guarantees `$ENVROOT/bin/python` and the specific interpreter
+            # version it resolves to will exist in your deployment.
+            #
+            # This is only needed for application packages that will be run
+            # from the CLI; if you are making a library, this is not needed.
+            #
+            Python = default;
+
+            # Uncomment if you want working auto-created bin wrapper scripts.
+            # See setup.py
+            #
+            # Python-setuptools = default;
+
+            Boto3 = 1.x;
+            Python-numpy = 1.x;
+            Python-Pillow = 7.x;
+            Python-GDAL = 2.4.3;
+            Python-geojson = 2.x;
+
         };
     };
 
-    runtime-dependencies = {
+    test-dependencies = {
         1.0 = {
+            # Run tests with py.test in BrazilPython.
+            BrazilPython-Pytest = 6.x;
+
+            # Coverage for Python tests.
+            Python-Pytest-cov = 2.x;
+            Coverage = 4.x;
+
+            # Enable the "guard" command to watch tests and automatically re-run them
+            BrazilPython-Pytest-Guard = any;
+
+            # Publish test results to Brazil's test and coverage detection
+            BrazilPythonTestSupport = 3.0;
+
+            # Sphinx documentation with Amazon customizations so that
+            # links on code.amazon.com work
+            Python-amazon-doc-utils = 1.0;
+            Sphinx = 2.x;
+
+            # Dependencies for formatting checks. Controlled in `setup.py`
+            BrazilPython-formatters = 1.0;
+            Python-black = no1;
+            Python-isort = 5.x;
+
+            # Dependencies for type checking. Controlled in `setup.py`
+            BrazilPython-mypy = any;
+            Python-mypy = 0.812;
+
+            # Dependencies for build-time linting. Controlled in `setup.py`
+            BrazilPython-Flake8 = any;
+            Python-flake8 = 3.8.x;
+            Python-pep8-naming = 0.x;
+            # Uncomment if you want to make flake8 check docstrings
+            # Python-flake8-docstring = 1.x;
         };
     };
 
+    resolves-conflict-dependencies = {
+        1.0 = {
+            Python-importlib-metadata = 3.x;
+        };
+    };
+
+    targets = {
+        # see setup.py for the actual build logic
+        # keep this line for brazil-path to work
+        python = { type = python; };
+    };
 };

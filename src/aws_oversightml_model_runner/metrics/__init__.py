@@ -1,11 +1,11 @@
 from queue import Queue
 
-from metrics.metrics_config import MetricsConfig
-from metrics.metrics_context import MetricsContext
-from metrics.metrics_scope import metric_scope
-from metrics.metrics_state import MetricsState
-from metrics.metrics_utils import now
-from metrics.metrics_worker import MetricsWorker
+from .metrics_config import MetricsConfig
+from .metrics_context import MetricsContext
+from .metrics_scope import metric_scope
+from .metrics_state import MetricsState
+from .metrics_utils import now
+from .metrics_worker import MetricsWorker
 
 
 def configure_metrics(namespace, output_type):

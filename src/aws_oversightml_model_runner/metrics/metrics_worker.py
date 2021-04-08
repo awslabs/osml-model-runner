@@ -4,8 +4,8 @@ from threading import Thread
 
 import boto3
 
-from metrics.metrics_config import MetricsConfig
-from metrics.metrics_context import MetricsContext
+from .metrics_config import MetricsConfig
+from .metrics_context import MetricsContext
 
 
 class MetricsWorker(Thread):

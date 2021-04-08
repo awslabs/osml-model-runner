@@ -3,8 +3,8 @@ from queue import Queue
 from threading import Thread
 from typing import Dict
 
-from detection_service import FeatureDetector
-from feature_table import FeatureTable
+from .detection_service import FeatureDetector
+from .feature_table import FeatureTable
 
 
 class ImageTileWorker(Thread):

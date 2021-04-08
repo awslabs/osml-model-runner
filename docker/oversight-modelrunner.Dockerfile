@@ -8,6 +8,6 @@ WORKDIR /processing-service
 ###############################################################################
 # Model Runner Code Baseline
 ###############################################################################
-COPY ./oversightmr ./
+COPY ./src/aws_oversightml_model_runner ./
 
 CMD ["sh", "-c", "python3 model_runner.py -iq ${image_queue} -rq ${region_queue} -ft ${feature_table} -jt ${job_table} -wpc ${workers_per_cpu}"]

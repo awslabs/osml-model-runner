@@ -2,8 +2,8 @@
 import inspect
 from functools import wraps
 
-from metrics.metrics_state import MetricsState
-from metrics.metrics_context import MetricsContext
+from .metrics_state import MetricsState
+from .metrics_context import MetricsContext
 
 
 def metric_scope(fn):  # type: ignore

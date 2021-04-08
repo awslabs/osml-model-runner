@@ -9,15 +9,15 @@ from queue import Queue
 
 from osgeo import gdal, gdalconst
 
-from exceptions import RetryableJobException
-from detection_service import FeatureDetector
-from feature_table import FeatureTable
-from image_utils import generate_crops_for_region
-from job_table import JobTable
-from metrics import configure_metrics, start_metrics, stop_metrics, now, metric_scope
-from result_storage import ResultStorage
-from tile_worker import ImageTileWorker
-from work_queue import WorkQueue
+from .exceptions import RetryableJobException
+from .detection_service import FeatureDetector
+from .feature_table import FeatureTable
+from .image_utils import generate_crops_for_region
+from .job_table import JobTable
+from .metrics import configure_metrics, start_metrics, stop_metrics, now, metric_scope
+from .result_storage import ResultStorage
+from .tile_worker import ImageTileWorker
+from .work_queue import WorkQueue
 
 
 def monitor_work_queues():

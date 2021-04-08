@@ -7,8 +7,8 @@ from botocore.config import Config
 from geojson import FeatureCollection
 from json import JSONDecodeError
 
-from metrics import metric_scope
-from metrics import now
+from .metrics import metric_scope
+from .metrics import now
 
 
 class FeatureDetector:

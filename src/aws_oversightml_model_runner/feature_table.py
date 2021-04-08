@@ -8,7 +8,7 @@ from boto3 import dynamodb
 
 import geojson
 from geojson import Feature
-from metrics import metric_scope, now
+from .metrics import metric_scope, now
 
 class FeatureTable:
 

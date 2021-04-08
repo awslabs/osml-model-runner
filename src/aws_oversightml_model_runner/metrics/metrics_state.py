@@ -1,7 +1,7 @@
 from queue import Queue
 
-from metrics.metrics_config import MetricsConfig
-from metrics.metrics_worker import MetricsWorker
+from .metrics_config import MetricsConfig
+from .metrics_worker import MetricsWorker
 
 
 class MetricsState:
