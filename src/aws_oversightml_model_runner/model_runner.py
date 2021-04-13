@@ -1,6 +1,7 @@
-import argparse
 import logging
 import multiprocessing
+import os
+import signal
 import tempfile
 import time
 import uuid
@@ -9,24 +10,42 @@ from queue import Queue
 
 from osgeo import gdal, gdalconst
 
-from .exceptions import RetryableJobException
 from .detection_service import FeatureDetector
+from .exceptions import RetryableJobException
 from .feature_table import FeatureTable
 from .image_utils import generate_crops_for_region
 from .job_table import JobTable
-from .metrics import configure_metrics, start_metrics, stop_metrics, now, metric_scope
+from .metrics import now, metric_scope
 from .result_storage import ResultStorage
 from .tile_worker import ImageTileWorker
 from .work_queue import WorkQueue
 
+WORKERS_PER_CPU = os.environ['WORKERS_PER_CPU']
+JOB_TABLE = os.environ['JOB_TABLE']
+FEATURE_TABLE = os.environ['FEATURE_TABLE']
+IMAGE_QUEUE = os.environ['IMAGE_QUEUE']
+REGION_QUEUE = os.environ['REGION_QUEUE']
+
+# Global signal term
+run = True
+
+
+def handler_stop_signals(signum, frame):
+    global run
+    run = False
+
+
+signal.signal(signal.SIGINT, handler_stop_signals)
+signal.signal(signal.SIGTERM, handler_stop_signals)
+
 
 def monitor_work_queues():
-    image_work_queue = WorkQueue(args.image_queue, wait_seconds=0, visible_seconds=20 * 60)
+    image_work_queue = WorkQueue(IMAGE_QUEUE, wait_seconds=0, visible_seconds=20 * 60)
     image_requests_iter = iter(image_work_queue)
-    region_work_queue = WorkQueue(args.region_queue, wait_seconds=10, visible_seconds=20 * 60)
+    region_work_queue = WorkQueue(REGION_QUEUE, wait_seconds=10, visible_seconds=20 * 60)
     region_requests_iter = iter(region_work_queue)
 
-    while True:
+    while run:
 
         logging.info("Checking work queue for regions to process ...")
         (receipt_handle, region_request) = next(region_requests_iter)
@@ -59,7 +78,7 @@ def process_image_request(image_request, region_work_queue, metrics) -> None:
     job_table = None
     image_url = None
     try:
-        job_table = JobTable(args.job_table)
+        job_table = JobTable(JOB_TABLE)
 
         # Region size chosen to break large images into pieces that can be handled by a single tile worker
         region_size = (20480, 20480)
@@ -111,7 +130,7 @@ def process_image_request(image_request, region_work_queue, metrics) -> None:
 
         # Read all the features from DDB and write the results to S3
         result_storage = ResultStorage(region_request['outputBucket'], region_request['outputPrefix'])
-        feature_table = FeatureTable(args.feature_table, tile_size, overlap)
+        feature_table = FeatureTable(FEATURE_TABLE, tile_size, overlap)
         features = feature_table.get_all_features(image_url)
         result_storage.write_to_s3(image_url, features)
 
@@ -131,13 +150,14 @@ def process_image_request(image_request, region_work_queue, metrics) -> None:
 
         raise
 
+
 @metric_scope
 def process_region_request(region_request, raster_dataset=None, metrics=None) -> None:
     job_table = None
     image_url = None
     try:
         region_start_time = now()
-        job_table = JobTable(args.job_table)
+        job_table = JobTable(JOB_TABLE)
 
         # Tile size chosen to keep the output nitf size smaller than the 5 MB limit for feeding batch
         # Need to investigate use of compression and adjust tile size appropriately
@@ -154,9 +174,9 @@ def process_region_request(region_request, raster_dataset=None, metrics=None) ->
 
         image_queue = Queue()
         tile_workers = []
-        for _ in range(multiprocessing.cpu_count() * int(args.workers_per_cpu)):
+        for _ in range(multiprocessing.cpu_count() * int(WORKERS_PER_CPU)):
             feature_detector = FeatureDetector(region_request['modelName'])
-            feature_table = FeatureTable(args.feature_table, tile_size, overlap)
+            feature_table = FeatureTable(FEATURE_TABLE, tile_size, overlap)
             worker = ImageTileWorker(image_queue, feature_detector, feature_table)
             worker.start()
             tile_workers.append(worker)
@@ -256,8 +276,7 @@ def process_region_request(region_request, raster_dataset=None, metrics=None) ->
         raise
 
 
-def load_gdal_dataset(image_url, metrics = None):
-
+def load_gdal_dataset(image_url, metrics=None):
     # Use GDAL to open the image object in S3. Note that we're using GDALs s3 driver to
     # read directly from the object store as needed to complete the image operations
     metadata_start_time = now()
@@ -324,41 +343,3 @@ def sizeof_fmt(num, suffix='B'):
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Yi', suffix)
-
-
-def configure_logging(verbose: bool):
-    """
-    Setup logging for this application
-    """
-    logging_level = logging.INFO
-    if verbose:
-        print("################## VERBOSE ##################")
-        logging_level = logging.DEBUG
-
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging_level)
-
-    ch = logging.StreamHandler()
-    ch.setLevel(logging_level)
-    formatter = logging.Formatter('%(levelname)-8s %(message)s')
-    ch.setFormatter(formatter)
-
-    root_logger.addHandler(ch)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-iq', '--image_queue', default=None)
-    parser.add_argument('-rq', '--region_queue', default=None)
-    parser.add_argument('-ft', '--feature_table', default=None)
-    parser.add_argument('-jt', '--job_table', default=None)
-    parser.add_argument('-wpc', '--workers_per_cpu', default=1)
-    parser.add_argument('-v', '--verbose', action='store_true')
-    args = parser.parse_args()
-
-    configure_logging(args.verbose)
-
-    configure_metrics("OversightML/ModelRunner", "cw")
-    start_metrics()
-    monitor_work_queues()
-    stop_metrics()

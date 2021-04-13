@@ -15,28 +15,22 @@ package.AWSOversightMLModelRunner = {
     build-tools = {
         1.0 = {
             BrazilPython = 3.0;
+            DockerFileBuild = 0.2;
+            ApolloShimSetup = 7.0;
         };
     };
 
     dependencies = {
         1.0 = {
-            # Deploy the default python interpreter for your versionset. This
-            # guarantees `$ENVROOT/bin/python` and the specific interpreter
-            # version it resolves to will exist in your deployment.
-            #
-            # This is only needed for application packages that will be run
-            # from the CLI; if you are making a library, this is not needed.
-            #
-            Python = default;
-
             # Uncomment if you want working auto-created bin wrapper scripts.
             # See setup.py
             #
             # Python-setuptools = default;
-
+            ApolloShimSetup = 7.0;
             Boto3 = 1.x;
             Python-numpy = 1.x;
             Python-Pillow = 7.x;
+            GDAL = 2.4.x;
             Python-GDAL = 2.4.3;
             Python-geojson = 2.x;
 
@@ -78,6 +72,12 @@ package.AWSOversightMLModelRunner = {
             Python-pep8-naming = 0.x;
             # Uncomment if you want to make flake8 check docstrings
             # Python-flake8-docstring = 1.x;
+        };
+    };
+
+    runtime-dependencies = {
+        1.0 = {
+            CPython38 = default;
         };
     };
 

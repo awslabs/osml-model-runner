@@ -4,10 +4,10 @@ import boto3
 
 #bucket_name = "spacenet-dataset"
 #object_prefix = "AOIs/AOI_1_Rio/srcData/mosaic_3band/"
-#bucket_name = "spacenet-parrised-devaccount"
-#object_prefix = "AOI_1_Rio/srcData/rasterData/3-Band/"
-bucket_name = "spacenet-dataset"
-object_prefix = "AOIs/AOI_7_Moscow/PS-RGB/"
+bucket_name = "spacenet-parrised-devaccount"
+object_prefix = "AOI_1_Rio/srcData/rasterData/3-Band/013022223103.tif"
+#bucket_name = "spacenet-dataset"
+#object_prefix = "AOIs/AOI_7_Moscow/PS-RGB/"
 
 
 s3_client = boto3.client('s3')

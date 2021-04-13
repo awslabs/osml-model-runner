@@ -1,0 +1,46 @@
+# Use the standard Amazon Linux base, provided by ECR/KaOS
+# This is a placeholder, replaced by the `DockerFileBuild` build system.
+# It will point to the standard shared Amazon Linux image, with a versioned tag.
+FROM AMAZON_LINUX
+
+# https://sage.amazon.com/posts/1112572
+RUN yum install -y gcc-gfortran
+
+# Set Apollo Environment root
+ENV APOLLO_ACTUAL_ENVIRONMENT_ROOT=/opt/amazon
+
+# Providing a ENVROOT environment variable inside the Docker runtime
+ENV ENVROOT /opt/amazon
+
+# add missing lib for groupadd
+RUN /bin/bash -c 'yum install shadow-utils -y'
+RUN groupadd -r oversightml-user -g 901
+RUN useradd -u 901 -r -g oversightml-user oversightml-user
+
+# add dir
+RUN mkdir -p /home/oversightml-user
+RUN chown -R oversightml-user /home/oversightml-user
+
+# use non-root user for oversightml process
+USER oversightml-user
+
+# Set up the apollo envroot application to the expected location
+COPY apollo-client/sbin/envroot /apollo/sbin/envroot
+
+# Copy our application code to the container
+COPY . /opt/amazon
+
+# Set some environment variables. PYTHONUNBUFFERED keeps Python from buffering our standard
+# output stream, which means that logs can be delivered to the user quickly. PYTHONDONTWRITEBYTECODE
+# keeps Python from writing the .pyc files which are unnecessary in this case. We also update
+# PATH so that the programs are found when the container is invoked.
+
+# disable buffer so logs are written in real time
+# ENV PYTHONUNBUFFERED=TRUE
+# ENV PYTHONDONTWRITEBYTECODE=TRUE
+
+ENV PATH $PATH:${APOLLO_ACTUAL_ENVIRONMENT_ROOT}/bin
+ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${APOLLO_ACTUAL_ENVIRONMENT_ROOT}/lib:/lib64"
+ENV PYTHONPATH="${PYTHONPATH}:${APOLLO_ACTUAL_ENVIRONMENT_ROOT}/lib/python3.8/site-packages/"
+
+ENTRYPOINT ["python3", "/opt/amazon/bin/oversightml-mr-entry-point.py"]
