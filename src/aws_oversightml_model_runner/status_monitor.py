@@ -24,7 +24,7 @@ class StatusMonitor:
             orchestrator = coralrpc.new_orchestrator(
                 endpoint=endpoint,
                 aws_region=region,
-                aws_service="oversightml",
+                aws_service="execute-api",
                 aws_access_key=creds.access_key.encode('utf-8'),
                 aws_secret_key=creds.secret_key.encode('utf-8'),
                 aws_security_token=creds.token.encode('utf-8'),
