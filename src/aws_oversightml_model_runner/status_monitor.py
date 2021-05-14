@@ -1,6 +1,6 @@
 import logging
 from collections import namedtuple
-from datetime import datetime
+from datetime import datetime, timezone
 
 import boto3
 from coral import coralrpc
@@ -38,7 +38,7 @@ class StatusMonitor:
             if self.cp_client:
                 self.cp_client.add_image_processing_event(
                     ProcessingEvent(event_description=description,
-                                    event_time=Timestamp(datetime.now()),
+                                    event_time=Timestamp(datetime.now(tz=timezone.utc)),
                                     job_arn=job_id,
                                     job_status=status
                                     )
