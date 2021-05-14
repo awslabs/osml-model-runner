@@ -19,12 +19,15 @@ class StatusMonitor:
         logging.info("Configuring Status Monitor using Endpoint: {}".format(endpoint))
         if endpoint:
             session = boto3.Session()
+            creds = session.get_credentials()
             region = session.region_name
             orchestrator = coralrpc.new_orchestrator(
                 endpoint=endpoint,
                 aws_region=region,
                 aws_service="OversightML",
-                aws_credentials_provider=self.create_credentials_from_session(session),
+                aws_access_key=creds.access_key.encode('utf-8'),
+                aws_secret_key=creds.secret_key.encode('utf-8'),
+                aws_security_token=creds.token.encode('utf-8'),
                 signature_algorithm="v4",
                 timeout=1.0
             )
@@ -46,9 +49,3 @@ class StatusMonitor:
         except Exception as status_error:
             logging.error("Unable to update OversightML CP for: {}".format(job_id), status_error)
 
-    @staticmethod
-    def create_credentials_from_session(session):
-        creds = session.get_credentials()
-        return Credentials(aws_access_key=creds.access_key.encode('utf-8'),
-                           aws_secret_key=creds.secret_key.encode('utf-8'),
-                           aws_security_token=creds.token.encode('utf-8'))
