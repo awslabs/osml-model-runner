@@ -19,12 +19,14 @@ from .metrics import now, metric_scope
 from .result_storage import ResultStorage
 from .tile_worker import ImageTileWorker
 from .work_queue import WorkQueue
+from .status_monitor import StatusMonitor
 
 WORKERS_PER_CPU = os.environ['WORKERS_PER_CPU']
 JOB_TABLE = os.environ['JOB_TABLE']
 FEATURE_TABLE = os.environ['FEATURE_TABLE']
 IMAGE_QUEUE = os.environ['IMAGE_QUEUE']
 REGION_QUEUE = os.environ['REGION_QUEUE']
+CP_API_ENDPOINT = os.environ['CP_API_ENDPOINT']
 
 # Global signal term
 run = True
@@ -44,6 +46,7 @@ def monitor_work_queues():
     image_requests_iter = iter(image_work_queue)
     region_work_queue = WorkQueue(REGION_QUEUE, wait_seconds=10, visible_seconds=20 * 60)
     region_requests_iter = iter(region_work_queue)
+    status_monitor = StatusMonitor(CP_API_ENDPOINT)
 
     while run:
 
@@ -65,7 +68,7 @@ def monitor_work_queues():
 
             if image_request is not None:
                 try:
-                    process_image_request(image_request, region_work_queue)
+                    process_image_request(image_request, region_work_queue, status_monitor)
                     image_work_queue.finish_request(receipt_handle)
                 except RetryableJobException as re:
                     image_work_queue.reset_request(receipt_handle, visibility=0)
@@ -74,9 +77,10 @@ def monitor_work_queues():
 
 
 @metric_scope
-def process_image_request(image_request, region_work_queue, metrics) -> None:
+def process_image_request(image_request, region_work_queue, status_monitor, metrics) -> None:
     job_table = None
-    image_url = None
+    image_id = None
+    job_arn = None
     try:
         job_table = JobTable(JOB_TABLE)
 
@@ -86,11 +90,23 @@ def process_image_request(image_request, region_work_queue, metrics) -> None:
         tile_size = (1024, 1024)
         overlap = (100, 100)
 
-        image_url = image_request['imageURL']
+        job_arn = image_request['jobArn']
+        # TODO: Update to support multiple images in request
+        image_url = image_request['imageUrls'][0]
+        image_id = image_request['jobId'] + ":" + image_url
+        output_bucket = image_request['outputBucket']
+        output_prefix = image_request['outputPrefix']
+        model_name = image_request['imageProcessor']
 
-        job_table.image_started(image_url)
+        status_monitor.processing_event(job_arn, "IN_PROGRESS", "Started Processing")
+
+        if model_name == "aws-oversightml-internalnoop-model":
+            status_monitor.processing_event(job_arn, "COMPLETED", "NOOP Model Finished")
+            return
 
         logging.info('Starting processing of {}'.format(image_url))
+
+        job_table.image_started(image_id)
 
         image_type = get_image_type(image_url)
         metrics.put_dimensions({"ImageFormat": image_type})
@@ -105,13 +121,14 @@ def process_image_request(image_request, region_work_queue, metrics) -> None:
 
         regions = list(generate_crops_for_region(full_image_bounds, region_size, region_overlap))
 
-        job_table.image_stats(image_url, len(regions), ds.RasterXSize, ds.RasterYSize)
+        job_table.image_stats(image_id, len(regions), ds.RasterXSize, ds.RasterYSize)
 
         region_request = {
-            'imageURL': image_request['imageURL'],
-            'outputBucket': image_request['outputBucket'],
-            'outputPrefix': image_request['outputPrefix'],
-            'modelName': image_request['modelName']
+            'ImageID': image_id,
+            'imageURL': image_url,
+            'outputBucket': output_bucket,
+            'outputPrefix': output_prefix,
+            'modelName': model_name
         }
 
         for region_number in range(1, len(regions)):
@@ -123,7 +140,7 @@ def process_image_request(image_request, region_work_queue, metrics) -> None:
         region_request['region_bounds'] = regions[0]
         process_region_request(region_request, raster_dataset=ds)
 
-        while not job_table.is_image_complete(image_url):
+        while not job_table.is_image_complete(image_id):
             # TODO: This is a hack, at a minimum put in a max retries or some other way to avoid hanging this worker
             logging.info("Waiting for other regions to complete ...")
             time.sleep(5)
@@ -135,17 +152,26 @@ def process_image_request(image_request, region_work_queue, metrics) -> None:
         result_storage.write_to_s3(image_url, features)
 
         # Record completion time of this image
-        job_table.image_ended(image_url)
+        job_table.image_ended(image_id)
+
+        status_monitor.processing_event(job_arn, "COMPLETED", "Successfully Completed Processing")
 
     except Exception as e:
         logging.error("Failed to process image!")
         logging.exception(e)
 
         try:
-            if job_table is not None and image_url is not None:
-                job_table.image_ended(image_url)
+            if job_table is not None and image_id is not None:
+                job_table.image_ended(image_id)
         except Exception as status_error:
             logging.error("Unable to update region status in job table")
+            logging.exception(status_error)
+
+        try:
+            status_monitor.processing_event(job_arn, "FAILED", str(e))
+
+        except Exception as status_error:
+            logging.error("Unable to update region status in status monitor")
             logging.exception(status_error)
 
         raise
@@ -154,7 +180,7 @@ def process_image_request(image_request, region_work_queue, metrics) -> None:
 @metric_scope
 def process_region_request(region_request, raster_dataset=None, metrics=None) -> None:
     job_table = None
-    image_url = None
+    image_id = None
     try:
         region_start_time = now()
         job_table = JobTable(JOB_TABLE)
@@ -165,6 +191,7 @@ def process_region_request(region_request, raster_dataset=None, metrics=None) ->
         tile_size = (1024, 1024)
         overlap = (100, 100)
 
+        image_id = region_request['imageID']
         image_url = region_request['imageURL']
 
         logging.info('Starting processing of {} {}'.format(image_url, region_request['region_bounds']))
@@ -253,7 +280,7 @@ def process_region_request(region_request, raster_dataset=None, metrics=None) ->
         logging.info("Model Runner Stats Processed {} image tiles for a {} x {} image.".format(
             total_tile_count, raster_dataset.RasterXSize, raster_dataset.RasterYSize))
 
-        job_table.region_complete(image_url)
+        job_table.region_complete(image_id)
 
         region_end_time = now()
 
@@ -267,8 +294,8 @@ def process_region_request(region_request, raster_dataset=None, metrics=None) ->
         logging.exception(e)
 
         try:
-            if job_table is not None and image_url is not None:
-                job_table.region_complete(image_url, error=True)
+            if job_table is not None and image_id is not None:
+                job_table.region_complete(image_id, error=True)
         except Exception as status_error:
             logging.error("Unable to update region status in job table")
             logging.exception(status_error)

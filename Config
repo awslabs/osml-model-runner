@@ -22,6 +22,9 @@ package.AWSOversightMLModelRunner = {
 
     dependencies = {
         1.0 = {
+
+            AWSOversightMLCPPythonClient = 1.0;
+
             # Uncomment if you want working auto-created bin wrapper scripts.
             # See setup.py
             #
