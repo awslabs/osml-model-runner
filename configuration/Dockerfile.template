@@ -30,6 +30,11 @@ COPY apollo-client/sbin/envroot /apollo/sbin/envroot
 # Copy our application code to the container
 COPY . /opt/amazon
 
+# Copy the service model to a location boto3 loaders will find it
+# TODO: Is there a better way to do this or some build step I'm missing that will put these in a correct place for boto3
+COPY ./model/oversightml-2018-05-10.normal.json /home/oversightml-user/.aws/models/oversightml/2018-05-10/service-2.json
+COPY ./model/oversightml-2018-05-10.paginators.json /home/oversightml-user/.aws/models/oversightml/2018-05-10/paginators-1.json
+
 # Set some environment variables. PYTHONUNBUFFERED keeps Python from buffering our standard
 # output stream, which means that logs can be delivered to the user quickly. PYTHONDONTWRITEBYTECODE
 # keeps Python from writing the .pyc files which are unnecessary in this case. We also update
