@@ -17,9 +17,9 @@ from .image_utils import generate_crops_for_region
 from .job_table import JobTable
 from .metrics import now, metric_scope
 from .result_storage import ResultStorage
+from .status_monitor import StatusMonitor
 from .tile_worker import ImageTileWorker
 from .work_queue import WorkQueue
-from .status_monitor import StatusMonitor
 
 WORKERS_PER_CPU = os.environ['WORKERS_PER_CPU']
 JOB_TABLE = os.environ['JOB_TABLE']
@@ -87,9 +87,12 @@ def process_image_request(image_request, region_work_queue, status_monitor, metr
         # Region size chosen to break large images into pieces that can be handled by a single tile worker
         region_size = (20480, 20480)
         region_overlap = (100, 100)
-        tile_size = (1024, 1024)
-        overlap = (100, 100)
 
+        tile_dimension = int(image_request['imageProcessorTileSize'])
+        overlap_dimension = int(image_request['imageProcessorTileOverlap'])
+        tile_size = (tile_dimension, tile_dimension)
+        overlap = (overlap_dimension, overlap_dimension)
+        tile_format = image_request['imageProcessorTileFormat']
         job_arn = image_request['jobArn']
         # TODO: Update to support multiple images in request
         image_url = image_request['imageUrls'][0]
@@ -128,7 +131,10 @@ def process_image_request(image_request, region_work_queue, status_monitor, metr
             'imageURL': image_url,
             'outputBucket': output_bucket,
             'outputPrefix': output_prefix,
-            'modelName': model_name
+            'modelName': model_name,
+            'tileSize': tile_size,
+            'tileOverlap': overlap,
+            'tileFormat': tile_format
         }
 
         for region_number in range(1, len(regions)):
@@ -185,12 +191,9 @@ def process_region_request(region_request, raster_dataset=None, metrics=None) ->
         region_start_time = now()
         job_table = JobTable(JOB_TABLE)
 
-        # Tile size chosen to keep the output nitf size smaller than the 5 MB limit for feeding batch
-        # Need to investigate use of compression and adjust tile size appropriately
-        # Need to harden this to retry or reprocess in case we go over the limit
-        tile_size = (1024, 1024)
-        overlap = (100, 100)
-
+        tile_size = region_request['tileSize']
+        overlap = region_request['tileOverlap']
+        tile_format = region_request['tileFormat'].lower()
         image_id = region_request['imageID']
         image_url = region_request['imageURL']
 
@@ -228,15 +231,17 @@ def process_region_request(region_request, raster_dataset=None, metrics=None) ->
 
             for tile_bounds in generate_crops_for_region(region_bounds, tile_size, overlap):
                 # Create a temp file name for the NITF encoded region
-                region_image_filename = '{}-region-{}-{}-{}-{}.nitf'.format(str(uuid.uuid4()),
-                                                                            tile_bounds[0][0],
-                                                                            tile_bounds[0][1],
-                                                                            tile_bounds[1][0],
-                                                                            tile_bounds[1][1])
+                region_image_filename = '{}-region-{}-{}-{}-{}.{}'.format(str(uuid.uuid4()),
+                                                                          tile_bounds[0][0],
+                                                                          tile_bounds[0][1],
+                                                                          tile_bounds[1][0],
+                                                                          tile_bounds[1][1],
+                                                                          tile_format
+                                                                          )
 
                 tmp_image_path = Path(tmp, region_image_filename)
 
-                # Use GDAL to create a NITF encoding of the image region
+                # Use GDAL to create an encoded tile of the image region
                 # From GDAL documentation:
                 #   srcWin --- subwindow in pixels to extract: [left_x, top_y, width, height]
                 #   format --- output format ("GTiff", etc...)
@@ -246,7 +251,7 @@ def process_region_request(region_request, raster_dataset=None, metrics=None) ->
                                srcWin=[tile_bounds[0][1], tile_bounds[0][0], tile_bounds[1][0], tile_bounds[1][1]],
                                scaleParams=scale_params,
                                outputType=output_type,
-                               format="nitf")
+                               format=tile_format)
                 tiling_end_time = now()
                 metrics.put_metric("TilingLatency", (tiling_end_time - tiling_start_time), "Microseconds")
 
