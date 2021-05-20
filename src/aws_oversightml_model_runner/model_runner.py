@@ -84,10 +84,6 @@ def process_image_request(image_request, region_work_queue, status_monitor, metr
     try:
         job_table = JobTable(JOB_TABLE)
 
-        # Region size chosen to break large images into pieces that can be handled by a single tile worker
-        region_size = (20480, 20480)
-        region_overlap = (100, 100)
-
         tile_dimension = int(image_request['imageProcessorTileSize'])
         overlap_dimension = int(image_request['imageProcessorTileOverlap'])
         tile_size = (tile_dimension, tile_dimension)
@@ -122,12 +118,15 @@ def process_image_request(image_request, region_work_queue, status_monitor, metr
         # Bounds are: UL corner (row, column) , dimensions (w, h)
         full_image_bounds = ((0, 0), (ds.RasterXSize, ds.RasterYSize))
 
+        # Region size chosen to break large images into pieces that can be handled by a single tile worker
+        region_size = (20480, 20480)
+        region_overlap = (overlap_dimension, overlap_dimension)
         regions = list(generate_crops_for_region(full_image_bounds, region_size, region_overlap))
 
         job_table.image_stats(image_id, len(regions), ds.RasterXSize, ds.RasterYSize)
 
         region_request = {
-            'ImageID': image_id,
+            'imageID': image_id,
             'imageURL': image_url,
             'outputBucket': output_bucket,
             'outputPrefix': output_prefix,
