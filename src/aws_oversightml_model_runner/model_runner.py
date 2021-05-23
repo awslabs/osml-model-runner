@@ -10,6 +10,7 @@ from queue import Queue
 
 from osgeo import gdal, gdalconst
 
+from .georeference import GDALAffineCameraModel, CameraModel
 from .detection_service import FeatureDetector
 from .exceptions import RetryableJobException
 from .feature_table import FeatureTable
@@ -154,6 +155,16 @@ def process_image_request(image_request, region_work_queue, status_monitor, metr
         result_storage = ResultStorage(region_request['outputBucket'], region_request['outputPrefix'])
         feature_table = FeatureTable(FEATURE_TABLE, tile_size, overlap)
         features = feature_table.get_all_features(image_url)
+
+        # Set the geometry of each feature to be a point at the center of each detection bounding box. The geographic
+        # coordinates of these features are computed using the camera model provided in the image metadata
+        transform = ds.GetGeoTransform()
+        if transform:
+            camera_model: CameraModel = GDALAffineCameraModel(transform)
+            camera_model.geolocate_features(features)
+        else:
+            logging.warning("Dataset {} did not have a geo transform. Results are not geo-referenced.".format(image_url))
+
         result_storage.write_to_s3(image_url, features)
 
         # Record completion time of this image
