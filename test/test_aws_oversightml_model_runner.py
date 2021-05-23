@@ -17,5 +17,5 @@ def test_that_you_wrote_tests():
     assert False, assertion_string
 
 
-def test_aws_wolverine_punctuator_bert_importable():
+def test_aws_oversightml_model_runner_importable():
     import aws_oversightml_model_runner  # noqa: F401

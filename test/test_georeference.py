@@ -8,8 +8,12 @@ def test_gdal_cameramodel():
     transform = (-43.681640625, 4.487879136029412e-06, 0.0, -22.939453125, 0.0, -4.487879136029412e-06)
     camera_model: CameraModel = GDALAffineCameraModel(transform)
 
-    ul_corner = camera_model.image_to_world((0,0))
-    lr_corner = camera_model.image_to_workd(19584, 19584)
+    ul_corner_xy = (0,0)
+    lr_corner_xy = (19584, 19584)
+    ul_corner_lonlat = (-43.681640625, -22.939453125)
+    lr_corner_lonlat = (-43.59375, -23.02734375)
 
-    assert ul_corner == (-22.939453125, -43.681640625)
-    assert lr_corner == (-23.02734375, -43.59375)
+    assert pytest.approx(ul_corner_lonlat, rel=1e-6, abs=1e-6) == camera_model.image_to_world(ul_corner_xy)
+    assert pytest.approx(lr_corner_lonlat, rel=1e-6, abs=1e-6) == camera_model.image_to_world(lr_corner_xy)
+    assert pytest.approx(ul_corner_xy, rel=1e-6, abs=1e-6) == camera_model.world_to_image(ul_corner_lonlat)
+    assert pytest.approx(lr_corner_xy, rel=1e-6, abs=1e-6) == camera_model.world_to_image(lr_corner_lonlat)
