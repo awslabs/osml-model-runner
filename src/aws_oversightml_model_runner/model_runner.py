@@ -5,10 +5,14 @@ import signal
 import tempfile
 import time
 import uuid
+import shapely.wkt
+import geojson
+
 from pathlib import Path
 from queue import Queue
 
 from osgeo import gdal, gdalconst
+from shapely.geometry import Polygon
 
 from .georeference import GDALAffineCameraModel, CameraModel
 from .detection_service import FeatureDetector
@@ -48,6 +52,7 @@ def monitor_work_queues():
     region_work_queue = WorkQueue(REGION_QUEUE, wait_seconds=10, visible_seconds=20 * 60)
     region_requests_iter = iter(region_work_queue)
     status_monitor = StatusMonitor(CP_API_ENDPOINT)
+    job_table = JobTable(JOB_TABLE)
 
     while run:
 
@@ -56,7 +61,7 @@ def monitor_work_queues():
 
         if region_request is not None:
             try:
-                process_region_request(region_request)
+                process_region_request(region_request, job_table)
                 region_work_queue.finish_request(receipt_handle)
             except RetryableJobException as re:
                 region_work_queue.reset_request(receipt_handle, visibility=0)
@@ -69,7 +74,7 @@ def monitor_work_queues():
 
             if image_request is not None:
                 try:
-                    process_image_request(image_request, region_work_queue, status_monitor)
+                    process_image_request(image_request, region_work_queue, status_monitor, job_table)
                     image_work_queue.finish_request(receipt_handle)
                 except RetryableJobException as re:
                     image_work_queue.reset_request(receipt_handle, visibility=0)
@@ -78,13 +83,11 @@ def monitor_work_queues():
 
 
 @metric_scope
-def process_image_request(image_request, region_work_queue, status_monitor, metrics) -> None:
-    job_table = None
+def process_image_request(image_request, region_work_queue, status_monitor, job_table, metrics) -> None:
+
     image_id = None
     job_arn = None
     try:
-        job_table = JobTable(JOB_TABLE)
-
         tile_dimension = int(image_request['imageProcessorTileSize'])
         overlap_dimension = int(image_request['imageProcessorTileOverlap'])
         tile_size = (tile_dimension, tile_dimension)
@@ -97,6 +100,9 @@ def process_image_request(image_request, region_work_queue, status_monitor, metr
         output_bucket = image_request['outputBucket']
         output_prefix = image_request['outputPrefix']
         model_name = image_request['imageProcessor']
+        roi = None
+        if "regionOfInterest" in image_request:
+            roi = shapely.wkt.loads(image_request["regionOfInterest"])
 
         status_monitor.processing_event(job_arn, "IN_PROGRESS", "Started Processing")
 
@@ -111,18 +117,24 @@ def process_image_request(image_request, region_work_queue, status_monitor, metr
         image_type = get_image_type(image_url)
         metrics.put_dimensions({"ImageFormat": image_type})
 
-        ds = load_gdal_dataset(image_url, metrics)
+        # Use GDAL to access the dataset and geo positioning metadata
+        image_gdalvfs = image_url.replace("s3:/", "/vsis3", 1)
+        logging.info('Loading image with GDAL virtual file system {}'.format(image_gdalvfs))
+        ds, camera_model = load_gdal_dataset(image_gdalvfs, metrics)
 
-        # Calculate a set of ML engine sized regions that we need to process for this image and
-        # setup a temporary directory to store the temporary files. The entire directory will be
-        # deleted at the end of this image's processing
+        # Determine how much of this image should be processed.
         # Bounds are: UL corner (row, column) , dimensions (w, h)
-        full_image_bounds = ((0, 0), (ds.RasterXSize, ds.RasterYSize))
+        processing_bounds = calculate_processing_bounds(roi, ds, camera_model)
+        if not processing_bounds:
+            logging.info("Requested ROI does not intersect image. Nothing to do")
+            job_table.image_ended(image_id)
+            status_monitor.processing_event(job_arn, "FAILED", "ROI Has No Intersection With Image")
 
+        # Calculate a set of ML engine sized regions that we need to process for this image
         # Region size chosen to break large images into pieces that can be handled by a single tile worker
         region_size = (20480, 20480)
         region_overlap = (overlap_dimension, overlap_dimension)
-        regions = list(generate_crops_for_region(full_image_bounds, region_size, region_overlap))
+        regions = list(generate_crops_for_region(processing_bounds, region_size, region_overlap))
 
         job_table.image_stats(image_id, len(regions), ds.RasterXSize, ds.RasterYSize)
 
@@ -144,7 +156,7 @@ def process_image_request(image_request, region_work_queue, status_monitor, metr
 
         logging.info("Processing region {}: {}".format(0, regions[0]))
         region_request['region_bounds'] = regions[0]
-        process_region_request(region_request, raster_dataset=ds)
+        process_region_request(region_request, job_table, raster_dataset=ds)
 
         while not job_table.is_image_complete(image_id):
             # TODO: This is a hack, at a minimum put in a max retries or some other way to avoid hanging this worker
@@ -158,10 +170,8 @@ def process_image_request(image_request, region_work_queue, status_monitor, metr
 
         # Set the geometry of each feature to be a point at the center of each detection bounding box. The geographic
         # coordinates of these features are computed using the camera model provided in the image metadata
-        transform = ds.GetGeoTransform()
-        if transform:
-            camera_model: CameraModel = GDALAffineCameraModel(transform)
-            camera_model.geolocate_features(features)
+        if camera_model:
+            camera_model.geolocate_detections(features)
         else:
             logging.warning("Dataset {} did not have a geo transform. Results are not geo-referenced.".format(image_url))
 
@@ -194,12 +204,11 @@ def process_image_request(image_request, region_work_queue, status_monitor, metr
 
 
 @metric_scope
-def process_region_request(region_request, raster_dataset=None, metrics=None) -> None:
-    job_table = None
+def process_region_request(region_request, job_table, raster_dataset=None, metrics=None) -> None:
+
     image_id = None
     try:
         region_start_time = now()
-        job_table = JobTable(JOB_TABLE)
 
         tile_size = region_request['tileSize']
         overlap = region_request['tileOverlap']
@@ -318,21 +327,46 @@ def process_region_request(region_request, raster_dataset=None, metrics=None) ->
         raise
 
 
-def load_gdal_dataset(image_url, metrics=None):
+def calculate_processing_bounds(roi, ds, camera_model):
+    processing_bounds = ((0, 0), (ds.RasterXSize, ds.RasterYSize))
+    if roi:
+        full_image_area = Polygon([
+            (0, 0), (0, ds.RasterYSize), (ds.RasterXSize, ds.RasterYSize), (ds.RasterXSize, 0)
+        ])
+        roi_area = camera_model.feature_to_image_shape(geojson.Feature(geometry=roi))
+
+        if roi_area.intersects(full_image_area):
+            area_to_process = roi_area.intersection(full_image_area)
+
+            # Shapely bounds are (minx, miny, maxx, maxy); convert this to the ((r, c), (w, h)) expected by the tiler
+            processing_bounds = ((area_to_process.bounds[1], area_to_process.bounds[0]),
+                                 (area_to_process.bounds[2] - area_to_process.bounds[0],
+                                  area_to_process.bounds[3] - area_to_process.bounds[1]))
+        else:
+            processing_bounds = None
+
+    return processing_bounds
+
+
+def load_gdal_dataset(image_path, metrics=None):
     # Use GDAL to open the image object in S3. Note that we're using GDALs s3 driver to
     # read directly from the object store as needed to complete the image operations
     metadata_start_time = now()
-    image_gdalvfs = image_url.replace("s3:/", "/vsis3", 1)
-    logging.info('Loading image with GDAL virtual file system {}'.format(image_gdalvfs))
-    ds = gdal.Open(image_gdalvfs)
+    ds = gdal.Open(image_path)
     if ds is None:
-        logging.info("Skipping: %s - GDAL Unable to Process", image_gdalvfs)
-        raise ValueError("GDAL Unable to Load: {}".format(image_url))
+        logging.info("Skipping: %s - GDAL Unable to Process", image_path)
+        raise ValueError("GDAL Unable to Load: {}".format(image_path))
+
+    camera_model: CameraModel = None
+    transform = ds.GetGeoTransform()
+    if transform:
+        camera_model = GDALAffineCameraModel(transform)
+
     logging.info("GDAL Parsed Image of size: %d x %d", ds.RasterXSize, ds.RasterYSize)
     metadata_end_time = now()
     if metrics is not None:
         metrics.put_metric("MetadataLatency", (metadata_end_time - metadata_start_time), "Microseconds")
-    return ds
+    return ds, camera_model
 
 
 def get_type_and_scales(raster_dataset):
