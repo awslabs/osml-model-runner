@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import List
 
-from geojson import Feature, Point
+import geojson
+import shapely
+from shapely.geometry.base import BaseGeometry
 
 
 class CameraModel(ABC):
@@ -17,12 +19,60 @@ class CameraModel(ABC):
     def world_to_image(self, xy_coord):
         pass
 
-    def geolocate_features(self, features: List[Feature]):
+    def geolocate_detections(self, features: List[geojson.Feature]):
         for feature in features:
             bbox = feature['properties']['bounds_imcoords']
             center_xy = bbox[0] + (bbox[2] - bbox[0]) / 2, bbox[1] + (bbox[3] - bbox[1]) / 2
             center_lonlat = self.image_to_world(center_xy)
-            feature['geometry'] = Point(center_lonlat)
+            feature['geometry'] = geojson.Point(center_lonlat)
+
+    def feature_to_image_shape(self, feature: geojson.Feature) -> BaseGeometry:
+
+        if 'geometry' not in feature:
+            raise ValueError("Feature does not contain a valid geometry")
+
+        feature_geometry = feature['geometry']
+
+        image_coords = CameraModel.convert_nested_coordinate_lists(feature_geometry['coordinates'],
+                                                                   self.world_to_image)
+
+        if isinstance(feature_geometry, geojson.Point):
+            return shapely.geometry.asPoint(image_coords)
+        elif isinstance(feature_geometry, geojson.LineString):
+            return shapely.geometry.asLineString(image_coords)
+        elif isinstance(feature_geometry, geojson.Polygon):
+            return shapely.geometry.asPolygon(image_coords)
+        elif isinstance(feature_geometry, geojson.MultiPoint):
+            return shapely.geometry.asMultiPoint(image_coords)
+        elif isinstance(feature_geometry, geojson.MultiLineString):
+            return shapely.geometry.asMultiLineString(image_coords)
+        elif isinstance(feature_geometry, geojson.MultiPolygon):
+            return shapely.geometry.asMultiPolygon(image_coords)
+        else:
+            raise ValueError(
+                "Unable convert feature with geometry of type {} to shape".format(str(type(feature_geometry))))
+
+    def features_to_image_shapes(self, features: List[geojson.Feature]) -> List[BaseGeometry]:
+
+        shapes: List[shapely.geometry.base.BaseGeometry] = []
+        for feature in features:
+            shapes.append(self.feature_to_image_shape(feature))
+
+        return shapes
+
+    @staticmethod
+    def convert_nested_coordinate_lists(coordinates_or_lists, conversion_function):
+        if not isinstance(coordinates_or_lists[0], List):
+            # This appears to be a single coordinate so run it through the supplied conversion function
+            # (image_to_world or world_to_image)
+            return conversion_function(coordinates_or_lists)
+        else:
+            # This appears to be a list of lists (i.e. a LineString, Polygon, etc.) so invoke this conversion routine
+            # recursively to preserve the nesting structure of the input
+            output_list = []
+            for coordinate_list in coordinates_or_lists:
+                output_list.append(CameraModel.convert_nested_coordinate_lists(coordinate_list, conversion_function))
+            return output_list
 
 
 class GDALAffineCameraModel(CameraModel):
@@ -43,8 +93,9 @@ class GDALAffineCameraModel(CameraModel):
 
         :param transform: the 6 coefficients of the affine transform
         """
+        super().__init__()
         self.transform = transform
-        self.inv_transform = self.invert_geo_transform(transform)
+        self.inv_transform = GDALAffineCameraModel.invert_geo_transform(transform)
 
     def image_to_world(self, xy_coord):
         longitude = self.transform[0] + xy_coord[0] * self.transform[1] + xy_coord[1] * self.transform[2]
@@ -55,7 +106,6 @@ class GDALAffineCameraModel(CameraModel):
         x = self.inv_transform[0] + lonlat_coord[0] * self.inv_transform[1] + lonlat_coord[1] * self.inv_transform[2]
         y = self.inv_transform[3] + lonlat_coord[0] * self.inv_transform[4] + lonlat_coord[1] * self.inv_transform[5]
         return x, y
-
 
     @staticmethod
     def invert_geo_transform(gt_in):

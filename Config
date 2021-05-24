@@ -36,6 +36,7 @@ package.AWSOversightMLModelRunner = {
             GDAL = 2.4.x;
             Python-GDAL = 2.4.3;
             Python-geojson = 2.x;
+            Python-Shapely = 1.6.x;
 
         };
     };
