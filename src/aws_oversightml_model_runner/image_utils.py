@@ -1,7 +1,4 @@
-from functools import lru_cache
 from typing import Tuple, Iterator
-
-from PIL import Image
 
 # TODO: Define a Point type so there is no confusion over the meaning of BBox.
 #  (i.e. a two corner box would be (Point, Point) while a UL width height box would be (Point, w, h)
@@ -98,35 +95,3 @@ def generate_crops_for_region(region: ImageRegion,
             h = min(chip_size[1], (region[0][0] + region[1][1]) - ul_y)
             if w > overlap[0] and h > overlap[1]:
                 yield ((ul_y, ul_x), (w, h))
-
-
-@lru_cache(maxsize=32)
-def get_image_with_caching(image_path: str) -> Image.Image:
-    """
-    Provides a simple image cache of hardcoded size so we don't end up decoding the same image over and over
-    :param image_path: the image path
-    :return: a PIL Image
-    """
-    return Image.open(image_path, mode="r")
-
-
-def generate_tiles_for_image(image_path: str,
-                             tile_size: ImageDimensions,
-                             overlap: ImageDimensions) -> Iterator[Tuple[Image.Image, ImageRegion]]:
-    """
-    Yields tuples of cropped images and the bounding boxes.
-
-    :param image_path: the image path
-    :param tile_size: the size of each tile
-    :param overlap: the amount of overlap each tile should have with other tiles in the image
-    :return: an iterable list of tuples for the image regions: [(Image, ((ul_r, ul_c), (w, h))), ...]
-    """
-    full_image = get_image_with_caching(image_path)
-    full_image_bounds = ((0, 0), full_image.size)
-    for region in generate_crops_for_region(full_image_bounds, tile_size, overlap):
-        left = region[0][1]
-        top = region[0][0]
-        right = region[0][1] + region[1][0]
-        bottom = region[0][0] + region[1][1]
-        image_tile = full_image.crop((left, top, right, bottom))
-        yield (image_tile, region)
