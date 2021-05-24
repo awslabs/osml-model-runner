@@ -1,8 +1,9 @@
-import time
 import argparse
-import boto3
 import datetime
-import logging
+import time
+
+import boto3
+
 
 def ListObjects(bucket_name, prefix):
     response = s3_client.list_objects(Bucket=bucket_name, Prefix=prefix)
@@ -17,7 +18,7 @@ if __name__ == "__main__":
     parser.add_argument('-ip', '--input-prefix', default='AOIs/AOI_1_Rio/srcData/mosaic_3band/013022223131.tif')
     parser.add_argument('-ob', '--output-bucket', default='oversightml-iad-beta-hydratest')
     parser.add_argument('-op', '--output-prefix', default='results')
-    parser.add_argument('-ts', '--tile-size', default=2048)
+    parser.add_argument('-ts', '--tile-size', default=1024)
     parser.add_argument('-to', '--tile-overlap', default=100)
     parser.add_argument('-tf', '--tile-format', default="NITF")
     parser.add_argument('-m', '--model', default="charon-xview-endpoint")
@@ -53,4 +54,3 @@ if __name__ == "__main__":
             imageProcessorTileOverlap=args.tile_overlap,
             imageProcessorTileFormat=args.tile_format
         )
-

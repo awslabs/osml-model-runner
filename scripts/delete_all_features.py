@@ -1,8 +1,8 @@
 import boto3
 
 dynamodb = boto3.resource('dynamodb')
-feature_table = dynamodb.Table('overwatch-mr-features')
-job_table = dynamodb.Table('overwatch-mr-jobs')
+feature_table = dynamodb.Table('ImageProcessingFeatures')
+job_table = dynamodb.Table('ImageProcessingJobStatus')
 
 scan = None
 with feature_table.batch_writer() as batch:

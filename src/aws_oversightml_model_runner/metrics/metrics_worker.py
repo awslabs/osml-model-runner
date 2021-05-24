@@ -35,6 +35,9 @@ class MetricsWorker(Thread):
     def store_metrics(self, context: MetricsContext) -> None:
 
         try:
+            if len(context.metrics.items()) == 0:
+                return
+
             dimensions = []
             for dimension_set in context.get_dimensions():
                 for name, value in dimension_set.items():

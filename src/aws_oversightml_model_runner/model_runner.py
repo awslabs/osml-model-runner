@@ -288,7 +288,7 @@ def process_region_request(region_request, job_table, raster_dataset=None, metri
                 image_info = {
                     'image_path': tmp_image_path,
                     'region': tile_bounds,
-                    'image_id': image_url
+                    'image_id': image_id
                 }
                 total_tile_count += 1
                 image_queue.put(image_info)
