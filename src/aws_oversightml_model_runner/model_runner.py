@@ -99,10 +99,20 @@ def process_image_request(image_request, region_work_queue, status_monitor, job_
         image_id = image_request['jobId'] + ":" + image_url
         output_bucket = image_request['outputBucket']
         output_prefix = image_request['outputPrefix']
-        model_name = image_request['imageProcessor']
+        model_name = image_request['imageProcessor']['name']
+        processor_type = image_request['imageProcessor']['type']
         roi = None
         if "regionOfInterest" in image_request:
             roi = shapely.wkt.loads(image_request["regionOfInterest"])
+
+        # TODO: The long term goal is to support AWS provided models hosted by this service as well as customer
+        #       provided models where we're managing the endpoints internally. For an initial release we can limit
+        #       processing to customer managed SageMaker Model Endpoints hence this check. The other type options
+        #       should not be advertised in the API but we are including the name/type structure in the API to allow
+        #       expansion through a non-breaking API change.
+        if processor_type.casefold() != "SM-ENDPOINT".casefold():
+            status_monitor.processing_event(job_arn, "FAILED", "Implementation only supports SageMaker Model Endpoints")
+            return
 
         status_monitor.processing_event(job_arn, "IN_PROGRESS", "Started Processing")
 
