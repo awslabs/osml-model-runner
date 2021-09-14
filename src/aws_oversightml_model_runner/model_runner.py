@@ -110,7 +110,7 @@ def process_image_request(image_request, region_work_queue, status_monitor, job_
         #       processing to customer managed SageMaker Model Endpoints hence this check. The other type options
         #       should not be advertised in the API but we are including the name/type structure in the API to allow
         #       expansion through a non-breaking API change.
-        if processor_type.casefold() != "SM-ENDPOINT".casefold():
+        if processor_type.casefold() != "SM_ENDPOINT".casefold():
             status_monitor.processing_event(job_arn, "FAILED", "Implementation only supports SageMaker Model Endpoints")
             return
 
