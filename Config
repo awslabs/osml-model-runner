@@ -46,6 +46,8 @@ package.AWSOversightMLModelRunner = {
             # Run tests with py.test in BrazilPython.
             BrazilPython-Pytest = 6.x;
 
+            Python-Mock = 3.x;
+
             # Coverage for Python tests.
             Python-Pytest-cov = 2.x;
             Coverage = 4.x;

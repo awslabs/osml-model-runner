@@ -1,14 +1,14 @@
 import logging
-import os
-import numpy as np
-from typing import List, Dict, Union, Any
+from typing import List
 
 import boto3
-from boto3 import dynamodb
-
 import geojson
+import numpy as np
+from boto3 import dynamodb
 from geojson import Feature
+
 from .metrics import metric_scope, now
+
 
 class FeatureTable:
 
@@ -51,19 +51,31 @@ class FeatureTable:
         metrics.put_metric("FeatureStoreLatency", (feature_store_end - feature_store_start), "Microseconds")
 
     @metric_scope
-    def get_all_features(self, image_id:str, metrics) -> List[Feature]:
+    def get_all_features(self, image_id: str, metrics) -> List[Feature]:
         feature_agg_start = now()
-        response = self.ddb_feature_table.query(
-            KeyConditionExpression=dynamodb.conditions.Key('hash_key').eq(image_id)
-        )
 
+        all_features_retrieved = False
         deduped_features = []
-        for item in response['Items']:
-            features = []
-            for encoded_feature in item['features']:
-                features.append(geojson.loads(encoded_feature))
 
-            deduped_features.extend(feature_nms(features))
+        response = self.ddb_feature_table.query(
+            KeyConditionExpression=dynamodb.conditions.Key('hash_key').eq(image_id))
+
+        while not all_features_retrieved:
+
+            for item in response['Items']:
+                features = []
+                for encoded_feature in item['features']:
+                    features.append(geojson.loads(encoded_feature))
+
+                deduped_features.extend(feature_nms(features))
+
+            if 'LastEvaluatedKey' in response:
+                response = self.ddb_feature_table.query(
+                    KeyConditionExpression=dynamodb.conditions.Key('hash_key').eq(image_id),
+                    ExclusiveStartKey=response['LastEvaluatedKey']
+                )
+            else:
+                all_features_retrieved = True
 
         feature_agg_end = now()
         metrics.put_metric("FeatureAggLatency", (feature_agg_end - feature_agg_start), "Microseconds")
@@ -99,18 +111,17 @@ class FeatureTable:
             min_y_index -= 1
 
         return "{}-region-{}:{}:{}:{}".format(feature['properties']['image_id'],
-                                       min_x_index,
-                                       max_x_index,
-                                       min_y_index,
-                                       max_y_index)
-
+                                              min_x_index,
+                                              max_x_index,
+                                              min_y_index,
+                                              max_y_index)
 
     @staticmethod
     def get_dynamodb_resource():
         return boto3.resource('dynamodb')
 
 
-def feature_nms(feature_list: List[Feature]) -> List[Feature]:
+def feature_nms(feature_list: List[Feature]) -> object:
     """
     NMS implementation adapted from https://gist.github.com/quantombone/1144423
 
