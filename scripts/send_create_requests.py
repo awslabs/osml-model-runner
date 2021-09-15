@@ -43,14 +43,24 @@ if __name__ == "__main__":
 
         job_name = "Job-" + datetime.datetime.utcnow().isoformat()
 
+        image_processor = dict(name=args.model, type="SM_ENDPOINT")
+
         print("Sending request for: " + job_name)
-        oversightml_client.create_image_processing_job(
+        response = oversightml_client.create_image_processing_job(
             jobName=job_name,
             imageUrls=image_urls,
             outputBucket=args.output_bucket,
             outputPrefix=args.output_prefix + "/" + job_name,
-            imageProcessor=args.model,
+            imageProcessor=image_processor,
             imageProcessorTileSize=args.tile_size,
             imageProcessorTileOverlap=args.tile_overlap,
             imageProcessorTileFormat=args.tile_format
         )
+        if 'ResponseMetadata' not in response or response['ResponseMetadata']['HTTPStatusCode'] != 201:
+            print("Response Not Accepted!")
+            print(response)
+            break
+        else:
+            print(f"Request Accepted: jobId={response['jobId']} jobArn={response['jobArn']}")
+
+
