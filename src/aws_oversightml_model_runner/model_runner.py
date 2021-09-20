@@ -176,7 +176,7 @@ def process_image_request(image_request, region_work_queue, status_monitor, job_
         # Read all the features from DDB and write the results to S3
         result_storage = ResultStorage(region_request['outputBucket'], region_request['outputPrefix'])
         feature_table = FeatureTable(FEATURE_TABLE, tile_size, overlap)
-        features = feature_table.get_all_features(image_url)
+        features = feature_table.get_all_features(image_id)
 
         # Set the geometry of each feature to be a point at the center of each detection bounding box. The geographic
         # coordinates of these features are computed using the camera model provided in the image metadata
@@ -185,7 +185,7 @@ def process_image_request(image_request, region_work_queue, status_monitor, job_
         else:
             logging.warning("Dataset {} did not have a geo transform. Results are not geo-referenced.".format(image_url))
 
-        result_storage.write_to_s3(image_url, features)
+        result_storage.write_to_s3(image_id, features)
 
         # Record completion time of this image
         job_table.image_ended(image_id)
