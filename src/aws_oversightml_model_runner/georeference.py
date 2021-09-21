@@ -1,3 +1,5 @@
+import functools
+import math
 from abc import ABC, abstractmethod
 from typing import List
 
@@ -24,10 +26,40 @@ class CameraModel(ABC):
             bbox = feature['properties']['bounds_imcoords']
             center_xy = bbox[0] + (bbox[2] - bbox[0]) / 2, bbox[1] + (bbox[3] - bbox[1]) / 2
             center_lonlat = self.image_to_world(center_xy)
-            feature['geometry'] = geojson.Point(center_lonlat)
+
+            # This converts the coordinates of the bounding box in the image into a polygon in lat/lon space. We may
+            # want to make this calculation a little smarter and detect cases where the camera model returns several
+            # near identical points for this bounding box. In that case it may be better to create a single simplified
+            # point geometry e.g. feature['geometry'] = geojson.Point(center_lonlat)
+            polygon_lonlat = [
+                self.image_to_world((bbox[0], bbox[1])),
+                self.image_to_world((bbox[0], bbox[3])),
+                self.image_to_world((bbox[2], bbox[3])),
+                self.image_to_world((bbox[2], bbox[1]))
+            ]
+            # Note that for geojson polygons the "coordinates" member must be an array of LinearRing coordinate arrays.
+            # For Polygons with multiple rings, the first must be the exterior ring and any others must be interior
+            # rings or holes. We only have an exterior ring hence creating an array of the latlon array is appropriate
+            # here.
+            feature['geometry'] = geojson.Polygon([polygon_lonlat])
+
+            # Geojson features can optionally have a bounding box that contains [min lon, min lat, max lon, max lat].
+            # This code computes that bounding box from the polygon boundary coordinates
+            feature['bbox'] = functools.reduce(lambda prev, coord:
+                                               [
+                                                   min(coord[0], prev[0]),
+                                                   min(coord[1], prev[1]),
+                                                   max(coord[0], prev[2]),
+                                                   max(coord[1], prev[3])
+                                               ], polygon_lonlat,
+                                               [math.inf, math.inf, -math.inf, -math.inf])
+
+            # Adding these because some visualization tools (e.g. kepler.gl) can perform more advanced rendering
+            # (e.g. cluster layers) if the data points have single coordinates.
+            feature['properties']['center_longitude'] = center_lonlat[0]
+            feature['properties']['center_latitude'] = center_lonlat[1]
 
     def feature_to_image_shape(self, feature: geojson.Feature) -> BaseGeometry:
-
         if 'geometry' not in feature:
             raise ValueError("Feature does not contain a valid geometry")
 
@@ -53,7 +85,6 @@ class CameraModel(ABC):
                 "Unable convert feature with geometry of type {} to shape".format(str(type(feature_geometry))))
 
     def features_to_image_shapes(self, features: List[geojson.Feature]) -> List[BaseGeometry]:
-
         shapes: List[shapely.geometry.base.BaseGeometry] = []
         for feature in features:
             shapes.append(self.feature_to_image_shape(feature))

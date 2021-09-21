@@ -28,6 +28,12 @@ def sample_geo_bounds():
             (-43.681640625, -23.02734375)]
 
 
+@pytest.fixture()
+def sample_geojson_detections():
+    with open("./test/data/detections.geojson", "r") as geojson_file:
+        return geojson.load(geojson_file)
+
+
 def test_gdal_cameramodel(sample_gdal_cameramodel, sample_image_bounds, sample_geo_bounds):
     assert pytest.approx(sample_geo_bounds[0], rel=1e-6, abs=1e-6) == sample_gdal_cameramodel.image_to_world(
         sample_image_bounds[0])
@@ -59,3 +65,20 @@ def test_polygon_feature_conversion(sample_gdal_cameramodel, sample_image_bounds
         print("SIB: " + str(sample_image_bounds[i]))
         print("SEC: " + str(shape.exterior.coords[i]))
         assert pytest.approx(sample_image_bounds[i], rel=0.49, abs=0.49) == shape.exterior.coords[i]
+
+
+def test_geolocate_features(sample_gdal_cameramodel, sample_geojson_detections):
+    print(sample_geojson_detections)
+    sample_features = sample_geojson_detections['features']
+    assert len(sample_features) == 4
+
+    sample_gdal_cameramodel.geolocate_detections(sample_features)
+
+    assert len(sample_features) == 4
+    for feature in sample_features:
+        assert 'bbox' in feature
+        assert len(feature['bbox']) == 4
+        assert 'center_latitude' in feature['properties']
+        assert 'center_longitude' in feature['properties']
+        assert isinstance(feature['geometry'], geojson.Polygon)
+
