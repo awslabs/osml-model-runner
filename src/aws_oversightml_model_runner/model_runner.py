@@ -6,6 +6,7 @@ import tempfile
 import time
 import uuid
 import shapely.wkt
+import shapely.geometry
 import geojson
 
 from pathlib import Path
@@ -26,14 +27,15 @@ from .status_monitor import StatusMonitor
 from .tile_worker import ImageTileWorker
 from .work_queue import WorkQueue
 
-WORKERS_PER_CPU = os.environ['WORKERS_PER_CPU']
-JOB_TABLE = os.environ['JOB_TABLE']
-FEATURE_TABLE = os.environ['FEATURE_TABLE']
-IMAGE_QUEUE = os.environ['IMAGE_QUEUE']
-REGION_QUEUE = os.environ['REGION_QUEUE']
-CP_API_ENDPOINT = os.environ['CP_API_ENDPOINT']
+WORKERS_PER_CPU = os.environ.get('WORKERS_PER_CPU', '1')
+JOB_TABLE = os.environ.get('JOB_TABLE')
+FEATURE_TABLE = os.environ.get('FEATURE_TABLE')
+IMAGE_QUEUE = os.environ.get('IMAGE_QUEUE')
+REGION_QUEUE = os.environ.get('REGION_QUEUE')
+CP_API_ENDPOINT = os.environ.get('CP_API_ENDPOINT')
 
-# Global signal term
+# This global variable is setup so that SIGINT and SIGTERM can be used to stop the loop continuously monitoring the
+# region and image work queues.
 run = True
 
 
@@ -47,6 +49,11 @@ signal.signal(signal.SIGTERM, handler_stop_signals)
 
 
 def monitor_work_queues():
+
+    # In the processing below the region work queue is checked first and will wait for up to 10 seconds to start
+    # work. Only if no regions need to be processed in that time will this worker check to see if a new image
+    # can be started. Ultimately this setup is intended to ensure that all of the regions for an image are
+    # completed by the cluster before work begins on more images.
     image_work_queue = WorkQueue(IMAGE_QUEUE, wait_seconds=0, visible_seconds=20 * 60)
     image_requests_iter = iter(image_work_queue)
     region_work_queue = WorkQueue(REGION_QUEUE, wait_seconds=10, visible_seconds=20 * 60)
@@ -159,6 +166,9 @@ def process_image_request(image_request, region_work_queue, status_monitor, job_
             'tileFormat': tile_format
         }
 
+        # Process the image regions. This worker will process the first region of this image since it has already
+        # loaded the dataset from S3 and is ready to go. Any additional regions will be queued for processing by
+        # other workers in this cluster.
         for region_number in range(1, len(regions)):
             logging.info("Queue region {}: {}".format(region_number, regions[region_number]))
             region_request['region_bounds'] = regions[region_number]
@@ -178,8 +188,8 @@ def process_image_request(image_request, region_work_queue, status_monitor, job_
         feature_table = FeatureTable(FEATURE_TABLE, tile_size, overlap)
         features = feature_table.get_all_features(image_id)
 
-        # Set the geometry of each feature to be a point at the center of each detection bounding box. The geographic
-        # coordinates of these features are computed using the camera model provided in the image metadata
+        # Create a geometry for each feature in the result. The geographic coordinates of these features are computed
+        # using the camera model provided in the image metadata
         if camera_model:
             camera_model.geolocate_detections(features)
         else:
@@ -343,15 +353,20 @@ def calculate_processing_bounds(roi, ds, camera_model):
         full_image_area = Polygon([
             (0, 0), (0, ds.RasterYSize), (ds.RasterXSize, ds.RasterYSize), (ds.RasterXSize, 0)
         ])
-        roi_area = camera_model.feature_to_image_shape(geojson.Feature(geometry=roi))
+
+        # This is making the assumption that the ROI is a shapely Polygon and it only considers the exterior boundary
+        # (i.e. we don't handle cases where the WKT for the ROI has holes). It also assumes that the coordinates of the
+        # WKT string are in longitude latitude order to match GeoJSON
+        roi_area = camera_model.feature_to_image_shape(
+            geojson.Feature(geometry=geojson.Polygon(shapely.geometry.mapping(roi)['coordinates'][0])))
 
         if roi_area.intersects(full_image_area):
             area_to_process = roi_area.intersection(full_image_area)
 
             # Shapely bounds are (minx, miny, maxx, maxy); convert this to the ((r, c), (w, h)) expected by the tiler
-            processing_bounds = ((area_to_process.bounds[1], area_to_process.bounds[0]),
-                                 (area_to_process.bounds[2] - area_to_process.bounds[0],
-                                  area_to_process.bounds[3] - area_to_process.bounds[1]))
+            processing_bounds = ((round(area_to_process.bounds[1]), round(area_to_process.bounds[0])),
+                                 (round(area_to_process.bounds[2] - area_to_process.bounds[0]),
+                                  round(area_to_process.bounds[3] - area_to_process.bounds[1])))
         else:
             processing_bounds = None
 
@@ -415,9 +430,9 @@ def get_image_type(image_url) -> str:
     split = image_url.rsplit(".", 1)
     if len(split) == 2:
         upper_type = split[1].upper()
-        if upper_type == "NTF":
+        if upper_type == "NTF" or upper_type == "NITF":
             upper_type = "NITF"
-        elif upper_type == "TIF":
+        elif upper_type == "TIF" or upper_type == "TIFF":
             upper_type = "TIFF"
         return upper_type
     return "UNKNOWN"
