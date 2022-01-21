@@ -132,7 +132,9 @@ def process_image_request(image_request, region_work_queue, status_monitor, job_
         job_table.image_started(image_id)
 
         image_type = get_image_type(image_url)
-        metrics.put_dimensions({"ImageFormat": image_type})
+
+        if metrics:
+            metrics.put_dimensions({"ImageFormat": image_type})
 
         # Use GDAL to access the dataset and geo positioning metadata
         image_gdalvfs = image_url.replace("s3:/", "/vsis3", 1)
@@ -183,8 +185,7 @@ def process_image_request(image_request, region_work_queue, status_monitor, job_
             logging.info("Waiting for other regions to complete ...")
             time.sleep(5)
 
-        # Read all the features from DDB and write the results to S3
-        result_storage = ResultStorage(region_request['outputBucket'], region_request['outputPrefix'])
+        # Read all the features from DDB. The feature table handles removing duplicates
         feature_table = FeatureTable(FEATURE_TABLE, tile_size, overlap)
         features = feature_table.get_all_features(image_id)
 
@@ -195,6 +196,8 @@ def process_image_request(image_request, region_work_queue, status_monitor, job_
         else:
             logging.warning("Dataset {} did not have a geo transform. Results are not geo-referenced.".format(image_url))
 
+        # Write the results to S3
+        result_storage = ResultStorage(output_bucket, output_prefix)
         result_storage.write_to_s3(image_id, features)
 
         # Record completion time of this image
@@ -235,16 +238,20 @@ def process_region_request(region_request, job_table, raster_dataset=None, metri
         tile_format = region_request['tileFormat'].lower()
         image_id = region_request['imageID']
         image_url = region_request['imageURL']
+        # Bounds are: UL corner (row, column) , dimensions (w, h)
+        region_bounds = region_request['region_bounds']
+        model_name = region_request['modelName']
 
-        logging.info('Starting processing of {} {}'.format(image_url, region_request['region_bounds']))
+        logging.info('Starting processing of {} {}'.format(image_url, region_bounds))
 
         image_type = get_image_type(image_url)
-        metrics.put_dimensions({"ImageFormat": image_type})
+        if metrics:
+            metrics.put_dimensions({"ImageFormat": image_type})
 
         image_queue = Queue()
         tile_workers = []
         for _ in range(multiprocessing.cpu_count() * int(WORKERS_PER_CPU)):
-            feature_detector = FeatureDetector(region_request['modelName'])
+            feature_detector = FeatureDetector(model_name)
             feature_table = FeatureTable(FEATURE_TABLE, tile_size, overlap)
             worker = ImageTileWorker(image_queue, feature_detector, feature_table)
             worker.start()
@@ -253,9 +260,6 @@ def process_region_request(region_request, job_table, raster_dataset=None, metri
 
         if raster_dataset is None:
             raster_dataset = load_gdal_dataset(image_url, metrics)
-
-        # Bounds are: UL corner (row, column) , dimensions (w, h)
-        region_bounds = region_request['region_bounds']
 
         # Figure out what type of image this is and calculate a scale that does not force any range remapping
         # TODO: Consider adding an option to have this driver perform the DRA. That option would change the
@@ -292,7 +296,8 @@ def process_region_request(region_request, job_table, raster_dataset=None, metri
                                outputType=output_type,
                                format=tile_format)
                 tiling_end_time = now()
-                metrics.put_metric("TilingLatency", (tiling_end_time - tiling_start_time), "Microseconds")
+                if metrics:
+                    metrics.put_metric("TilingLatency", (tiling_end_time - tiling_start_time), "Microseconds")
 
                 # GDAL doesn't always generate errors so we need to make sure the NITF encoded region was
                 # actually created.
@@ -329,9 +334,10 @@ def process_region_request(region_request, job_table, raster_dataset=None, metri
         region_end_time = now()
 
         # Write CloudWatch Metrics to the Logs
-        metrics.put_metric("NumberOfRegions", 1, "Count")
-        metrics.put_metric("NumberOfTiles", total_tile_count, "Count")
-        metrics.put_metric("RegionLatency", (region_end_time - region_start_time), "Microseconds")
+        if metrics:
+            metrics.put_metric("NumberOfRegions", 1, "Count")
+            metrics.put_metric("NumberOfTiles", total_tile_count, "Count")
+            metrics.put_metric("RegionLatency", (region_end_time - region_start_time), "Microseconds")
 
     except Exception as e:
         logging.error("Failed to process image region!")
