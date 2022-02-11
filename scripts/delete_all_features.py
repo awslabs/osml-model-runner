@@ -1,3 +1,5 @@
+# DANGER: This script deletes all of the contents fo the feature and job tables in your account. It can be useful for
+# cleaning up test runs in development be make sure you know what account you have configured before running it.
 import boto3
 
 dynamodb = boto3.resource('dynamodb')

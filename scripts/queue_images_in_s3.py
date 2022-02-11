@@ -1,3 +1,6 @@
+# This is a small utility script that assumes any objects that match a S3 bucket + prefix are images. These images
+# are all sent to a SQS queue for processing.
+# TODO: Parameterize this script and make it a more robust dev test tool, everything is hard coded
 import json
 
 import boto3

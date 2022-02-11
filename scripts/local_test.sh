@@ -1,4 +1,7 @@
 #!/bin/bash
+# This script runs a locally built model runner container and hooks it up to AWS resources (DDB Tables, SQS Queues, etc.)
+# running in the specified account. Note that it attempts to figure out which docker images was built latest. If you
+# want to run a specific image you need to set the image ID yourself.
 export DEVELOPER_ACCOUNT_ID=010321660603
 
 # This command relies on the fact that the docker images command lists images in most recent order so the most

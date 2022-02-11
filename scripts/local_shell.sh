@@ -1,4 +1,5 @@
 #!/bin/bash
+# This script runs the model runner container as an interactive shell that can be used to debug.
 export DEVELOPER_ACCOUNT_ID=010321660603
 
 # This command relies on the fact that the docker images command lists images in most recent order so the most

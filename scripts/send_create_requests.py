@@ -1,3 +1,7 @@
+# This is a development test script used to send image processing requests to the OversightML control plane for an hour.
+# The number of images to send can be specified on the command line allowing us to drive different throughput rates
+# for the system. (i.e. -ni 60 == 1 per minute, -ni 120 == 2 per minute, ...)
+# TODO: Move this script out of this package since it depends on a lot more of the system than just the model runner
 import argparse
 import datetime
 import time
