@@ -10,6 +10,7 @@
 import argparse
 import datetime
 import time
+import os
 
 import boto3
 
@@ -47,7 +48,8 @@ if __name__ == "__main__":
 
         image_urls = []
         for key in ListObjects(args.input_bucket, args.input_prefix):
-            if key.endswith(".tif") or key.endswith(".nitf"):
+            file_extension = os.path.splitext(key.lower())[1]
+            if file_extension in ['.tif', '.tiff', '.nitf', '.ntf', '.geotiff', '.cog']:
                 image_urls.append("s3://" + args.input_bucket + "/" + key)
 
         job_name = "Job-" + datetime.datetime.utcnow().isoformat()
