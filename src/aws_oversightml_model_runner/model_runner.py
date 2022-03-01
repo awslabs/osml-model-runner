@@ -259,7 +259,9 @@ def process_region_request(region_request, job_table, raster_dataset=None, metri
         logging.info("Setup pool of {} tile workers".format(len(tile_workers)))
 
         if raster_dataset is None:
-            raster_dataset = load_gdal_dataset(image_url, metrics)
+            image_gdalvfs = image_url.replace("s3:/", "/vsis3", 1)
+            logging.info('Loading image with GDAL virtual file system {}'.format(image_gdalvfs))
+            raster_dataset, camera_model = load_gdal_dataset(image_gdalvfs, metrics)
 
         # Figure out what type of image this is and calculate a scale that does not force any range remapping
         # TODO: Consider adding an option to have this driver perform the DRA. That option would change the
