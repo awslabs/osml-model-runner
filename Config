@@ -38,6 +38,7 @@ package.AWSOversightMLModelRunner = {
             Python-geojson = 2.x;
             Python-Shapely = 1.6.x;
 
+            AmazonCodeGuruProfilerPythonAgent = 1.x;
         };
     };
 
