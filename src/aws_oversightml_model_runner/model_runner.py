@@ -15,6 +15,7 @@ from queue import Queue
 from osgeo import gdal, gdalconst
 from shapely.geometry import Polygon
 
+from .model_runner_api import RegionRequest, ImageRequest, TileCompression, TileFormats, ModelHostingOptions
 from .georeference import GDALAffineCameraModel, CameraModel
 from .detection_service import FeatureDetector
 from .exceptions import RetryableJobException
@@ -64,10 +65,15 @@ def monitor_work_queues():
     while run:
 
         logging.info("Checking work queue for regions to process ...")
-        (receipt_handle, region_request) = next(region_requests_iter)
+        (receipt_handle, region_request_attributes) = next(region_requests_iter)
 
-        if region_request is not None:
+        if region_request_attributes is not None:
             try:
+                region_request = RegionRequest(region_request_attributes)
+                if not region_request.is_valid():
+                    logging.error("Invalid Region Request! {}", region_request_attributes)
+                    raise ValueError("Invalid Region Request")
+                
                 process_region_request(region_request, job_table)
                 region_work_queue.finish_request(receipt_handle)
             except RetryableJobException as re:
@@ -77,10 +83,15 @@ def monitor_work_queues():
         else:
 
             logging.info("Checking work queue for images to process ...")
-            (receipt_handle, image_request) = next(image_requests_iter)
+            (receipt_handle, image_request_message) = next(image_requests_iter)
 
-            if image_request is not None:
+            if image_request_message is not None:
                 try:
+                    image_request = ImageRequest.from_external_message(image_request_message)
+                    if not image_request.is_valid():
+                        logging.error("Invalid Image Request! {}", image_request_message)
+                        raise ValueError("Invalid Image Request")
+
                     process_image_request(image_request, region_work_queue, status_monitor, job_table)
                     image_work_queue.finish_request(receipt_handle)
                 except RetryableJobException as re:
@@ -90,82 +101,65 @@ def monitor_work_queues():
 
 
 @metric_scope
-def process_image_request(image_request, region_work_queue, status_monitor, job_table, metrics) -> None:
+def process_image_request(image_request: ImageRequest, region_work_queue, status_monitor, job_table, metrics) -> None:
 
-    image_id = None
-    job_arn = None
     try:
-        tile_dimension = int(image_request['imageProcessorTileSize'])
-        overlap_dimension = int(image_request['imageProcessorTileOverlap'])
-        tile_size = (tile_dimension, tile_dimension)
-        overlap = (overlap_dimension, overlap_dimension)
-        tile_format = image_request['imageProcessorTileFormat']
-        job_arn = image_request['jobArn']
-        # TODO: Update to support multiple images in request
-        image_url = image_request['imageUrls'][0]
-        image_id = image_request['jobId'] + ":" + image_url
-        output_bucket = image_request['outputBucket']
-        output_prefix = image_request['outputPrefix']
-        model_name = image_request['imageProcessor']['name']
-        processor_type = image_request['imageProcessor']['type']
-        roi = None
-        if "regionOfInterest" in image_request:
-            roi = shapely.wkt.loads(image_request["regionOfInterest"])
-
         # TODO: The long term goal is to support AWS provided models hosted by this service as well as customer
         #       provided models where we're managing the endpoints internally. For an initial release we can limit
         #       processing to customer managed SageMaker Model Endpoints hence this check. The other type options
         #       should not be advertised in the API but we are including the name/type structure in the API to allow
         #       expansion through a non-breaking API change.
-        if processor_type.casefold() != "SM_ENDPOINT".casefold():
-            status_monitor.processing_event(job_arn, "FAILED", "Implementation only supports SageMaker Model Endpoints")
+        if image_request.model_hosting_type.casefold() != "SM_ENDPOINT".casefold():
+            status_monitor.processing_event(image_request.job_arn, "FAILED", "Implementation only supports SageMaker Model Endpoints")
             return
 
-        status_monitor.processing_event(job_arn, "IN_PROGRESS", "Started Processing")
+        status_monitor.processing_event(image_request.job_arn, "IN_PROGRESS", "Started Processing")
 
-        if model_name == "aws-oversightml-internalnoop-model":
-            status_monitor.processing_event(job_arn, "COMPLETED", "NOOP Model Finished")
+        if image_request.model_name == "aws-oversightml-internalnoop-model":
+            status_monitor.processing_event(image_request.job_arn, "COMPLETED", "NOOP Model Finished")
             return
 
-        logging.info('Starting processing of {}'.format(image_url))
+        logging.info('Starting processing of {}'.format(image_request.image_url))
 
-        job_table.image_started(image_id)
+        job_table.image_started(image_request.image_id)
 
-        image_type = get_image_type(image_url)
+        image_type = get_image_type(image_request.image_url)
 
         if metrics:
             metrics.put_dimensions({"ImageFormat": image_type})
 
         # Use GDAL to access the dataset and geo positioning metadata
-        image_gdalvfs = image_url.replace("s3:/", "/vsis3", 1)
+        image_gdalvfs = image_request.image_url.replace("s3:/", "/vsis3", 1)
         logging.info('Loading image with GDAL virtual file system {}'.format(image_gdalvfs))
         ds, camera_model = load_gdal_dataset(image_gdalvfs, metrics)
 
         # Determine how much of this image should be processed.
         # Bounds are: UL corner (row, column) , dimensions (w, h)
-        processing_bounds = calculate_processing_bounds(roi, ds, camera_model)
+        processing_bounds = calculate_processing_bounds(image_request.roi, ds, camera_model)
         if not processing_bounds:
             logging.info("Requested ROI does not intersect image. Nothing to do")
-            job_table.image_ended(image_id)
-            status_monitor.processing_event(job_arn, "FAILED", "ROI Has No Intersection With Image")
+            job_table.image_ended(image_request.image_id)
+            status_monitor.processing_event(image_request.job_arn, "FAILED", "ROI Has No Intersection With Image")
 
         # Calculate a set of ML engine sized regions that we need to process for this image
         # Region size chosen to break large images into pieces that can be handled by a single tile worker
         region_size = (20480, 20480)
-        region_overlap = (overlap_dimension, overlap_dimension)
+        region_overlap = image_request.tile_overlap
         regions = list(generate_crops_for_region(processing_bounds, region_size, region_overlap))
 
-        job_table.image_stats(image_id, len(regions), ds.RasterXSize, ds.RasterYSize)
+        job_table.image_stats(image_request.image_id, len(regions), ds.RasterXSize, ds.RasterYSize)
 
-        region_request = {
-            'imageID': image_id,
-            'imageURL': image_url,
-            'outputBucket': output_bucket,
-            'outputPrefix': output_prefix,
-            'modelName': model_name,
-            'tileSize': tile_size,
-            'tileOverlap': overlap,
-            'tileFormat': tile_format
+        region_request_shared_values = {
+            'image_id': image_request.image_id,
+            'image_url': image_request.image_url,
+            'output_bucket': image_request.output_bucket,
+            'output_prefix': image_request.output_prefix,
+            'model_name': image_request.model_name,
+            'model_hosting_type': image_request.model_hosting_type,
+            'tile_size': image_request.tile_size,
+            'tile_overlap': image_request.tile_overlap,
+            'tile_format': image_request.tile_format,
+            'tile_compression': image_request.tile_compression
         }
 
         # Process the image regions. This worker will process the first region of this image since it has already
@@ -173,51 +167,55 @@ def process_image_request(image_request, region_work_queue, status_monitor, job_
         # other workers in this cluster.
         for region_number in range(1, len(regions)):
             logging.info("Queue region {}: {}".format(region_number, regions[region_number]))
-            region_request['region_bounds'] = regions[region_number]
+            region_request = RegionRequest(region_request_shared_values,
+                                           region_bounds=regions[region_number])
             region_work_queue.send_request(region_request)
 
         logging.info("Processing region {}: {}".format(0, regions[0]))
-        region_request['region_bounds'] = regions[0]
+        region_request = RegionRequest(region_request_shared_values,
+                                       region_bounds=regions[0])
         process_region_request(region_request, job_table, raster_dataset=ds)
 
-        while not job_table.is_image_complete(image_id):
+        while not job_table.is_image_complete(image_request.image_id):
             # TODO: This is a hack, at a minimum put in a max retries or some other way to avoid hanging this worker
             logging.info("Waiting for other regions to complete ...")
             time.sleep(5)
 
         # Read all the features from DDB. The feature table handles removing duplicates
-        feature_table = FeatureTable(FEATURE_TABLE, tile_size, overlap)
-        features = feature_table.get_all_features(image_id)
+        feature_table = FeatureTable(FEATURE_TABLE, image_request.tile_size, image_request.tile_overlap)
+        features = feature_table.get_all_features(image_request.image_id)
 
         # Create a geometry for each feature in the result. The geographic coordinates of these features are computed
         # using the camera model provided in the image metadata
         if camera_model:
             camera_model.geolocate_detections(features)
         else:
-            logging.warning("Dataset {} did not have a geo transform. Results are not geo-referenced.".format(image_url))
+            logging.warning(
+                "Dataset {} did not have a geo transform. Results are not geo-referenced.".format(
+                    image_request.image_url))
 
         # Write the results to S3
-        result_storage = ResultStorage(output_bucket, output_prefix)
-        result_storage.write_to_s3(image_id, features)
+        result_storage = ResultStorage(image_request.output_bucket, image_request.output_prefix)
+        result_storage.write_to_s3(image_request.image_id, features)
 
         # Record completion time of this image
-        job_table.image_ended(image_id)
+        job_table.image_ended(image_request.image_id)
 
-        status_monitor.processing_event(job_arn, "COMPLETED", "Successfully Completed Processing")
+        status_monitor.processing_event(image_request.job_arn, "COMPLETED", "Successfully Completed Processing")
 
     except Exception as e:
         logging.error("Failed to process image!")
         logging.exception(e)
 
         try:
-            if job_table is not None and image_id is not None:
-                job_table.image_ended(image_id)
+            if job_table is not None and image_request.image_id is not None:
+                job_table.image_ended(image_request.image_id)
         except Exception as status_error:
             logging.error("Unable to update region status in job table")
             logging.exception(status_error)
 
         try:
-            status_monitor.processing_event(job_arn, "FAILED", str(e))
+            status_monitor.processing_event(image_request.job_arn, "FAILED", str(e))
 
         except Exception as status_error:
             logging.error("Unable to update region status in status monitor")
@@ -227,39 +225,29 @@ def process_image_request(image_request, region_work_queue, status_monitor, job_
 
 
 @metric_scope
-def process_region_request(region_request, job_table, raster_dataset=None, metrics=None) -> None:
+def process_region_request(region_request: RegionRequest, job_table, raster_dataset=None, metrics=None) -> None:
 
-    image_id = None
     try:
         region_start_time = now()
 
-        tile_size = region_request['tileSize']
-        overlap = region_request['tileOverlap']
-        tile_format = region_request['tileFormat'].lower()
-        image_id = region_request['imageID']
-        image_url = region_request['imageURL']
-        # Bounds are: UL corner (row, column) , dimensions (w, h)
-        region_bounds = region_request['region_bounds']
-        model_name = region_request['modelName']
+        logging.info('Starting processing of {} {}'.format(region_request.image_url, region_request.region_bounds))
 
-        logging.info('Starting processing of {} {}'.format(image_url, region_bounds))
-
-        image_type = get_image_type(image_url)
+        image_type = get_image_type(region_request.image_url)
         if metrics:
             metrics.put_dimensions({"ImageFormat": image_type})
 
         image_queue = Queue()
         tile_workers = []
         for _ in range(multiprocessing.cpu_count() * int(WORKERS_PER_CPU)):
-            feature_detector = FeatureDetector(model_name)
-            feature_table = FeatureTable(FEATURE_TABLE, tile_size, overlap)
+            feature_detector = FeatureDetector(region_request.model_name)
+            feature_table = FeatureTable(FEATURE_TABLE, region_request.tile_size, region_request.tile_overlap)
             worker = ImageTileWorker(image_queue, feature_detector, feature_table)
             worker.start()
             tile_workers.append(worker)
         logging.info("Setup pool of {} tile workers".format(len(tile_workers)))
 
         if raster_dataset is None:
-            image_gdalvfs = image_url.replace("s3:/", "/vsis3", 1)
+            image_gdalvfs = region_request.image_url.replace("s3:/", "/vsis3", 1)
             logging.info('Loading image with GDAL virtual file system {}'.format(image_gdalvfs))
             raster_dataset, camera_model = load_gdal_dataset(image_gdalvfs, metrics)
 
@@ -274,14 +262,15 @@ def process_region_request(region_request, job_table, raster_dataset=None, metri
         total_tile_count = 0
         with tempfile.TemporaryDirectory() as tmp:
 
-            for tile_bounds in generate_crops_for_region(region_bounds, tile_size, overlap):
+            for tile_bounds in generate_crops_for_region(region_request.region_bounds,
+                                                         region_request.tile_size, region_request.tile_overlap):
                 # Create a temp file name for the NITF encoded region
                 region_image_filename = '{}-region-{}-{}-{}-{}.{}'.format(str(uuid.uuid4()),
                                                                           tile_bounds[0][0],
                                                                           tile_bounds[0][1],
                                                                           tile_bounds[1][0],
                                                                           tile_bounds[1][1],
-                                                                          tile_format
+                                                                          region_request.tile_format
                                                                           )
 
                 tmp_image_path = Path(tmp, region_image_filename)
@@ -296,7 +285,7 @@ def process_region_request(region_request, job_table, raster_dataset=None, metri
                                srcWin=[tile_bounds[0][1], tile_bounds[0][0], tile_bounds[1][0], tile_bounds[1][1]],
                                scaleParams=scale_params,
                                outputType=output_type,
-                               format=tile_format)
+                               format=region_request.tile_format)
                 tiling_end_time = now()
                 if metrics:
                     metrics.put_metric("TilingLatency", (tiling_end_time - tiling_start_time), "Microseconds")
@@ -315,7 +304,7 @@ def process_region_request(region_request, job_table, raster_dataset=None, metri
                 image_info = {
                     'image_path': tmp_image_path,
                     'region': tile_bounds,
-                    'image_id': image_id
+                    'image_id': region_request.image_id
                 }
                 total_tile_count += 1
                 image_queue.put(image_info)
@@ -331,7 +320,7 @@ def process_region_request(region_request, job_table, raster_dataset=None, metri
         logging.info("Model Runner Stats Processed {} image tiles for a {} x {} image.".format(
             total_tile_count, raster_dataset.RasterXSize, raster_dataset.RasterYSize))
 
-        job_table.region_complete(image_id)
+        job_table.region_complete(region_request.image_id)
 
         region_end_time = now()
 
@@ -346,8 +335,8 @@ def process_region_request(region_request, job_table, raster_dataset=None, metri
         logging.exception(e)
 
         try:
-            if job_table is not None and image_id is not None:
-                job_table.region_complete(image_id, error=True)
+            if job_table is not None and region_request.image_id is not None:
+                job_table.region_complete(region_request.image_id, error=True)
         except Exception as status_error:
             logging.error("Unable to update region status in job table")
             logging.exception(status_error)

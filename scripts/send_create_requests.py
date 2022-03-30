@@ -63,8 +63,8 @@ if __name__ == "__main__":
             outputBucket=args.output_bucket,
             outputPrefix=args.output_prefix + "/" + job_name,
             imageProcessor=image_processor,
-            imageProcessorTileSize=args.tile_size,
-            imageProcessorTileOverlap=args.tile_overlap,
+            imageProcessorTileSize=int(args.tile_size),
+            imageProcessorTileOverlap=int(args.tile_overlap),
             imageProcessorTileFormat=args.tile_format
         )
         if 'ResponseMetadata' not in response or response['ResponseMetadata']['HTTPStatusCode'] != 201:

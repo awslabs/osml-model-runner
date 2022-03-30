@@ -5,6 +5,7 @@ import pytest
 import shapely.geometry
 import shapely.wkt
 
+from aws_oversightml_model_runner.model_runner_api import RegionRequest
 from aws_oversightml_model_runner.georeference import GDALAffineCameraModel
 from aws_oversightml_model_runner.job_table import JobTable
 from aws_oversightml_model_runner.model_runner import load_gdal_dataset, calculate_processing_bounds, get_image_type, \
@@ -113,14 +114,14 @@ class RegionRequestMatcher:
 @mock.patch('aws_oversightml_model_runner.model_runner.Queue', autospec=True)
 def test_process_region_request(mock_queue, mock_tile_worker, mock_feature_table, mock_feature_detector,
                                 test_dataset_and_camera):
-    region_request = {'tileSize': (10, 10),
-                      'tileOverlap': (1, 1),
-                      'tileFormat': 'NITF',
-                      'imageID': 'test-image-id',
-                      'imageURL': 'test-image-url',
+    region_request = RegionRequest({'tile_size': (10, 10),
+                      'tile_overlap': (1, 1),
+                      'tile_format': 'NITF',
+                      'image_id': 'test-image-id',
+                      'image_url': 'test-image-url',
                       'region_bounds': ((0, 0), (50, 50)),
-                      'modelName': 'test-model-name'
-                      }
+                      'model_name': 'test-model-name'
+                      })
 
     mock_job_table = mock.Mock(JobTable, autospec=True)
 
@@ -180,4 +181,4 @@ def test_process_region_request(mock_queue, mock_tile_worker, mock_feature_table
     mock_queue.return_value.put.assert_has_calls(region_queue_put_calls)
 
     # Check to make sure the job was marked as complete
-    mock_job_table.region_complete.assert_called_with(region_request['imageID'])
+    mock_job_table.region_complete.assert_called_with(region_request.image_id)

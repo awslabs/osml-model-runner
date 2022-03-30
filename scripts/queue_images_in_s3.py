@@ -4,6 +4,7 @@
 import json
 
 import boto3
+import uuid
 
 #bucket_name = "spacenet-dataset"
 #object_prefix = "AOIs/AOI_1_Rio/srcData/mosaic_3band/"
@@ -29,10 +30,20 @@ if __name__ == "__main__":
         if not key.endswith(".tif"):
             continue
         message_body = {
-            'imageURL': "s3://" + bucket_name + "/" + key,
+            'jobArn': "arn:aws:oversightml:us-east-1:010321660603:ipj/test-job",
+            'jobName': "test-job",
+            'jobId': str(uuid.uuid4()),
+            'jobStatus': "SUBMITTED",
+            'imageUrls': ["s3://" + bucket_name + "/" + key],
             'outputBucket': "spacenet-parrised-devaccount",
             'outputPrefix': "oversight",
-            'modelName': "charon-xview-endpoint"
+            'imageProcessor': {
+                'name': "charon-xview-endpoint",
+                'type': "SM_ENDPOINT"
+            },
+            'imageProcessorTileSize': 1024,
+            'imageProcessorTileOverlap': 50,
+            'imageProcessorTileFormat': "NITF"
         }
 
         sqs_client.send_message(
