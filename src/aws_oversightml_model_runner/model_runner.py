@@ -5,6 +5,8 @@ import signal
 import tempfile
 import time
 import uuid
+from typing import Dict, Any
+
 import shapely.wkt
 import shapely.geometry
 import geojson
@@ -71,9 +73,9 @@ def monitor_work_queues():
             try:
                 region_request = RegionRequest(region_request_attributes)
                 if not region_request.is_valid():
-                    logging.error("Invalid Region Request! {}", region_request_attributes)
+                    logging.error("Invalid Region Request! {}".format(region_request_attributes))
                     raise ValueError("Invalid Region Request")
-                
+
                 process_region_request(region_request, job_table)
                 region_work_queue.finish_request(receipt_handle)
             except RetryableJobException as re:
@@ -89,7 +91,7 @@ def monitor_work_queues():
                 try:
                     image_request = ImageRequest.from_external_message(image_request_message)
                     if not image_request.is_valid():
-                        logging.error("Invalid Image Request! {}", image_request_message)
+                        logging.error("Invalid Image Request! {}".format(image_request_message))
                         raise ValueError("Invalid Image Request")
 
                     process_image_request(image_request, region_work_queue, status_monitor, job_table)
@@ -251,10 +253,10 @@ def process_region_request(region_request: RegionRequest, job_table, raster_data
             logging.info('Loading image with GDAL virtual file system {}'.format(image_gdalvfs))
             raster_dataset, camera_model = load_gdal_dataset(image_gdalvfs, metrics)
 
-        # Figure out what type of image this is and calculate a scale that does not force any range remapping
-        # TODO: Consider adding an option to have this driver perform the DRA. That option would change the
-        #       scale_params output by this calculation
-        output_type, scale_params = get_type_and_scales(raster_dataset)
+        # Use the request and metadata from the raster dataset to create a set of keyword
+        # arguments for the gdal.Translate() function. This will configure that function to
+        # create image tiles using the format, compression, etc. needed by the CV container.
+        gdal_translate_kwargs = create_gdal_translate_kwargs(region_request, raster_dataset)
 
         # Calculate a set of ML engine sized regions that we need to process for this image and
         # setup a temporary directory to store the temporary files. The entire directory will be
@@ -278,14 +280,11 @@ def process_region_request(region_request: RegionRequest, job_table, raster_data
                 # Use GDAL to create an encoded tile of the image region
                 # From GDAL documentation:
                 #   srcWin --- subwindow in pixels to extract: [left_x, top_y, width, height]
-                #   format --- output format ("GTiff", etc...)
                 tiling_start_time = now()
                 logging.info("Creating image tile: %s", tmp_image_path.absolute())
                 gdal.Translate(str(tmp_image_path.absolute()), raster_dataset,
                                srcWin=[tile_bounds[0][1], tile_bounds[0][0], tile_bounds[1][0], tile_bounds[1][1]],
-                               scaleParams=scale_params,
-                               outputType=output_type,
-                               format=region_request.tile_format)
+                               **gdal_translate_kwargs)
                 tiling_end_time = now()
                 if metrics:
                     metrics.put_metric("TilingLatency", (tiling_end_time - tiling_start_time), "Microseconds")
@@ -342,6 +341,50 @@ def process_region_request(region_request: RegionRequest, job_table, raster_data
             logging.exception(status_error)
 
         raise
+
+
+def create_gdal_translate_kwargs(region_request:RegionRequest, raster_dataset: gdal.Dataset) -> Dict[str, Any]:
+    """
+    This function creates a set of keyword arguments suitable for passing to the gdal.Translate function. The
+    values for these options are derived from the region processing request and the raster dataset itself.
+
+    See: https://gdal.org/python/osgeo.gdal-module.html#Translate
+    See: https://gdal.org/python/osgeo.gdal-module.html#TranslateOptions
+
+    :param region_request: the region request
+    :param raster_dataset: the raster dataset to translate
+    :return: the dictionary of translate keyword arguments
+    """
+    # Figure out what type of image this is and calculate a scale that does not force any range remapping
+    # TODO: Consider adding an option to have this driver perform the DRA. That option would change the
+    #       scale_params output by this calculation
+    output_type, scale_params = get_type_and_scales(raster_dataset)
+
+    gdal_translate_kwargs = {
+        'scaleParams': scale_params,
+        'outputType': output_type,
+        'format': region_request.tile_format
+    }
+
+    creation_options = ""
+    if region_request.tile_format == TileFormats.NITF:
+        # Creation options specific to the NITF raster driver. See: https://gdal.org/drivers/raster/nitf.html
+        if region_request.tile_compression is None:
+            # Default NITF tiles to JPEG2000 compression if not otherwise specified
+            creation_options += "IC=C8"
+        elif region_request.tile_compression == TileCompression.J2K:
+            creation_options += "IC=C8"
+        elif region_request.tile_compression == TileCompression.JPEG:
+            creation_options += "IC=C3"
+        elif region_request.tile_compression == TileCompression.NONE:
+            creation_options += "IC=NC"
+
+    # TODO: Expand this to offer support for compression using other file formats
+
+    if len(creation_options) > 0:
+        gdal_translate_kwargs['creationOptions'] = creation_options
+
+    return gdal_translate_kwargs
 
 
 def calculate_processing_bounds(roi, ds, camera_model):

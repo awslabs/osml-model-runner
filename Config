@@ -33,8 +33,10 @@ package.AWSOversightMLModelRunner = {
             Boto3 = 1.x;
             Python-numpy = 1.x;
             Python-Pillow = 8.x;
-            GDAL = 2.4.x;
-            Python-GDAL = 2.4.3;
+            GDAL = 3.x;
+            Python-GDAL = 3.x;
+            OpenJPEG = 2.3.x;
+            NetCDF = 4.x;
             Python-geojson = 2.x;
             Python-Shapely = 1.6.x;
 

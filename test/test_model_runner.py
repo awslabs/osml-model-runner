@@ -9,7 +9,7 @@ from aws_oversightml_model_runner.model_runner_api import RegionRequest
 from aws_oversightml_model_runner.georeference import GDALAffineCameraModel
 from aws_oversightml_model_runner.job_table import JobTable
 from aws_oversightml_model_runner.model_runner import load_gdal_dataset, calculate_processing_bounds, get_image_type, \
-    process_region_request
+    process_region_request, create_gdal_translate_kwargs
 from aws_oversightml_model_runner.metrics import configure_metrics
 
 configure_metrics("test", "stdout")
@@ -91,6 +91,29 @@ def test_get_image_type():
     assert "NITF" == get_image_type("https://foo.bar.com/random/prefix/complex-image.name.image.NITF")
     assert "TIFF" == get_image_type("s3://random-bucket/works-with-tiff-too.TIFF")
     assert "TIFF" == get_image_type("./foo.tif")
+
+
+def test_create_gdal_translate_kwargs(test_dataset_and_camera):
+    ds, camera_model = test_dataset_and_camera
+
+    format_compression_combinations = [
+        ('NITF', 'NONE', 'IC=NC'),
+        ('NITF', 'JPEG', 'IC=C3'),
+        ('NITF', 'J2K', 'IC=C8'),
+        ('NITF', None, 'IC=C8')
+    ]
+
+    for tile_format, tile_compression, expected_options in format_compression_combinations:
+        region_request = RegionRequest({'tile_format': tile_format,
+                                        'tile_compression': tile_compression
+                                        })
+
+        gdal_translate_kwargs = create_gdal_translate_kwargs(region_request, ds)
+
+        assert gdal_translate_kwargs['creationOptions'] == expected_options
+        assert gdal_translate_kwargs['format'] == tile_format
+        assert gdal_translate_kwargs['scaleParams'] == [[0, 255, 0, 255]]
+        assert gdal_translate_kwargs['outputType'] == 1
 
 
 class RegionRequestMatcher:
