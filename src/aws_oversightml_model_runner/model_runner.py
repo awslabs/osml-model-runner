@@ -171,7 +171,8 @@ def process_image_request(image_request: ImageRequest, region_work_queue, status
             logging.info("Queue region {}: {}".format(region_number, regions[region_number]))
             region_request = RegionRequest(region_request_shared_values,
                                            region_bounds=regions[region_number])
-            region_work_queue.send_request(region_request)
+            # Send the attributes of the region request as the message.
+            region_work_queue.send_request(region_request.__dict__)
 
         logging.info("Processing region {}: {}".format(0, regions[0]))
         region_request = RegionRequest(region_request_shared_values,
