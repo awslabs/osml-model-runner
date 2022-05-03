@@ -5,7 +5,8 @@ import shapely.geometry
 def test_region_request_constructor():
     region_request_template = {
         "model_name": "test-model-name",
-        "model_hosting_type": "SM_ENDPOINT"
+        "model_hosting_type": "SM_ENDPOINT",
+        "execution_role": "arn:aws:iam::010321660603:role/OversightMLBetaInvokeRole"
     }
 
     rr = RegionRequest(region_request_template,
@@ -21,6 +22,7 @@ def test_region_request_constructor():
     # Checks to ensure the dictionary provided values are set
     assert rr.model_name == "test-model-name"
     assert rr.model_hosting_type == ModelHostingOptions.SM_ENDPOINT
+    assert rr.execution_role == "arn:aws:iam::010321660603:role/OversightMLBetaInvokeRole"
 
     # Checks to ensure the keyword arguments are set
     assert rr.image_id == "test-image-id"
@@ -39,7 +41,8 @@ def test_region_request_constructor():
 def test_image_request_constructor():
     image_request_template = {
         "model_name": "test-model-name",
-        "model_hosting_type": "SM_ENDPOINT"
+        "model_hosting_type": "SM_ENDPOINT",
+        "execution_role": "arn:aws:iam::010321660603:role/OversightMLBetaInvokeRole"
     }
     ir = ImageRequest(image_request_template,
                       job_arn="arn:aws:oversightml:us-east-1:674401241798:ipj/test-job",
@@ -58,6 +61,7 @@ def test_image_request_constructor():
     assert ir.tile_overlap == (50, 50)
     assert ir.model_name == "test-model-name"
     assert ir.model_hosting_type == "SM_ENDPOINT"
+    assert ir.execution_role == "arn:aws:iam::010321660603:role/OversightMLBetaInvokeRole"
     assert ir.tile_format == "NITF"
     assert ir.tile_compression is None
     assert ir.job_id == "5f4e8a55-95cf-4d96-95cd-9b037f767eff"
@@ -81,6 +85,7 @@ def test_image_request_from_message():
             'name': "test-model-name",
             'type': "SM_ENDPOINT"
         },
+        'executionRole': "arn:aws:iam::010321660603:role/OversightMLBetaInvokeRole",
         'imageProcessorTileSize': 2048,
         'imageProcessorTileOverlap': 100,
         'imageProcessorTileFormat': "PNG",
@@ -96,6 +101,7 @@ def test_image_request_from_message():
     assert ir.tile_overlap == (100, 100)
     assert ir.model_name == "test-model-name"
     assert ir.model_hosting_type == "SM_ENDPOINT"
+    assert ir.execution_role == "arn:aws:iam::010321660603:role/OversightMLBetaInvokeRole"
     assert ir.tile_format == "PNG"
     assert ir.tile_compression is None
     assert ir.job_id == "5f4e8a55-95cf-4d96-95cd-9b037f767eff"
@@ -128,6 +134,7 @@ def test_image_request_from_minimal_message():
     assert ir.tile_overlap == (50, 50)
     assert ir.model_name == "test-model-name"
     assert ir.model_hosting_type == "SM_ENDPOINT"
+    assert ir.execution_role is None
     assert ir.tile_format == "NITF"
     assert ir.tile_compression is None
     assert ir.job_id == "5f4e8a55-95cf-4d96-95cd-9b037f767eff"

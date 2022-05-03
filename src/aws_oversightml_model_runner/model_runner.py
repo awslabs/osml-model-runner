@@ -66,7 +66,7 @@ def monitor_work_queues():
 
     while run:
 
-        logging.info("Checking work queue for regions to process ...")
+        logging.debug("Checking work queue for regions to process ...")
         (receipt_handle, region_request_attributes) = next(region_requests_iter)
 
         if region_request_attributes is not None:
@@ -84,7 +84,7 @@ def monitor_work_queues():
                 region_work_queue.finish_request(receipt_handle)
         else:
 
-            logging.info("Checking work queue for images to process ...")
+            logging.debug("Checking work queue for images to process ...")
             (receipt_handle, image_request_message) = next(image_requests_iter)
 
             if image_request_message is not None:
@@ -161,7 +161,8 @@ def process_image_request(image_request: ImageRequest, region_work_queue, status
             'tile_size': image_request.tile_size,
             'tile_overlap': image_request.tile_overlap,
             'tile_format': image_request.tile_format,
-            'tile_compression': image_request.tile_compression
+            'tile_compression': image_request.tile_compression,
+            'execution_role': image_request.execution_role
         }
 
         # Process the image regions. This worker will process the first region of this image since it has already
@@ -242,7 +243,7 @@ def process_region_request(region_request: RegionRequest, job_table, raster_data
         image_queue = Queue()
         tile_workers = []
         for _ in range(multiprocessing.cpu_count() * int(WORKERS_PER_CPU)):
-            feature_detector = FeatureDetector(region_request.model_name)
+            feature_detector = FeatureDetector(region_request.model_name, region_request.execution_role)
             feature_table = FeatureTable(FEATURE_TABLE, region_request.tile_size, region_request.tile_overlap)
             worker = ImageTileWorker(image_queue, feature_detector, feature_table)
             worker.start()

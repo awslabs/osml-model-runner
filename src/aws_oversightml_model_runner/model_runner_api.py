@@ -64,6 +64,7 @@ class ImageRequest(object):
         self.tile_overlap = (50, 50)
         self.tile_format = TileFormats.NITF
         self.tile_compression = None
+        self.execution_role = None
         self.roi = None
 
         for dictionary in initial_data:
@@ -99,6 +100,9 @@ class ImageRequest(object):
 
         properties['job_arn'] = image_request['jobArn']
         properties['job_id'] = image_request['jobId']
+
+        if 'executionRole' in image_request:
+            properties['execution_role'] = image_request['executionRole']
 
         # TODO: Consider possible support multiple images in a single request. Some images are pre-tiled in S3 so
         #       customers may want to submit a single logical request for multiple images.
@@ -157,6 +161,7 @@ class RegionRequest(object):
         self.tile_compression = None
         # Bounds are: UL corner (row, column) , dimensions (w, h)
         self.region_bounds = None
+        self.execution_role = None
 
         for dictionary in initial_data:
             for key in dictionary:
@@ -214,6 +219,9 @@ def shared_properties_are_valid(request: Union[ImageRequest, RegionRequest]) -> 
         return False
 
     if request.tile_compression and request.tile_compression not in VALID_TILE_COMPRESSION:
+        return False
+
+    if request.execution_role and not request.execution_role.startswith('arn:'):
         return False
 
     return True
