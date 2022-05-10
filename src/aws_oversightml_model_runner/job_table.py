@@ -11,16 +11,21 @@ class JobTable:
 
     def image_started(self, image_id: str):
         start_time_millisec = int(time.time() * 1000)
+        # These records are temporary and will expire 24 hours after creation. Jobs should take minutes to run
+        # so this time should be conservative enough to let a team debug an urgent issue without leaving a
+        # ton of state leftover in the system.
+        expire_time_millisec = start_time_millisec + (24*60*60*1000)
 
         try:
             result = self.ddb_job_table.update_item(
                 Key={
                     'image_id': image_id,
                 },
-                UpdateExpression="SET start_time = :start_time",
+                UpdateExpression="SET start_time = :start_time, expire_time = :expire_time",
                 ConditionExpression='attribute_not_exists(start_time) OR start_time < :start_time',
                 ExpressionAttributeValues={
                     ':start_time': start_time_millisec,
+                    ':expire_time': expire_time_millisec
                 }
             )
         except botocore.exceptions.ClientError as e:

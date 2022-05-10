@@ -1,5 +1,6 @@
 import logging
 from typing import List
+import time
 
 import boto3
 import geojson
@@ -21,6 +22,12 @@ class FeatureTable:
     def add_features(self, features, metrics):
 
         feature_store_start = now()
+        start_time_millisec = int(time.time() * 1000)
+        # These records are temporary and will expire 24 hours after creation. Jobs should take minutes to run
+        # so this time should be conservative enough to let a team debug an urgent issue without leaving a
+        # ton of state leftover in the system.
+        expire_time_millisec = start_time_millisec + (24*60*60*1000)
+
         for key, value in self.group_features_by_key(features).items():
             try:
 
@@ -35,10 +42,11 @@ class FeatureTable:
                         'hash_key': hash_key,
                         'range_key': range_key
                     },
-                    UpdateExpression="SET features = list_append(if_not_exists(features, :empty_list), :i)",
+                    UpdateExpression="SET features = list_append(if_not_exists(features, :empty_list), :i), expire_time = :expire_time",
                     ExpressionAttributeValues={
                         ':i': encoded_features,
-                        ':empty_list': []
+                        ':empty_list': [],
+                        ':expire_time': expire_time_millisec
                     },
                     ReturnValues="UPDATED_NEW"
                 )
