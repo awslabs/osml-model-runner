@@ -18,7 +18,7 @@ from osgeo import gdal, gdalconst
 from shapely.geometry import Polygon
 
 from .model_runner_api import RegionRequest, ImageRequest, TileCompression, TileFormats, ModelHostingOptions
-from .georeference import GDALAffineCameraModel, CameraModel
+
 from .detection_service import FeatureDetector
 from .exceptions import RetryableJobException
 from .feature_table import FeatureTable
@@ -29,6 +29,8 @@ from .result_storage import ResultStorage
 from .status_monitor import StatusMonitor
 from .tile_worker import ImageTileWorker
 from .work_queue import WorkQueue
+from .gdal_utils import GDALConfigEnv, load_gdal_dataset, get_type_and_scales, set_gdal_default_configuration
+from .credentials_utils import get_credentials_for_assumed_role
 
 WORKERS_PER_CPU = os.environ.get('WORKERS_PER_CPU', '1')
 JOB_TABLE = os.environ.get('JOB_TABLE')
@@ -63,6 +65,9 @@ def monitor_work_queues():
     region_requests_iter = iter(region_work_queue)
     status_monitor = StatusMonitor(CP_API_ENDPOINT)
     job_table = JobTable(JOB_TABLE)
+
+    # Setup the GDAL configuration options that should remain unchanged for the life of this execution
+    set_gdal_default_configuration()
 
     while run:
 
@@ -130,55 +135,65 @@ def process_image_request(image_request: ImageRequest, region_work_queue, status
         if metrics:
             metrics.put_dimensions({"ImageFormat": image_type})
 
-        # Use GDAL to access the dataset and geo positioning metadata
-        image_gdalvfs = image_request.image_url.replace("s3:/", "/vsis3", 1)
-        logging.info('Loading image with GDAL virtual file system {}'.format(image_gdalvfs))
-        ds, camera_model = load_gdal_dataset(image_gdalvfs, metrics)
+        # If this request contains an execution role retrieve credentials that will be used to access data
+        assumed_credentials = None
+        if image_request.execution_role is not None:
+            assumed_credentials = get_credentials_for_assumed_role(image_request.execution_role)
 
-        # Determine how much of this image should be processed.
-        # Bounds are: UL corner (row, column) , dimensions (w, h)
-        processing_bounds = calculate_processing_bounds(image_request.roi, ds, camera_model)
-        if not processing_bounds:
-            logging.info("Requested ROI does not intersect image. Nothing to do")
-            job_table.image_ended(image_request.image_id)
-            status_monitor.processing_event(image_request.job_arn, "FAILED", "ROI Has No Intersection With Image")
+        # This will update the GDAL configuration options to use the security credentials for this request. Any GDAL
+        # managed AWS calls (i.e. incrementally fetching pixels from a dataset stored in S3) within this "with"
+        # statement will be made using customer credentials. At the end of the "with" scope the credentials will be
+        # removed.
+        with GDALConfigEnv().with_aws_credentials(assumed_credentials) as gdal_env:
+            # Use GDAL to access the dataset and geo positioning metadata
+            image_gdalvfs = image_request.image_url.replace("s3:/", "/vsis3", 1)
+            logging.info('Loading image with GDAL virtual file system {}'.format(image_gdalvfs))
+            ds, camera_model = load_gdal_dataset(image_gdalvfs, metrics)
 
-        # Calculate a set of ML engine sized regions that we need to process for this image
-        # Region size chosen to break large images into pieces that can be handled by a single tile worker
-        region_size = (20480, 20480)
-        region_overlap = image_request.tile_overlap
-        regions = list(generate_crops_for_region(processing_bounds, region_size, region_overlap))
+            # Determine how much of this image should be processed.
+            # Bounds are: UL corner (row, column) , dimensions (w, h)
+            processing_bounds = calculate_processing_bounds(image_request.roi, ds, camera_model)
+            if not processing_bounds:
+                logging.info("Requested ROI does not intersect image. Nothing to do")
+                job_table.image_ended(image_request.image_id)
+                status_monitor.processing_event(image_request.job_arn, "FAILED", "ROI Has No Intersection With Image")
 
-        job_table.image_stats(image_request.image_id, len(regions), ds.RasterXSize, ds.RasterYSize)
+            # Calculate a set of ML engine sized regions that we need to process for this image
+            # Region size chosen to break large images into pieces that can be handled by a single tile worker
+            region_size = (20480, 20480)
+            region_overlap = image_request.tile_overlap
+            regions = list(generate_crops_for_region(processing_bounds, region_size, region_overlap))
 
-        region_request_shared_values = {
-            'image_id': image_request.image_id,
-            'image_url': image_request.image_url,
-            'output_bucket': image_request.output_bucket,
-            'output_prefix': image_request.output_prefix,
-            'model_name': image_request.model_name,
-            'model_hosting_type': image_request.model_hosting_type,
-            'tile_size': image_request.tile_size,
-            'tile_overlap': image_request.tile_overlap,
-            'tile_format': image_request.tile_format,
-            'tile_compression': image_request.tile_compression,
-            'execution_role': image_request.execution_role
-        }
+            job_table.image_stats(image_request.image_id, len(regions), ds.RasterXSize, ds.RasterYSize)
 
-        # Process the image regions. This worker will process the first region of this image since it has already
-        # loaded the dataset from S3 and is ready to go. Any additional regions will be queued for processing by
-        # other workers in this cluster.
-        for region_number in range(1, len(regions)):
-            logging.info("Queue region {}: {}".format(region_number, regions[region_number]))
+            region_request_shared_values = {
+                'image_id': image_request.image_id,
+                'image_url': image_request.image_url,
+                'output_bucket': image_request.output_bucket,
+                'output_prefix': image_request.output_prefix,
+                'model_name': image_request.model_name,
+                'model_hosting_type': image_request.model_hosting_type,
+                'tile_size': image_request.tile_size,
+                'tile_overlap': image_request.tile_overlap,
+                'tile_format': image_request.tile_format,
+                'tile_compression': image_request.tile_compression,
+                'execution_role': image_request.execution_role
+            }
+
+            # Process the image regions. This worker will process the first region of this image since it has already
+            # loaded the dataset from S3 and is ready to go. Any additional regions will be queued for processing by
+            # other workers in this cluster.
+            for region_number in range(1, len(regions)):
+                logging.info("Queue region {}: {}".format(region_number, regions[region_number]))
+                region_request = RegionRequest(region_request_shared_values,
+                                               region_bounds=regions[region_number])
+                # Send the attributes of the region request as the message.
+                region_work_queue.send_request(region_request.__dict__)
+
+            logging.info("Processing region {}: {}".format(0, regions[0]))
             region_request = RegionRequest(region_request_shared_values,
-                                           region_bounds=regions[region_number])
-            # Send the attributes of the region request as the message.
-            region_work_queue.send_request(region_request.__dict__)
-
-        logging.info("Processing region {}: {}".format(0, regions[0]))
-        region_request = RegionRequest(region_request_shared_values,
-                                       region_bounds=regions[0])
-        process_region_request(region_request, job_table, raster_dataset=ds)
+                                           region_bounds=regions[0])
+            process_region_request(region_request, job_table, raster_dataset=ds)
 
         while not job_table.is_image_complete(image_request.image_id):
             # TODO: This is a hack, at a minimum put in a max retries or some other way to avoid hanging this worker
@@ -199,7 +214,7 @@ def process_image_request(image_request: ImageRequest, region_work_queue, status
                     image_request.image_url))
 
         # Write the results to S3
-        result_storage = ResultStorage(image_request.output_bucket, image_request.output_prefix)
+        result_storage = ResultStorage(image_request.output_bucket, image_request.output_prefix, assumed_credentials)
         result_storage.write_to_s3(image_request.image_id, features)
 
         # Record completion time of this image
@@ -240,75 +255,85 @@ def process_region_request(region_request: RegionRequest, job_table, raster_data
         if metrics:
             metrics.put_dimensions({"ImageFormat": image_type})
 
+        # If this request contains an execution role retrieve credentials that will be used to access data
+        assumed_credentials = None
+        if region_request.execution_role is not None:
+            assumed_credentials = get_credentials_for_assumed_role(region_request.execution_role)
+
         image_queue = Queue()
         tile_workers = []
         for _ in range(multiprocessing.cpu_count() * int(WORKERS_PER_CPU)):
-            feature_detector = FeatureDetector(region_request.model_name, region_request.execution_role)
+            feature_detector = FeatureDetector(region_request.model_name, assumed_credentials)
             feature_table = FeatureTable(FEATURE_TABLE, region_request.tile_size, region_request.tile_overlap)
             worker = ImageTileWorker(image_queue, feature_detector, feature_table)
             worker.start()
             tile_workers.append(worker)
         logging.info("Setup pool of {} tile workers".format(len(tile_workers)))
 
-        if raster_dataset is None:
-            image_gdalvfs = region_request.image_url.replace("s3:/", "/vsis3", 1)
-            logging.info('Loading image with GDAL virtual file system {}'.format(image_gdalvfs))
-            raster_dataset, camera_model = load_gdal_dataset(image_gdalvfs, metrics)
+        # This will update the GDAL configuration options to use the security credentials for this request. Any GDAL
+        # managed AWS calls (i.e. incrementally fetching pixels from a dataset stored in S3) within this "with"
+        # statement will be made using customer credentials. At the end of the "with" scope the credentials will be
+        # removed.
+        with GDALConfigEnv().with_aws_credentials(assumed_credentials) as gdal_env:
+            if raster_dataset is None:
+                image_gdalvfs = region_request.image_url.replace("s3:/", "/vsis3", 1)
+                logging.info('Loading image with GDAL virtual file system {}'.format(image_gdalvfs))
+                raster_dataset, camera_model = load_gdal_dataset(image_gdalvfs, metrics)
 
-        # Use the request and metadata from the raster dataset to create a set of keyword
-        # arguments for the gdal.Translate() function. This will configure that function to
-        # create image tiles using the format, compression, etc. needed by the CV container.
-        gdal_translate_kwargs = create_gdal_translate_kwargs(region_request, raster_dataset)
+            # Use the request and metadata from the raster dataset to create a set of keyword
+            # arguments for the gdal.Translate() function. This will configure that function to
+            # create image tiles using the format, compression, etc. needed by the CV container.
+            gdal_translate_kwargs = create_gdal_translate_kwargs(region_request, raster_dataset)
 
-        # Calculate a set of ML engine sized regions that we need to process for this image and
-        # setup a temporary directory to store the temporary files. The entire directory will be
-        # deleted at the end of this image's processing
-        total_tile_count = 0
-        with tempfile.TemporaryDirectory() as tmp:
+            # Calculate a set of ML engine sized regions that we need to process for this image and
+            # setup a temporary directory to store the temporary files. The entire directory will be
+            # deleted at the end of this image's processing
+            total_tile_count = 0
+            with tempfile.TemporaryDirectory() as tmp:
 
-            for tile_bounds in generate_crops_for_region(region_request.region_bounds,
-                                                         region_request.tile_size, region_request.tile_overlap):
-                # Create a temp file name for the NITF encoded region
-                region_image_filename = '{}-region-{}-{}-{}-{}.{}'.format(str(uuid.uuid4()),
-                                                                          tile_bounds[0][0],
-                                                                          tile_bounds[0][1],
-                                                                          tile_bounds[1][0],
-                                                                          tile_bounds[1][1],
-                                                                          region_request.tile_format
-                                                                          )
+                for tile_bounds in generate_crops_for_region(region_request.region_bounds,
+                                                             region_request.tile_size, region_request.tile_overlap):
+                    # Create a temp file name for the NITF encoded region
+                    region_image_filename = '{}-region-{}-{}-{}-{}.{}'.format(str(uuid.uuid4()),
+                                                                              tile_bounds[0][0],
+                                                                              tile_bounds[0][1],
+                                                                              tile_bounds[1][0],
+                                                                              tile_bounds[1][1],
+                                                                              region_request.tile_format
+                                                                              )
 
-                tmp_image_path = Path(tmp, region_image_filename)
+                    tmp_image_path = Path(tmp, region_image_filename)
 
-                # Use GDAL to create an encoded tile of the image region
-                # From GDAL documentation:
-                #   srcWin --- subwindow in pixels to extract: [left_x, top_y, width, height]
-                tiling_start_time = now()
-                logging.info("Creating image tile: %s", tmp_image_path.absolute())
-                gdal.Translate(str(tmp_image_path.absolute()), raster_dataset,
-                               srcWin=[tile_bounds[0][1], tile_bounds[0][0], tile_bounds[1][0], tile_bounds[1][1]],
-                               **gdal_translate_kwargs)
-                tiling_end_time = now()
-                if metrics:
-                    metrics.put_metric("TilingLatency", (tiling_end_time - tiling_start_time), "Microseconds")
+                    # Use GDAL to create an encoded tile of the image region
+                    # From GDAL documentation:
+                    #   srcWin --- subwindow in pixels to extract: [left_x, top_y, width, height]
+                    tiling_start_time = now()
+                    logging.info("Creating image tile: %s", tmp_image_path.absolute())
+                    gdal.Translate(str(tmp_image_path.absolute()), raster_dataset,
+                                   srcWin=[tile_bounds[0][1], tile_bounds[0][0], tile_bounds[1][0], tile_bounds[1][1]],
+                                   **gdal_translate_kwargs)
+                    tiling_end_time = now()
+                    if metrics:
+                        metrics.put_metric("TilingLatency", (tiling_end_time - tiling_start_time), "Microseconds")
 
-                # GDAL doesn't always generate errors so we need to make sure the NITF encoded region was
-                # actually created.
-                if not tmp_image_path.is_file():
-                    logging.error("GDAL unable to create tile %s. Does not exist!", tmp_image_path.absolute())
-                    continue
-                else:
-                    logging.info("Created %s size %s", tmp_image_path.absolute(),
-                                 sizeof_fmt(tmp_image_path.stat().st_size))
+                    # GDAL doesn't always generate errors so we need to make sure the NITF encoded region was
+                    # actually created.
+                    if not tmp_image_path.is_file():
+                        logging.error("GDAL unable to create tile %s. Does not exist!", tmp_image_path.absolute())
+                        continue
+                    else:
+                        logging.info("Created %s size %s", tmp_image_path.absolute(),
+                                     sizeof_fmt(tmp_image_path.stat().st_size))
 
-                # Put the image info on the tile worker queue allowing each tile to be processed in
-                # parallel.
-                image_info = {
-                    'image_path': tmp_image_path,
-                    'region': tile_bounds,
-                    'image_id': region_request.image_id
-                }
-                total_tile_count += 1
-                image_queue.put(image_info)
+                    # Put the image info on the tile worker queue allowing each tile to be processed in
+                    # parallel.
+                    image_info = {
+                        'image_path': tmp_image_path,
+                        'region': tile_bounds,
+                        'image_id': region_request.image_id
+                    }
+                    total_tile_count += 1
+                    image_queue.put(image_info)
 
             # Put enough empty messages on the queue to shut down the workers
             for i in range(len(tile_workers)):
@@ -318,8 +343,8 @@ def process_region_request(region_request: RegionRequest, job_table, raster_data
             for worker in tile_workers:
                 worker.join()
 
-        logging.info("Model Runner Stats Processed {} image tiles for a {} x {} image.".format(
-            total_tile_count, raster_dataset.RasterXSize, raster_dataset.RasterYSize))
+        logging.info("Model Runner Stats Processed {} image tiles for region {}.".format(
+            total_tile_count, region_request.region_bounds))
 
         job_table.region_complete(region_request.image_id)
 
@@ -415,57 +440,6 @@ def calculate_processing_bounds(roi, ds, camera_model):
     return processing_bounds
 
 
-def load_gdal_dataset(image_path, metrics=None):
-    # Use GDAL to open the image object in S3. Note that we're using GDALs s3 driver to
-    # read directly from the object store as needed to complete the image operations
-    metadata_start_time = now()
-    ds = gdal.Open(image_path)
-    if ds is None:
-        logging.info("Skipping: %s - GDAL Unable to Process", image_path)
-        raise ValueError("GDAL Unable to Load: {}".format(image_path))
-
-    camera_model: CameraModel = None
-    transform = ds.GetGeoTransform()
-    if transform:
-        camera_model = GDALAffineCameraModel(transform)
-
-    logging.info("GDAL Parsed Image of size: %d x %d", ds.RasterXSize, ds.RasterYSize)
-    metadata_end_time = now()
-    if metrics is not None:
-        metrics.put_metric("MetadataLatency", (metadata_end_time - metadata_start_time), "Microseconds")
-    return ds, camera_model
-
-
-def get_type_and_scales(raster_dataset):
-    scale_params = []
-    num_bands = raster_dataset.RasterCount
-    output_type = gdalconst.GDT_Byte
-    min = 0
-    max = 255
-    for band_num in range(1, num_bands + 1):
-        band = raster_dataset.GetRasterBand(band_num)
-        output_type = band.DataType
-        if output_type == gdalconst.GDT_Byte:
-            min = 0
-            max = 255
-        elif output_type == gdalconst.GDT_UInt16:
-            min = 0
-            max = 65535
-        elif output_type == gdalconst.GDT_Int16:
-            min = -32768
-            max = 32767
-        elif output_type == gdalconst.GDT_UInt32:
-            min = 0
-            max = 4294967295
-        elif output_type == gdalconst.GDT_Int32:
-            min = -2147483648
-            max = 2147483647
-        else:
-            logging.warning("Image uses unsupported GDAL datatype {}. Defaulting to [0,255] range".format(output_type))
-
-        scale_params.append([min, max, min, max])
-
-    return output_type, scale_params
 
 
 def get_image_type(image_url) -> str:

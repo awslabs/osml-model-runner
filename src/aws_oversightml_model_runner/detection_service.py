@@ -3,34 +3,29 @@ import logging
 import boto3
 import geojson
 import botocore
+from typing import Dict
 from botocore.config import Config
 from geojson import FeatureCollection
 from json import JSONDecodeError
 
 from .metrics import metric_scope
+
 from .metrics import now
 
 
 class FeatureDetector:
 
-    def __init__(self, model_endpoint: str, execution_role: str = None):
+    def __init__(self, model_endpoint: str, assumed_credentials: Dict[str, str] = None):
         config = Config(
             retries={
                 'max_attempts': 30,
                 'mode': 'adaptive'
             }
         )
-        if execution_role is not None:
+        if assumed_credentials is not None:
             # Here we will be invoking the SageMaker endpoints using an IAM role other than the one for this
-            # process. Assume the role using STS and use those credentials when creating the Boto3 SageMaker client.
-            # This is the typical case when the SageMaker endpoints do not reside in the same AWS account as the
-            # model runner.
-            sts_client = boto3.client('sts')
-            assumed_invocation_role = sts_client.assume_role(
-                RoleArn=execution_role,
-                RoleSessionName="AWSOversightMLModelRunner"
-            )
-            assumed_credentials = assumed_invocation_role['Credentials']
+            # process. Use those credentials when creating the Boto3 SageMaker client. This is the typical case when
+            # the SageMaker endpoints do not reside in the same AWS account as the model runner.
             self.sm_client = boto3.client('sagemaker-runtime',
                                           config=config,
                                           aws_access_key_id=assumed_credentials['AccessKeyId'],
