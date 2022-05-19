@@ -99,6 +99,6 @@ package.AWSOversightMLModelRunner = {
     targets = {
         # see setup.py for the actual build logic
         # keep this line for brazil-path to work
-        python = { type = python; };
+        python = {type = python;};
     };
 };

@@ -2,16 +2,16 @@
 # are all sent to a SQS queue for processing.
 # TODO: Parameterize this script and make it a more robust dev test tool, everything is hard coded
 import json
-
-import boto3
 import uuid
 
-#bucket_name = "spacenet-dataset"
-#object_prefix = "AOIs/AOI_1_Rio/srcData/mosaic_3band/"
+import boto3
+
+# bucket_name = "spacenet-dataset"
+# object_prefix = "AOIs/AOI_1_Rio/srcData/mosaic_3band/"
 bucket_name = "spacenet-parrised-devaccount"
 object_prefix = "AOI_1_Rio/srcData/rasterData/3-Band/013022223103.tif"
-#bucket_name = "spacenet-dataset"
-#object_prefix = "AOIs/AOI_7_Moscow/PS-RGB/"
+# bucket_name = "spacenet-dataset"
+# object_prefix = "AOIs/AOI_7_Moscow/PS-RGB/"
 
 
 s3_client = boto3.client('s3')
@@ -50,4 +50,3 @@ if __name__ == "__main__":
             QueueUrl='https://sqs.us-east-1.amazonaws.com/010321660603/Oversight-ImageQueue',
             MessageBody=json.dumps(message_body)
         )
-

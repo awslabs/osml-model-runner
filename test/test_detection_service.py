@@ -1,13 +1,12 @@
-import mock
-import json
-import boto3
-import io
 import datetime
+import io
+import json
 
-from botocore.stub import Stubber, ANY
-
+import boto3
+import mock
 from aws_oversightml_model_runner.detection_service import FeatureDetector
 from aws_oversightml_model_runner.metrics import configure_metrics
+from botocore.stub import Stubber, ANY
 
 configure_metrics("test", "stdout")
 

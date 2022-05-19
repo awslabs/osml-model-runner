@@ -8,7 +8,6 @@ job_table = dynamodb.Table('ImageProcessingJobStatus')
 
 scan = None
 with feature_table.batch_writer() as batch:
-
     # Iterate through table until it's fully scanned
     while scan is None or 'LastEvaluatedKey' in scan:
         if scan is not None and 'LastEvaluatedKey' in scan:
@@ -23,10 +22,8 @@ with feature_table.batch_writer() as batch:
             print(item)
             batch.delete_item(Key={'hash_key': item['hash_key'], 'range_key': item['range_key']})
 
-
 scan = None
 with job_table.batch_writer() as batch:
-
     # Iterate through table until it's fully scanned
     while scan is None or 'LastEvaluatedKey' in scan:
         if scan is not None and 'LastEvaluatedKey' in scan:

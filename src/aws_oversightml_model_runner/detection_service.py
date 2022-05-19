@@ -1,15 +1,14 @@
 import logging
+from json import JSONDecodeError
+from typing import Dict
 
 import boto3
-import geojson
 import botocore
-from typing import Dict
+import geojson
 from botocore.config import Config
 from geojson import FeatureCollection
-from json import JSONDecodeError
 
 from .metrics import metric_scope
-
 from .metrics import now
 
 

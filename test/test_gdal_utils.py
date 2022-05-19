@@ -1,11 +1,10 @@
 import pytest
+from aws_oversightml_model_runner.gdal_utils import GDALConfigEnv, load_gdal_dataset
+from aws_oversightml_model_runner.georeference import GDALAffineCameraModel
 from osgeo import gdal
 
-from aws_oversightml_model_runner.georeference import GDALAffineCameraModel
-from aws_oversightml_model_runner.gdal_utils import GDALConfigEnv, load_gdal_dataset
 
 def test_gdal_config_env():
-
     gdal.SetConfigOption('AWS_SECRET_ACCESS_KEY', 'DEFAULT_AWS_SECRET_ACCESS_KEY')
     gdal.SetConfigOption('AWS_ACCESS_KEY_ID', 'DEFAULT_AWS_ACCESS_KEY_ID')
     gdal.SetConfigOption('AWS_SESSION_TOKEN', 'DEFAULT_AWS_SESSION_TOKEN')

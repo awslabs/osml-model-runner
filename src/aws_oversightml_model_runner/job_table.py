@@ -14,7 +14,7 @@ class JobTable:
         # These records are temporary and will expire 24 hours after creation. Jobs should take minutes to run
         # so this time should be conservative enough to let a team debug an urgent issue without leaving a
         # ton of state leftover in the system.
-        expire_time_millisec = start_time_millisec + (24*60*60*1000)
+        expire_time_millisec = start_time_millisec + (24 * 60 * 60 * 1000)
 
         try:
             result = self.ddb_job_table.update_item(

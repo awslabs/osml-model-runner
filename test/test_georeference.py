@@ -81,4 +81,3 @@ def test_geolocate_features(sample_gdal_cameramodel, sample_geojson_detections):
         assert 'center_latitude' in feature['properties']
         assert 'center_longitude' in feature['properties']
         assert isinstance(feature['geometry'], geojson.Polygon)
-

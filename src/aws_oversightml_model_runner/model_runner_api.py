@@ -1,8 +1,8 @@
-from enum import Enum
 from typing import Union, Any, Dict
 
-import shapely.wkt
 import shapely.geometry
+import shapely.wkt
+from enum import Enum
 
 
 class ModelHostingOptions(str, Enum):
@@ -45,6 +45,7 @@ class ImageRequest(object):
     This class contains the attributes that make up an image processing request along with constructors and factory
     methods used to create these requests from common constructs.
     """
+
     def __init__(self, *initial_data: Dict[str, Any], **kwargs: Any):
         """
         This constructor allows users to create these objects using a combination of dictionaries and keyword arguments.
@@ -142,6 +143,7 @@ class RegionRequest(object):
     This class contains the attributes that make up a region processing request along with constructors used to create
     these requests from common constructs.
     """
+
     def __init__(self, *initial_data: Dict[str, Any], **kwargs: Any):
         """
         This constructor allows users to create these objects using a combination of dictionaries and keyword arguments.

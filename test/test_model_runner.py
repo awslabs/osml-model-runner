@@ -4,15 +4,15 @@ import mock
 import pytest
 import shapely.geometry
 import shapely.wkt
-
-from aws_oversightml_model_runner.model_runner_api import RegionRequest
 from aws_oversightml_model_runner.georeference import GDALAffineCameraModel
 from aws_oversightml_model_runner.job_table import JobTable
+from aws_oversightml_model_runner.metrics import configure_metrics
 from aws_oversightml_model_runner.model_runner import load_gdal_dataset, calculate_processing_bounds, get_image_type, \
     process_region_request, create_gdal_translate_kwargs
-from aws_oversightml_model_runner.metrics import configure_metrics
+from aws_oversightml_model_runner.model_runner_api import RegionRequest
 
 configure_metrics("test", "stdout")
+
 
 @pytest.fixture
 def test_dataset_and_camera():
@@ -138,13 +138,13 @@ class RegionRequestMatcher:
 def test_process_region_request(mock_queue, mock_tile_worker, mock_feature_table, mock_feature_detector,
                                 test_dataset_and_camera):
     region_request = RegionRequest({'tile_size': (10, 10),
-                      'tile_overlap': (1, 1),
-                      'tile_format': 'NITF',
-                      'image_id': 'test-image-id',
-                      'image_url': 'test-image-url',
-                      'region_bounds': ((0, 0), (50, 50)),
-                      'model_name': 'test-model-name'
-                      })
+                                    'tile_overlap': (1, 1),
+                                    'tile_format': 'NITF',
+                                    'image_id': 'test-image-id',
+                                    'image_url': 'test-image-url',
+                                    'region_bounds': ((0, 0), (50, 50)),
+                                    'model_name': 'test-model-name'
+                                    })
 
     mock_job_table = mock.Mock(JobTable, autospec=True)
 

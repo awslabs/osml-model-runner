@@ -1,5 +1,5 @@
-from typing import Tuple, Dict, List
 import logging
+from typing import Tuple, Dict, List
 
 from osgeo import gdal, gdalconst
 
@@ -16,13 +16,13 @@ def set_gdal_default_configuration() -> None:
     # This is the maximum size of a chunk we can fetch at one time from a remote file
     # I couldn't find the value anywhere in the documentation but it is enforced here:
     # https://github.com/OSGeo/gdal/blob/211e2430b8cda486d0e0e68446647f56cc0ca149/port/cpl_vsil_curl.cpp#L161
-    max_curl_chunk_size = 10*1024*1024
+    max_curl_chunk_size = 10 * 1024 * 1024
 
     gdal_default_environment_options = {
         'GDAL_DISABLE_READDIR_ON_OPEN': 'EMPTY_DIR',
         # This flag will setup verbose output for GDAL. In particular it will show you each range read for the
         # file if using the /vsis3 virtual file system.
-        #'CPL_DEBUG': 'ON',
+        # 'CPL_DEBUG': 'ON',
         'CPL_VSIL_CURL_CHUNK_SIZE': str(max_curl_chunk_size),
         'CPL_VSIL_CURL_CACHE_SIZE': str(max_curl_chunk_size * 100),
     }
@@ -48,7 +48,6 @@ class GDALConfigEnv:
             self.options = {}
         self.old_options = {}
         pass
-
 
     def with_aws_credentials(self, aws_credentials: Dict[str, str]) -> 'GDALConfigEnv':
         """

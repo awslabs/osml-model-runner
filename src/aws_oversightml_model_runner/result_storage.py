@@ -9,7 +9,7 @@ from geojson import Feature, FeatureCollection
 
 class ResultStorage:
 
-    def __init__(self, s3_output_bucket: str, s3_output_key_prefix: str, assumed_credentials: Dict[str,str] = None):
+    def __init__(self, s3_output_bucket: str, s3_output_key_prefix: str, assumed_credentials: Dict[str, str] = None):
         self.s3_output_bucket = s3_output_bucket
         self.s3_output_key_prefix = s3_output_key_prefix
         if assumed_credentials is not None:

@@ -1,5 +1,5 @@
-from aws_oversightml_model_runner.model_runner_api import *
 import shapely.geometry
+from aws_oversightml_model_runner.model_runner_api import *
 
 
 def test_region_request_constructor():

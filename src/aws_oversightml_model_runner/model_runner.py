@@ -5,32 +5,29 @@ import signal
 import tempfile
 import time
 import uuid
-from typing import Dict, Any
-
-import shapely.wkt
-import shapely.geometry
-import geojson
-
 from pathlib import Path
 from queue import Queue
+from typing import Dict, Any
 
-from osgeo import gdal, gdalconst
+import geojson
+import shapely.geometry
+import shapely.wkt
+from osgeo import gdal
 from shapely.geometry import Polygon
 
-from .model_runner_api import RegionRequest, ImageRequest, TileCompression, TileFormats, ModelHostingOptions
-
+from .credentials_utils import get_credentials_for_assumed_role
 from .detection_service import FeatureDetector
 from .exceptions import RetryableJobException
 from .feature_table import FeatureTable
+from .gdal_utils import GDALConfigEnv, load_gdal_dataset, get_type_and_scales, set_gdal_default_configuration
 from .image_utils import generate_crops_for_region
 from .job_table import JobTable
 from .metrics import now, metric_scope
+from .model_runner_api import RegionRequest, ImageRequest, TileCompression, TileFormats
 from .result_storage import ResultStorage
 from .status_monitor import StatusMonitor
 from .tile_worker import ImageTileWorker
 from .work_queue import WorkQueue
-from .gdal_utils import GDALConfigEnv, load_gdal_dataset, get_type_and_scales, set_gdal_default_configuration
-from .credentials_utils import get_credentials_for_assumed_role
 
 WORKERS_PER_CPU = os.environ.get('WORKERS_PER_CPU', '1')
 JOB_TABLE = os.environ.get('JOB_TABLE')
@@ -54,7 +51,6 @@ signal.signal(signal.SIGTERM, handler_stop_signals)
 
 
 def monitor_work_queues():
-
     # In the processing below the region work queue is checked first and will wait for up to 10 seconds to start
     # work. Only if no regions need to be processed in that time will this worker check to see if a new image
     # can be started. Ultimately this setup is intended to ensure that all of the regions for an image are
@@ -109,7 +105,6 @@ def monitor_work_queues():
 
 @metric_scope
 def process_image_request(image_request: ImageRequest, region_work_queue, status_monitor, job_table, metrics) -> None:
-
     try:
         # TODO: The long term goal is to support AWS provided models hosted by this service as well as customer
         #       provided models where we're managing the endpoints internally. For an initial release we can limit
@@ -117,7 +112,8 @@ def process_image_request(image_request: ImageRequest, region_work_queue, status
         #       should not be advertised in the API but we are including the name/type structure in the API to allow
         #       expansion through a non-breaking API change.
         if image_request.model_hosting_type.casefold() != "SM_ENDPOINT".casefold():
-            status_monitor.processing_event(image_request.job_arn, "FAILED", "Implementation only supports SageMaker Model Endpoints")
+            status_monitor.processing_event(image_request.job_arn, "FAILED",
+                                            "Implementation only supports SageMaker Model Endpoints")
             return
 
         status_monitor.processing_event(image_request.job_arn, "IN_PROGRESS", "Started Processing")
@@ -245,7 +241,6 @@ def process_image_request(image_request: ImageRequest, region_work_queue, status
 
 @metric_scope
 def process_region_request(region_request: RegionRequest, job_table, raster_dataset=None, metrics=None) -> None:
-
     try:
         region_start_time = now()
 
@@ -370,7 +365,7 @@ def process_region_request(region_request: RegionRequest, job_table, raster_data
         raise
 
 
-def create_gdal_translate_kwargs(region_request:RegionRequest, raster_dataset: gdal.Dataset) -> Dict[str, Any]:
+def create_gdal_translate_kwargs(region_request: RegionRequest, raster_dataset: gdal.Dataset) -> Dict[str, Any]:
     """
     This function creates a set of keyword arguments suitable for passing to the gdal.Translate function. The
     values for these options are derived from the region processing request and the raster dataset itself.
@@ -438,8 +433,6 @@ def calculate_processing_bounds(roi, ds, camera_model):
             processing_bounds = None
 
     return processing_bounds
-
-
 
 
 def get_image_type(image_url) -> str:

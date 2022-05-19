@@ -9,8 +9,8 @@
 # TODO: Move this script out of this package since it depends on a lot more of the system than just the model runner
 import argparse
 import datetime
-import time
 import os
+import time
 
 import boto3
 
@@ -73,5 +73,3 @@ if __name__ == "__main__":
             break
         else:
             print(f"Request Accepted: jobId={response['jobId']} jobArn={response['jobArn']}")
-
-
