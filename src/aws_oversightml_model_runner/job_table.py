@@ -95,7 +95,7 @@ class JobTable:
                     'image_id': image_id,
                 },
                 UpdateExpression="SET end_time = :end_time",
-                ConditionExpression='attribute_not_exists(end_time) OR emd_time > :end_time',
+                ConditionExpression='attribute_not_exists(end_time) OR end_time > :end_time',
                 ExpressionAttributeValues={
                     ':end_time': end_time_millisec,
                 }
