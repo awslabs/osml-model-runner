@@ -1,6 +1,8 @@
-from aws_oversightml_model_runner.image_utils import generate_crops_for_region
-from aws_oversightml_model_runner.image_utils import next_greater_multiple
-from aws_oversightml_model_runner.image_utils import next_greater_power_of_two
+from aws_oversightml_model_runner.image_utils import (
+    generate_crops_for_region,
+    next_greater_multiple,
+    next_greater_power_of_two,
+)
 
 
 def test_chip_generator():

@@ -22,9 +22,7 @@ setup(
     # defines files which should be bundled with the python code for redistribution
     package_data={"": ["py.typed"]},
     # declare your scripts
-    scripts=[
-        'bin/oversightml-mr-entry-point.py'
-    ],
+    scripts=["bin/oversightml-mr-entry-point.py"],
     # If you want to create any Python executables in bin/, define them here.
     # This is a three-step process:
     #
@@ -58,14 +56,14 @@ setup(
     #   attempt to install root scripts for the specific interpreter version. If
     #   this package is in a version set where that interpreter is not enabled,
     #   you won't get root scripts. You almost certainly don't want this.
-    root_script_source_version='python3.8',
-    default_python='python3.8',
+    root_script_source_version="python3.8",
+    default_python="python3.8",
     # Use the pytest brazilpython runner. Provided by BrazilPython-Pytest.
     test_command="brazilpython_pytest",
     # Use custom sphinx command which adds an index.html that's compatible with
     # code.amazon.com links.
     doc_command="amazon_doc_utils_build_sphinx",
-    check_format=False,  # Enable build-time format checking
-    test_mypy=False,  # Enable type checking
-    test_flake8=False,  # Enable linting at build time
+    check_format=True,  # Enable build-time format checking
+    test_mypy=True,  # Enable type checking
+    test_flake8=True,  # Enable linting at build time
 )

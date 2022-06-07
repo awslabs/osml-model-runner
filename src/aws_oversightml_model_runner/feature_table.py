@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import List
+from typing import Dict, List
 
 import boto3
 import geojson
@@ -8,12 +8,13 @@ import numpy as np
 from boto3 import dynamodb
 from geojson import Feature
 
+from aws_oversightml_model_runner.image_utils import ImageDimensions
+
 from .metrics import metric_scope, now
 
 
 class FeatureTable:
-
-    def __init__(self, table_name: str, tile_size: [int], overlap: [int]):
+    def __init__(self, table_name: str, tile_size: ImageDimensions, overlap: ImageDimensions):
         self.ddb_feature_table = self.get_dynamodb_resource().Table(table_name)
         self.tile_size = tile_size
         self.overlap = overlap
@@ -23,9 +24,9 @@ class FeatureTable:
 
         feature_store_start = now()
         start_time_millisec = int(time.time() * 1000)
-        # These records are temporary and will expire 24 hours after creation. Jobs should take minutes to run
-        # so this time should be conservative enough to let a team debug an urgent issue without leaving a
-        # ton of state leftover in the system.
+        # These records are temporary and will expire 24 hours after creation. Jobs should take
+        # minutes to run so this time should be conservative enough to let a team debug an urgent
+        # issue without leaving a ton of state leftover in the system.
         expire_time_millisec = start_time_millisec + (24 * 60 * 60 * 1000)
 
         for key, value in self.group_features_by_key(features).items():
@@ -38,67 +39,73 @@ class FeatureTable:
 
                 # TODO: Can do a simple put if range key is not overlap region
                 result = self.ddb_feature_table.update_item(
-                    Key={
-                        'hash_key': hash_key,
-                        'range_key': range_key
-                    },
-                    UpdateExpression="SET features = list_append(if_not_exists(features, :empty_list), :i), expire_time = :expire_time",
+                    Key={"hash_key": hash_key, "range_key": range_key},
+                    UpdateExpression="""
+                        SET
+                            features = list_append(if_not_exists(features, :empty_list), :i),
+                            expire_time = :expire_time
+                    """,
                     ExpressionAttributeValues={
-                        ':i': encoded_features,
-                        ':empty_list': [],
-                        ':expire_time': expire_time_millisec
+                        ":i": encoded_features,
+                        ":empty_list": [],
+                        ":expire_time": expire_time_millisec,
                     },
-                    ReturnValues="UPDATED_NEW"
+                    ReturnValues="UPDATED_NEW",
                 )
-                if result['ResponseMetadata']['HTTPStatusCode'] != 200:
+                if result["ResponseMetadata"]["HTTPStatusCode"] != 200:
                     logging.error("Unable to update feature table")
             except Exception as e:
                 logging.exception(e)
 
         feature_store_end = now()
-        metrics.put_metric("FeatureStoreLatency", (feature_store_end - feature_store_start), "Microseconds")
+        metrics.put_metric(
+            "FeatureStoreLatency", (feature_store_end - feature_store_start), "Microseconds"
+        )
 
     @metric_scope
     def get_all_features(self, image_id: str, metrics) -> List[Feature]:
         feature_agg_start = now()
 
         all_features_retrieved = False
-        deduped_features = []
+        deduped_features: List[Feature] = []
 
         response = self.ddb_feature_table.query(
-            KeyConditionExpression=dynamodb.conditions.Key('hash_key').eq(image_id))
+            KeyConditionExpression=dynamodb.conditions.Key("hash_key").eq(image_id)
+        )
 
         while not all_features_retrieved:
 
-            for item in response['Items']:
+            for item in response["Items"]:
                 features = []
-                for encoded_feature in item['features']:
+                for encoded_feature in item["features"]:
                     features.append(geojson.loads(encoded_feature))
 
                 deduped_features.extend(feature_nms(features))
 
-            if 'LastEvaluatedKey' in response:
+            if "LastEvaluatedKey" in response:
                 response = self.ddb_feature_table.query(
-                    KeyConditionExpression=dynamodb.conditions.Key('hash_key').eq(image_id),
-                    ExclusiveStartKey=response['LastEvaluatedKey']
+                    KeyConditionExpression=dynamodb.conditions.Key("hash_key").eq(image_id),
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
             else:
                 all_features_retrieved = True
 
         feature_agg_end = now()
-        metrics.put_metric("FeatureAggLatency", (feature_agg_end - feature_agg_start), "Microseconds")
+        metrics.put_metric(
+            "FeatureAggLatency", (feature_agg_end - feature_agg_start), "Microseconds"
+        )
 
         return deduped_features
 
     def group_features_by_key(self, features):
-        result = {}
+        result: Dict[str, List[Feature]] = {}
         for feature in features:
             key = self.generate_tile_key(feature)
             result.setdefault(key, []).append(feature)
         return result
 
     def generate_tile_key(self, feature: Feature) -> str:
-        bbox = feature['properties']['bounds_imcoords']
+        bbox = feature["properties"]["bounds_imcoords"]
 
         # TODO: Check tile size to see if it is w,h or row/col
         # This is the size of the unique pixels in each tile
@@ -118,18 +125,16 @@ class FeatureTable:
         if min_y_offset < self.overlap[1] and min_y_index > 0:
             min_y_index -= 1
 
-        return "{}-region-{}:{}:{}:{}".format(feature['properties']['image_id'],
-                                              min_x_index,
-                                              max_x_index,
-                                              min_y_index,
-                                              max_y_index)
+        return "{}-region-{}:{}:{}:{}".format(
+            feature["properties"]["image_id"], min_x_index, max_x_index, min_y_index, max_y_index
+        )
 
     @staticmethod
     def get_dynamodb_resource():
-        return boto3.resource('dynamodb')
+        return boto3.resource("dynamodb")
 
 
-def feature_nms(feature_list: List[Feature]) -> object:
+def feature_nms(feature_list: List[Feature]) -> List[Feature]:
     """
     NMS implementation adapted from https://gist.github.com/quantombone/1144423
 
@@ -145,10 +150,10 @@ def feature_nms(feature_list: List[Feature]) -> object:
     pick = []
 
     # a numpy array of objects with columns [detect_id, x1, y1, x2, y2]
-    selected_feature_properties = []
+    selected_feature_properties: List[List[str]] = []
     for feature in feature_list:
-        id_bbox_row = [feature['id']]
-        id_bbox_row.extend(feature['properties']['bounds_imcoords'])
+        id_bbox_row: List[str] = [feature["id"]]
+        id_bbox_row.extend(feature["properties"]["bounds_imcoords"])
         selected_feature_properties.append(id_bbox_row)
     feature_bbox_array = np.array(selected_feature_properties)
 
@@ -158,30 +163,30 @@ def feature_nms(feature_list: List[Feature]) -> object:
     y2 = feature_bbox_array[:, 4].astype("float")
 
     area = (x2 - x1 + 1) * (y2 - y1 + 1)
-    I = np.argsort(y2)
+    indices = np.argsort(y2)
 
-    while len(I) > 0:
-        last = len(I) - 1
-        i = I[last]
+    while len(indices) > 0:
+        last = len(indices) - 1
+        i = indices[last]
         pick.append(i)
 
-        xx1 = np.maximum(x1[i], x1[I[:last]])
-        yy1 = np.maximum(y1[i], y1[I[:last]])
-        xx2 = np.minimum(x2[i], x2[I[:last]])
-        yy2 = np.minimum(y2[i], y2[I[:last]])
+        xx1 = np.maximum(x1[i], x1[indices[:last]])
+        yy1 = np.maximum(y1[i], y1[indices[:last]])
+        xx2 = np.minimum(x2[i], x2[indices[:last]])
+        yy2 = np.minimum(y2[i], y2[indices[:last]])
 
         w = np.maximum(0, xx2 - xx1 + 1)
         h = np.maximum(0, yy2 - yy1 + 1)
 
-        o = (w * h) / area[I[:last]]
+        o = (w * h) / area[indices[:last]]
 
-        I = np.delete(I, np.concatenate(([last], np.where(o > overlap)[0])))
+        indices = np.delete(indices, np.concatenate(([last], np.where(o > overlap)[0])))
 
     selected_feature_ids = feature_bbox_array[pick][:, 0]
-    feature_list[:] = [feature for feature in feature_list if feature['id'] in selected_feature_ids]
+    feature_list[:] = [feature for feature in feature_list if feature["id"] in selected_feature_ids]
 
-    # Turning off this metric. When measured this NMS was well in the weeds of the overall processing time
-    # (~250 microseconds each) and the sum of the invocations is captured in the total feature aggregation
-    # time.
+    # Turning off this metric. When measured this NMS was well in the weeds of the overall
+    # processing time (~250 microseconds each) and the sum of the invocations is captured in the
+    # total feature aggregation time.
 
     return feature_list

@@ -3,10 +3,12 @@ import logging
 import os
 
 from codeguru_profiler_agent import Profiler
+
 from aws_oversightml_model_runner import model_runner
 from aws_oversightml_model_runner.metrics import configure_metrics, start_metrics, stop_metrics
 
-CODEGURU_PROFILING_GROUP = os.environ.get('CODEGURU_PROFILING_GROUP')
+CODEGURU_PROFILING_GROUP = os.environ.get("CODEGURU_PROFILING_GROUP")
+
 
 def configure_logging(verbose: bool):
     """
@@ -21,7 +23,7 @@ def configure_logging(verbose: bool):
 
     ch = logging.StreamHandler()
     ch.setLevel(logging_level)
-    formatter = logging.Formatter('%(levelname)-8s %(message)s')
+    formatter = logging.Formatter("%(levelname)-8s %(message)s")
     ch.setFormatter(formatter)
 
     root_logger.addHandler(ch)
@@ -29,7 +31,7 @@ def configure_logging(verbose: bool):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
     configure_logging(args.verbose)

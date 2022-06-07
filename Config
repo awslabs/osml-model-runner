@@ -81,6 +81,8 @@ package.AWSOversightMLModelRunner = {
             Python-pep8-naming = 0.x;
             # Uncomment if you want to make flake8 check docstrings
             # Python-flake8-docstring = 1.x;
+
+            BrazilPythonBanditSupport = 1.0;
         };
     };
 

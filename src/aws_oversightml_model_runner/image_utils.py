@@ -1,7 +1,8 @@
-from typing import Tuple, Iterator
+from typing import Iterator, Tuple
 
 # TODO: Define a Point type so there is no confusion over the meaning of BBox.
-#  (i.e. a two corner box would be (Point, Point) while a UL width height box would be (Point, w, h)
+#       (i.e. a two corner box would be (Point, Point) while a UL width height box
+#       would be (Point, w, h)
 
 
 # Pixel coordinate (row, column)
@@ -40,8 +41,8 @@ def next_greater_multiple(n: int, m: int):
 
 def next_greater_power_of_two(n: int):
     """
-    Returns the number that is both a power of 2 and greater than or equal to the input parameter. For
-    example input 100 returns 128.
+    Returns the number that is both a power of 2 and greater than or equal to the input parameter.
+    For example input 100 returns 128.
 
     :param n: the input integer
     :return: power of 2 greater than or equal to input
@@ -61,9 +62,9 @@ def next_greater_power_of_two(n: int):
     return 1 << count
 
 
-def generate_crops_for_region(region: ImageRegion,
-                              chip_size: ImageDimensions,
-                              overlap: ImageDimensions) -> Iterator[ImageRegion]:
+def generate_crops_for_region(
+    region: ImageRegion, chip_size: ImageDimensions, overlap: ImageDimensions
+) -> Iterator[ImageRegion]:
     """
     Yields a list of overlapping chip bounding boxes for the given region. Chips will start
     in the upper left corner of the region (i.e. region[0][0], region[0][1]) and will be spaced
@@ -75,11 +76,15 @@ def generate_crops_for_region(region: ImageRegion,
     :return: an iterable list of tuples for the chip bounding boxes [((ul_r, ul_c), (w, h)), ...]
     """
     if overlap[0] >= chip_size[0] or overlap[1] >= chip_size[1]:
-        raise ValueError("Overlap must be less than chip size! chip_size = " + str(chip_size)
-                         + " overlap = " + str(overlap))
+        raise ValueError(
+            "Overlap must be less than chip size! chip_size = "
+            + str(chip_size)
+            + " overlap = "
+            + str(overlap)
+        )
 
-    # Calculate the spacing for the chips taking into account the horizontal and vertical overlap and how many are
-    # needed to cover the region
+    # Calculate the spacing for the chips taking into account the horizontal and vertical overlap
+    # and how many are needed to cover the region
     stride_x = chip_size[0] - overlap[0]
     stride_y = chip_size[1] - overlap[1]
     num_x = ceildiv(region[1][0], stride_x)

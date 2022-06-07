@@ -1,13 +1,11 @@
-
 import inspect
 from functools import wraps
 
-from .metrics_state import MetricsState
 from .metrics_context import MetricsContext
+from .metrics_state import MetricsState
 
 
 def metric_scope(fn):  # type: ignore
-
     @wraps(fn)
     def wrapper(*args, **kwargs):  # type: ignore
         metrics_context = create_metrics_context()

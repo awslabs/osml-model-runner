@@ -1,9 +1,6 @@
-from typing import List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from .metrics_utils import now
-
-
-
 
 
 class Metric(object):
@@ -21,14 +18,14 @@ class MetricsContext(object):
     """
 
     def __init__(
-            self,
-            namespace: str = None,
-            properties: Dict[str, Any] = None,
-            dimensions: List[Dict[str, str]] = None,
-            default_dimensions: Dict[str, str] = None,
+        self,
+        namespace: str = None,
+        properties: Dict[str, Any] = None,
+        dimensions: List[Dict[str, str]] = None,
+        default_dimensions: Dict[str, str] = None,
     ):
 
-        self.namespace: str = namespace
+        self.namespace: Optional[str] = namespace
         self.properties: Dict[str, Any] = properties or {}
         self.dimensions: List[Dict[str, str]] = dimensions or []
         self.default_dimensions: Dict[str, str] = default_dimensions or {}
@@ -65,7 +62,7 @@ class MetricsContext(object):
 
         self.dimensions.append(dimensions)
 
-    def set_dimensions(self, dimensionSets: List[Dict[str, str]]) -> None:
+    def set_dimensions(self, dimension_sets: List[Dict[str, str]]) -> None:
         """
         Overwrite all dimensions.
         ```
@@ -75,7 +72,7 @@ class MetricsContext(object):
         ```
         """
         self.should_use_default_dimensions = False
-        self.dimensions = dimensionSets
+        self.dimensions = dimension_sets
 
     def set_default_dimensions(self, default_dimensions: Dict) -> None:
         """
@@ -109,9 +106,7 @@ class MetricsContext(object):
         # because defaults won't actually get set until the flush
         # method is called. This allows us to not block the user
         # code while we're detecting the environment
-        return list(
-            map(lambda custom: {**self.default_dimensions, **custom}, self.dimensions)
-        )
+        return list(map(lambda custom: {**self.default_dimensions, **custom}, self.dimensions))
 
     def __has_default_dimensions(self) -> bool:
         return self.default_dimensions is not None and len(self.default_dimensions) > 0
