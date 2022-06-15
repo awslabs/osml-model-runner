@@ -1,10 +1,10 @@
 #!/bin/bash
 # This script runs the model runner container as an interactive shell that can be used to debug.
-export DEVELOPER_ACCOUNT_ID=010321660603
+export DEVELOPER_ACCOUNT_ID=572096393728
 
 # This command relies on the fact that the docker images command lists images in most recent order so the most
 # recent image built is the one that will be used.
-export OVERSIGHTML_MR_IMAGE_ID=$(docker images | grep AWSOversightMLModelRunner | awk 'NR==1{ print $1 ":" $2 }')
+export OVERSIGHTML_MR_IMAGE_ID=$(docker images | grep mr-container | awk 'NR==1{ print $1 ":" $2 }')
 
 echo "Found Docker Image: $OVERSIGHTML_MR_IMAGE_ID"
 echo "Running with resources in account: $DEVELOPER_ACCOUNT_ID"
@@ -14,12 +14,12 @@ docker run -it --rm \
     --env AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
     --env AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
     --env AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN} \
-    --env AWS_DEFAULT_REGION=us-east-1 \
+    --env AWS_DEFAULT_REGION=us-west-2 \
     --env WORKERS_PER_CPU=1 \
-    --env JOB_TABLE=overwatch-mr-jobs \
-    --env FEATURE_TABLE=overwatch-mr-features \
-    --env IMAGE_QUEUE=https://sqs.us-east-1.amazonaws.com/${DEVELOPER_ACCOUNT_ID}/Oversight-ImageQueue \
-    --env REGION_QUEUE=https://sqs.us-east-1.amazonaws.com/${DEVELOPER_ACCOUNT_ID}/Oversight-RegionQueue \
+    --env JOB_TABLE=ImageProcessingJobStatus \
+    --env FEATURE_TABLE=ImageProcessingFeatures \
+    --env IMAGE_QUEUE=https://sqs.us-west-2.amazonaws.com/${DEVELOPER_ACCOUNT_ID}/ImageQueue \
+    --env REGION_QUEUE=https://sqs.us-west-2.amazonaws.com/${DEVELOPER_ACCOUNT_ID}/RegionQueue \
     --cpus 1 \
     --user root \
     --entrypoint /bin/bash \
