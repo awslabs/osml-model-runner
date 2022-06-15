@@ -2,7 +2,7 @@ import geojson
 import pytest
 import shapely
 
-from aws_oversightml_model_runner.georeference import GDALAffineCameraModel
+from aws_model_runner.georeference import GDALAffineCameraModel
 
 
 @pytest.fixture

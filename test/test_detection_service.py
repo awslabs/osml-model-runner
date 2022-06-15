@@ -6,8 +6,8 @@ import boto3
 import mock
 from botocore.stub import ANY, Stubber
 
-from aws_oversightml_model_runner.detection_service import FeatureDetector
-from aws_oversightml_model_runner.metrics import configure_metrics
+from aws_model_runner.detection_service import FeatureDetector
+from aws_model_runner.metrics import configure_metrics
 
 configure_metrics("test", "stdout")
 
@@ -23,7 +23,7 @@ def test_construct_with_execution_role():
         "SessionToken": "FAKE-SESSION-TOKEN",
         "Expiration": datetime.datetime.now(),
     }
-    with mock.patch("aws_oversightml_model_runner.detection_service.boto3") as mock_boto3:
+    with mock.patch("aws_model_runner.detection_service.boto3") as mock_boto3:
         mock_boto3.client.return_value = sm_client
         FeatureDetector("test-endpoint", aws_credentials)
         mock_boto3.client.assert_called_once_with(

@@ -3,11 +3,11 @@ LATEST_IMAGE=$(docker images | grep AWSOversightMLModelRunner | awk 'NR==1{print
 
 docker run -it \
            --env AWS_ACCESS_KEY_ID --env AWS_SECRET_ACCESS_KEY --env AWS_SESSION_TOKEN \
-           --env "AWS_DEFAULT_REGION=us-east-1" \
-           --env "image_queue=https://sqs.us-east-1.amazonaws.com/010321660603/Oversight-ImageQueue" \
-           --env "region_queue=https://sqs.us-east-1.amazonaws.com/010321660603/Oversight-RegionQueue" \
+           --env "AWS_DEFAULT_REGION=us-west-2" \
+           --env "image_queue=https://sqs.us-west-2.amazonaws.com/572096393728/ImageQueue" \
+           --env "region_queue=https://sqs.us-west-2.amazonaws.com/572096393728/RegionQueue" \
            --env "feature_table=overwatch-mr-features" \
-           --env "job_table=overwatch-mr-jobs" \
+           --env "job_table=ImageProcessingJobStatus" \
            --env "workers_per_cpu=8" \
            --entrypoint /bin/bash \
            ${LATEST_IMAGE}

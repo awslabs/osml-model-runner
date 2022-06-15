@@ -4,8 +4,8 @@ import os
 
 from codeguru_profiler_agent import Profiler
 
-from aws_oversightml_model_runner import model_runner
-from aws_oversightml_model_runner.metrics import configure_metrics, start_metrics, stop_metrics
+from aws_model_runner import model_runner
+from aws_model_runner.metrics import configure_metrics, start_metrics, stop_metrics
 
 CODEGURU_PROFILING_GROUP = os.environ.get("CODEGURU_PROFILING_GROUP")
 

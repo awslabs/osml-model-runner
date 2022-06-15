@@ -1,8 +1,8 @@
 import mock
 from botocore.stub import ANY, Stubber
 
-from aws_oversightml_model_runner.feature_table import FeatureTable
-from aws_oversightml_model_runner.metrics import configure_metrics
+from aws_model_runner.feature_table import FeatureTable
+from aws_model_runner.metrics import configure_metrics
 
 configure_metrics("test", "stdout")
 

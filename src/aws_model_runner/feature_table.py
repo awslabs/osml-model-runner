@@ -8,7 +8,7 @@ import numpy as np
 from boto3 import dynamodb
 from geojson import Feature
 
-from aws_oversightml_model_runner.image_utils import ImageDimensions
+from aws_model_runner.image_utils import ImageDimensions
 
 from .metrics import metric_scope, now
 

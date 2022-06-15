@@ -1,6 +1,6 @@
 import shapely.geometry
 
-from aws_oversightml_model_runner.model_runner_api import (
+from aws_model_runner.model_runner_api import (
     ImageRequest,
     ModelHostingOptions,
     RegionRequest,

@@ -1,8 +1,8 @@
 import pytest
 from osgeo import gdal
 
-from aws_oversightml_model_runner.gdal_utils import GDALConfigEnv, load_gdal_dataset
-from aws_oversightml_model_runner.georeference import GDALAffineCameraModel
+from aws_model_runner.gdal_utils import GDALConfigEnv, load_gdal_dataset
+from aws_model_runner.georeference import GDALAffineCameraModel
 
 
 def test_gdal_config_env():

@@ -5,17 +5,17 @@ import pytest
 import shapely.geometry
 import shapely.wkt
 
-from aws_oversightml_model_runner.georeference import GDALAffineCameraModel
-from aws_oversightml_model_runner.job_table import JobTable
-from aws_oversightml_model_runner.metrics import configure_metrics
-from aws_oversightml_model_runner.model_runner import (
+from aws_model_runner.georeference import GDALAffineCameraModel
+from aws_model_runner.job_table import JobTable
+from aws_model_runner.metrics import configure_metrics
+from aws_model_runner.model_runner import (
     calculate_processing_bounds,
     create_gdal_translate_kwargs,
     get_image_type,
     load_gdal_dataset,
     process_region_request,
 )
-from aws_oversightml_model_runner.model_runner_api import RegionRequest
+from aws_model_runner.model_runner_api import RegionRequest
 
 configure_metrics("test", "stdout")
 
@@ -147,10 +147,10 @@ class RegionRequestMatcher:
 # reversed (i.e. the first mock parameter is the last decorator defined. Also note that the
 # pytest fixtures must come at the end.
 @mock.patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1", "WORKERS_PER_CPU": "1"})
-@mock.patch("aws_oversightml_model_runner.model_runner.FeatureDetector", autospec=True)
-@mock.patch("aws_oversightml_model_runner.model_runner.FeatureTable", autospec=True)
-@mock.patch("aws_oversightml_model_runner.model_runner.ImageTileWorker", autospec=True)
-@mock.patch("aws_oversightml_model_runner.model_runner.Queue", autospec=True)
+@mock.patch("aws_model_runner.model_runner.FeatureDetector", autospec=True)
+@mock.patch("aws_model_runner.model_runner.FeatureTable", autospec=True)
+@mock.patch("aws_model_runner.model_runner.ImageTileWorker", autospec=True)
+@mock.patch("aws_model_runner.model_runner.Queue", autospec=True)
 def test_process_region_request(
     mock_queue, mock_tile_worker, mock_feature_table, mock_feature_detector, test_dataset_and_camera
 ):

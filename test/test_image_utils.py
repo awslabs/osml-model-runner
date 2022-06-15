@@ -1,4 +1,4 @@
-from aws_oversightml_model_runner.image_utils import (
+from aws_model_runner.image_utils import (
     generate_crops_for_region,
     next_greater_multiple,
     next_greater_power_of_two,

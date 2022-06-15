@@ -4,7 +4,7 @@ from typing import Any, Dict, Union
 import shapely.geometry
 import shapely.wkt
 
-from aws_oversightml_model_runner.image_utils import ImageDimensions
+from aws_model_runner.image_utils import ImageDimensions
 
 
 class ModelHostingOptions(str, Enum):

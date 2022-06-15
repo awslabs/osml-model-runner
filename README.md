@@ -75,20 +75,6 @@ You can format your code using `brazil-build format`, run mypy with `brazil-buil
 
 ## Building
 
-### Brazil & BATS
-
-The application is built using [BrazilPython3](https://w.amazon.com/?BrazilPython3) and
-[BATS](https://builderhub.corp.amazon.com/tools/bats/). Running `brazil-build release` will build the software and run
-the automated unit tests. If you want to build a local copy of the container as it would be built from the CI/CD
-pipeline you can do that with the bats-cli by running the `docker_local_build.sh` script after the package has been
-built with Brazil.
-
-### Peru
-
-*TODO: [Peru](https://w.amazon.com/bin/view/Peru/) is an effort to move Amazon from the internal package and dependency
-management systems (i.e. Brazil) to more common tools found across industry. It appears to be gaining momentum in AWS
-and there are options to have packages dual built by both Brazil and Peru. It is worth investigating to see if we should
-migrate these builds.*
 
 ### Non-AWS Builds
 
