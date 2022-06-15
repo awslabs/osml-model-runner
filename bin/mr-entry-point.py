@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
     configure_logging(args.verbose)
 
-    configure_metrics("OversightML/ModelRunner", "cw")
+    configure_metrics("AIP/ModelRunner", "cw")
     if CODEGURU_PROFILING_GROUP:
         Profiler(profiling_group_name=CODEGURU_PROFILING_GROUP).start()
     start_metrics()
