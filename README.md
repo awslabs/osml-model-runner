@@ -1,10 +1,19 @@
-# AWSOversightMLModelRunner
+#Hardened AWSModelRunner
 
 This package contains an application used to orchestrate the execution of ML models on large satellite images. The
 application monitors an input queue for processing requests, decomposes the image into a set of smaller regions and
 tiles, invokes a ML model endpoint with each tile, and finally aggregates all of the results into a single output. The
 application itself has been containerized and is designed to run on a distributed cluster of machines collaborating
 across instances to process images as quickly as possible.
+
+This application has been hardened and built on top of an IronBank container located:
+* https://repo1.dso.mil/dsop/opensource/python/python38/-/blob/development/Dockerfile
+* OS=RHEL 8
+* Python=Python 3.8 (python38@sha256:7ec293f50da6961131a7d42f40dc8078dd13fbbe0f4eb7a9b37b427c360f2797)
+* OPENJPEG_VERSION=2.3.1
+* PROJ=8.2.1
+* GDAL=3.4.2
+
 
 ## Key Design Concepts
 
@@ -46,21 +55,23 @@ by multiple model runs.
 
 ## Development Environment
 
-To work with this package you should set up a workspace as follows:
-
-```shell
-cd ~/workplace
-brazil ws --create --name AWSOversightMLModelRunner --versionSet AWSOversightMLModelRunnerCDK/development
-cd AWSOversightMLModelRunner
-brazil ws --use --package AWSOversightMLModelRunner
-cd src/AWSOversightMLModelRunner
-```
-
 Note that some of the 3rd party dependencies, (Numpy, GDAL, etc.) have issues on laptops (both Mac and Windows). I
 typically do builds and tests on a [CloudDesktop](https://builderhub.corp.amazon.com/tools/cloud-desktop/) to most
 closely match the Linux environment the application is designed to run in. If you want to do local development with an
 IDE then tools like [ninja-dev-sync](https://w.amazon.com/bin/view/Ninja-dev-sync/) can be used to automatically
 synchronize code between a laptop and the cloud desktop.
+
+To run the container in a test mode: 
+
+```shell
+docker run -it -v/path/to/test:/home/test --entrypoint /bin/bash 
+```
+
+```bash
+python3 -m pytest test
+```
+
+
 
 ## Linting/Formatting
 
@@ -76,8 +87,4 @@ You can format your code using `brazil-build format`, run mypy with `brazil-buil
 ## Building
 
 
-### Non-AWS Builds
 
-*TODO: In the near term the Professional Services organization be installing this application in customer accounts that
-do not benefit from the full infrastructure typically associated with AWS services. We need to create Docker files and
-build configurations that rely on completely commercial repositories for 3rd party dependencies.*
