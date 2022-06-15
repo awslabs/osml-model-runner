@@ -71,18 +71,12 @@ docker run -it -v/path/to/test:/home/test --entrypoint /bin/bash
 python3 -m pytest test
 ```
 
-
-
 ## Linting/Formatting
 
 This package uses a number of tools to enforce formatting, linting, and general best practices:
 - [Black](https://github.com/ambv/black) and [isort](https://github.com/timothycrosley/isort) for formatting with a max line length of 100
 - [mypy](http://mypy-lang.org/) to enforce static type checking
 - [flake8](https://pypi.python.org/pypi/flake8) to check pep8 compliance and logical errors in code
-
-Configuration for these tools can be found in `setup.cfg`.
-
-You can format your code using `brazil-build format`, run mypy with `brazil-build mypy`, and run flake8 with `brazil-build flake8`. All checks will also be run as part of `brazil-build release`.
 
 ## Building
 
