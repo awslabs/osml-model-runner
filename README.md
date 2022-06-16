@@ -1,4 +1,4 @@
-#Hardened AWSModelRunner
+#AIP Model Runner Container
 
 This package contains an application used to orchestrate the execution of ML models on large satellite images. The
 application monitors an input queue for processing requests, decomposes the image into a set of smaller regions and
@@ -14,6 +14,8 @@ This application has been hardened and built on top of an IronBank container loc
 * PROJ=8.2.1
 * GDAL=3.4.2
 
+To pull from the IronBank registry:
+https://quip-amazon.com/C47AAbsNLOJs/How-To-Use-IronBank-Containers
 
 ## Key Design Concepts
 
@@ -55,16 +57,11 @@ by multiple model runs.
 
 ## Development Environment
 
-Note that some of the 3rd party dependencies, (Numpy, GDAL, etc.) have issues on laptops (both Mac and Windows). I
-typically do builds and tests on a [CloudDesktop](https://builderhub.corp.amazon.com/tools/cloud-desktop/) to most
-closely match the Linux environment the application is designed to run in. If you want to do local development with an
-IDE then tools like [ninja-dev-sync](https://w.amazon.com/bin/view/Ninja-dev-sync/) can be used to automatically
-synchronize code between a laptop and the cloud desktop.
 
 To run the container in a test mode: 
 
 ```shell
-docker run -it -v/path/to/test:/home/test --entrypoint /bin/bash 
+docker run -it -v/path/to/test:/home/test --entrypoint /bin/bash .
 ```
 
 ```bash

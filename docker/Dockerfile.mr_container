@@ -1,0 +1,235 @@
+ARG BASE_REGISTRY=registry1.dso.mil
+ARG BASE_IMAGE=opensource/python/python38
+ARG BASE_TAG=latest
+
+FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG} as gdal-base
+
+# Setup build env for PROJ
+ARG PACKAGES="wget unzip make libtool gcc-c++ sqlite sqlite-devel cmake pkg-config "
+
+# For PROJ and GDAL
+ARG GDAL_PKGS="curl-devel libtiff-devel zlib-devel libzstd libjpeg-turbo-devel libpng-devel libwebp-devel expat-devel postgresql-devel"
+
+ARG ETC_PKGS="rsync"
+
+USER root
+RUN dnf update -y --nodocs && \
+    dnf install -y --setopt=tsflags=nodocs $PACKAGES $GDAL_PKGS $ETC_PKGS && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
+
+USER root
+ARG OPENJPEG_VERSION=2.3.1
+RUN if test "${OPENJPEG_VERSION}" != ""; then ( \
+    wget -q https://github.com/uclouvain/openjpeg/archive/v${OPENJPEG_VERSION}.tar.gz \
+    && tar xzf v${OPENJPEG_VERSION}.tar.gz \
+    && rm -f v${OPENJPEG_VERSION}.tar.gz \
+    && cd openjpeg-${OPENJPEG_VERSION} \
+    && cmake . -DBUILD_SHARED_LIBS=ON  -DBUILD_STATIC_LIBS=OFF -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+    && make -j$(nproc) \
+    && make install \
+    && mkdir -p /build_thirdparty/usr/lib \
+    && cp -P /usr/lib/libopenjp2*.so* /build_thirdparty/usr/lib \
+    && cp -P /usr/lib/pkgconfig/libopenjp2.pc /usr/share/pkgconfig/libopenjp2.pc \
+    && for i in /build_thirdparty/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
+    && cd .. \
+    && rm -rf openjpeg-${OPENJPEG_VERSION} \
+    ); fi
+
+ARG PROJ_DATUMGRID_VERSION=1.8
+ARG PROJ_DATUMGRID_FILENAME=proj-datumgrid.zip
+RUN if test "${PROJ_DATUMGRID_VERSION}" != ""; then ( \
+    wget -q http://download.osgeo.org/proj/proj-datumgrid-${PROJ_DATUMGRID_VERSION}.zip -O ${PROJ_DATUMGRID_FILENAME} \
+    && cp ./${PROJ_DATUMGRID_FILENAME} /tmp \
+    && mkdir -p /build_projgrids/usr/share/proj \
+    && unzip -q -j -u -o /tmp/${PROJ_DATUMGRID_FILENAME} -d /build_projgrids/usr/share/proj \
+    && rm -f /tmp/${PROJ_DATUMGRID_FILENAME} \
+    ); fi
+
+#ARG PROJ_DATUMGRID_FILENAME=proj-datumgrid.zip
+#COPY ./${PROJ_DATUMGRID_FILENAME} /tmp
+#RUN \
+#    mkdir -p /build_projgrids/usr/share/proj \
+#    && unzip -q -j -u -o /tmp/${PROJ_DATUMGRID_FILENAME} -d /build_projgrids/usr/share/proj \
+#    && rm -f /tmp/${PROJ_DATUMGRID_FILENAME}
+
+ARG RSYNC_REMOTE
+
+# Build PROJ
+USER root
+ARG PROJ_VERSION=8.2.1
+ARG PROJ_FILENAME=proj.tar.gz
+RUN wget -q https://github.com/OSGeo/PROJ/archive/${PROJ_VERSION}.tar.gz -O ${PROJ_FILENAME} \
+    && cp ./${PROJ_FILENAME} /tmp
+
+RUN mkdir proj \
+	&& tar -C proj --strip-components=1 -xf /tmp/${PROJ_FILENAME}
+COPY ./scripts/autogen.sh /proj/autogen.sh
+RUN cd /proj \
+    && chmod 777 ./autogen.sh \
+    && ./autogen.sh \
+    && if test "${RSYNC_REMOTE}" != ""; then \
+        echo "Downloading cache..."; \
+        rsync -ra ${RSYNC_REMOTE}/proj/ $HOME/; \
+        echo "Finished"; \
+        export CC="ccache gcc"; \
+        export CXX="ccache g++"; \
+        export PROJ_DB_CACHE_DIR="$HOME/.ccache"; \
+        ccache -M 100M; \
+    fi \
+    && ./configure --prefix=/usr --disable-static --enable-lto \
+    && make -j$(nproc) \
+    && make install \
+    && make install DESTDIR="/build_proj" \
+    && if test "${RSYNC_REMOTE}" != ""; then \
+        ccache -s; \
+        echo "Uploading cache..."; \
+        rsync -ra --delete $HOME/.ccache ${RSYNC_REMOTE}/proj/; \
+        echo "Finished"; \
+        rm -rf $HOME/.ccache; \
+        unset CC; \
+        unset CXX; \
+    fi \
+    && cd .. \
+    && rm -rf proj \
+    && for i in /build_proj/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
+    && for i in /build_proj/usr/bin/*; do strip -s $i 2>/dev/null || /bin/true; done
+
+# Build GDAL
+ARG GDAL_VERSION=3.4.2
+ARG GDAL_FILENAME=gdal.tar.gz
+RUN wget -q https://github.com/OSGeo/gdal/releases/download/v${GDAL_VERSION}/gdal-${GDAL_VERSION}.tar.gz -O ${GDAL_FILENAME} \
+    && cp ./${GDAL_FILENAME} /tmp
+
+RUN if test "${RSYNC_REMOTE}" != ""; then \
+        echo "Downloading cache..."; \
+        rsync -ra ${RSYNC_REMOTE}/gdal/ $HOME/; \
+        echo "Finished"; \
+        export CC="ccache gcc"; \
+        export CXX="ccache g++"; \
+        ccache -M 1G; \
+    fi \
+    && mkdir gdal \
+	&& tar -C gdal --strip-components=1 -xf /tmp/${GDAL_FILENAME} \
+    && cd gdal \
+    && ./configure --prefix=/usr --without-libtool \
+    --with-hide-internal-symbols \
+    --with-proj=/usr \
+    --with-libtiff=internal --with-rename-internal-libtiff-symbols \
+    --with-geotiff=internal --with-rename-internal-libgeotiff-symbols \
+    --enable-lto \
+    --with-fgdb=${FILEGDB_INSTALL} \
+    --with-openjpeg \
+    && make -j$(nproc) \
+    && make install DESTDIR="/build" \
+    && if test "${RSYNC_REMOTE}" != ""; then \
+        ccache -s; \
+        echo "Uploading cache..."; \
+        rsync -ra --delete $HOME/.ccache ${RSYNC_REMOTE}/gdal/; \
+        echo "Finished"; \
+        rm -rf $HOME/.ccache; \
+        unset CC; \
+        unset CXX; \
+    fi \
+    && cd ../.. \
+    && rm -rf gdal \
+    && mkdir -p /build_gdal_version_changing/usr/include \
+    && mv /build/usr/lib64                  /build_gdal_version_changing/usr \
+    && mv /build/usr/include/gdal_version.h /build_gdal_version_changing/usr/include \
+    && mv /build/usr/bin                    /build_gdal_version_changing/usr \
+    && for i in /build_gdal_version_changing/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
+    && for i in /build_gdal_version_changing/usr/bin/*; do strip -s $i 2>/dev/null || /bin/true; done \
+    # Remove resource files of uncompiled drivers
+    && (for i in \
+            # BAG driver
+            /build/usr/share/gdal/bag*.xml \
+            # unused
+            /build/usr/share/gdal/*.svg \
+            # unused
+            /build/usr/share/gdal/*.png \
+            # GMLAS driver
+            /build/usr/share/gdal/gmlas* \
+            # netCDF driver
+            /build/usr/share/gdal/netcdf_config.xsd \
+       ;do rm $i; done)
+
+
+FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG} as runner
+
+
+#FROM ${UBI_FINAL_IMAGE} as mapproxy
+
+# GDAL: Part of the original GDAL Dockerfile
+ARG PACKAGES="libstdc++ sqlite-libs libcurl libtiff zlib libzstd libjpeg-turbo libpng openjpeg2 libwebp expat libpq"
+
+USER root
+RUN dnf update -y \
+    && dnf install -y --setopt=tsflags=nodocs $PACKAGES  \
+    # libturbojpeg.so is not used by GDAL. Only libjpeg.so*, I don't think this exists here though
+    && rm -f /usr/lib/libturbojpeg.so* \
+    # Only libwebp.so is used by GDAL
+    && rm -f /usr/lib/libwebpmux.so* /usr/lib/libwebpdemux.so* /usr/lib/libwebpdecoder.so* \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf/ /var/tmp/* /tmp/* /var/tmp/.???* /tmp/.???*
+
+COPY --from=gdal-base  /build_thirdparty/usr/ /usr/
+COPY --from=gdal-base  /build_projgrids/usr/ /usr/
+
+COPY --from=gdal-base  /build_proj/usr/share/proj/ /usr/share/proj/
+COPY --from=gdal-base  /build_proj/usr/include/ /usr/include/
+COPY --from=gdal-base  /build_proj/usr/bin/ /usr/bin/
+
+COPY --from=gdal-base  /build_proj/usr/lib64/ /usr/lib64/
+
+COPY --from=gdal-base  /build/usr/share/gdal/ /usr/share/gdal/
+COPY --from=gdal-base  /build/usr/include/ /usr/include/
+COPY --from=gdal-base  /build_gdal_version_changing/usr/ /usr/
+
+USER root
+RUN dnf makecache --refresh
+
+RUN dnf install -y --nodocs \
+    cmake \
+    wget \
+    python38-devel \
+    gcc \
+    gcc-c++
+
+
+WORKDIR /home
+COPY bin/ /home/bin
+COPY src/ /home/src
+COPY setup.py /home
+
+
+# Update C env vars so compiler can find gdal
+ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
+ENV C_INCLUDE_PATH=/usr/include/gdal
+
+RUN pip3 install \
+    pip -U \
+    urllib3
+
+RUN pip3 install \
+    numpy \
+    boto3 \
+    geojson \
+    shapely \
+    codeguru_profiler_agent \
+    # Dev env
+    pytest \
+    mock
+
+RUN pip3 install \
+    GDAL==$(gdal-config --version | awk -F'[.]' '{print $1"."$2"."$3}') --global-option=build_ext --global-option="-I/usr/include/gdal"
+
+RUN python3 setup.py install
+
+# Clean up old python3.6 install
+USER root
+RUN rm -rf /usr/lib/python3.6/site-packages/urllib3*
+
+USER 1000
+
+CMD ["python3", "bin/mr-entry-point.py"]
