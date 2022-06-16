@@ -1,4 +1,4 @@
-#AIP Model Runner Container
+# AIP Model Runner Container
 
 This package contains an application used to orchestrate the execution of ML models on large satellite images. The
 application monitors an input queue for processing requests, decomposes the image into a set of smaller regions and
@@ -14,8 +14,16 @@ This application has been hardened and built on top of an IronBank container loc
 * PROJ=8.2.1
 * GDAL=3.4.2
 
-To pull from the IronBank registry:
-https://quip-amazon.com/C47AAbsNLOJs/How-To-Use-IronBank-Containers
+## Using Iron Bank Registry 
+1. Log into: `https://registry1.dso.mil/`
+2. Click on your `username` in the upper right.
+3. In drop down menu select `User Profile`
+4. In the menu that appears:
+    1. docker user name: `Username`
+    2. password: `CLI Secret`
+5. In the CLI:
+    1. `docker login registry1.dso.mil (http://registry1.dso.mil/) -u {Username} -p {CLI Secret}`
+        
 
 ## Key Design Concepts
 
