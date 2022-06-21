@@ -1,22 +1,76 @@
 stages:
   - build
-  - test
-  - deploy
+  - sast
+  - dast
+  - test 
 
 include:
   - template: Security/SAST.gitlab-ci.yml
+  - project: 'DevOps/security-scanning/scanning-templates'
+    file: '/sonarqube-check.yml'
+  - project: 'DevOps/security-scanning/scanning-templates'
+    file: '/owasp-depcheck.yml'
+  - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
+    ref: master
+    file: '/Container-Scanning.gitlab-ci.yml'
+
+
+variables: 
+  BUILD_CERT: /certs/tls-ca-bundle.pem
+  PIP_INSTALL_LOCATION: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
+
+create_runner:
+  stage: build
+  tags:
+    - dind
+  before_script:
+    # Login to iron bank per instructions here: https://discourse.gs.mil/t/how-do-i-use-platform-one-iron-bank-hosted-images-at-nga/5187/2
+    - docker login -u ${REGISTERY1_USERNAME} -p ${REGISTERY1_PASSWORD} registry1.dso.mil 
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
+    - mkdir -p certs/ && cp /certs/tls-ca-bundle.pem certs/tls-ca-bundle.pem
+    - | 
+      docker build --target cert-base \
+                    -f docker/Dockerfile.mr_container \
+                    -t ${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG} .
+    - docker push ${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG}
+    - |
+      docker build --target runner \
+                    -f docker/Dockerfile.mr_container \
+                    --build-arg PIP_INSTALL_LOCATION=$PIP_INSTALL_LOCATION \
+                    --build-arg BUILD_CERT=$BUILD_CERT \
+                    --build-arg BASE_CONTAINER=${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG} \
+                    -t ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG} .
+    - docker push ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG}
+
+create_gdal_base:
+  # This stage exists for posterity and so we can audit our gdal base build easily, 
+  #   allowing devs to quickly pull a complex changed gdal for debugging
+  stage: build
+  tags:
+    - dind
+  before_script:
+    # Login to iron bank per instructions here: https://discourse.gs.mil/t/how-do-i-use-platform-one-iron-bank-hosted-images-at-nga/5187/2
+    - docker login -u ${REGISTERY1_USERNAME} -p ${REGISTERY1_PASSWORD} registry1.dso.mil 
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
+    - mkdir -p certs/ && cp /certs/tls-ca-bundle.pem certs/tls-ca-bundle.pem
+    - | 
+      docker build --target gdal-base \
+                    -f docker/Dockerfile.mr_container \
+                    -t ${CI_REGISTRY_IMAGE}/gdal-base:${CI_COMMIT_REF_SLUG} .
+    - docker push ${CI_REGISTRY_IMAGE}/gdal-base:${CI_COMMIT_REF_SLUG}
+
 
 fortify_build:
-  stage: build
+  stage: sast
   image: gitlab-registry.gs.mil/chargeback/docker/fortify-sca-py38:latest
   tags:
     - standard
-  only:
-    - mainline-ts-scan
-  variables:
+  variables: 
     CLASSPATH: "/usr/share/java/*.jar"
     JOB_NAME: "python_scan"
-    APP_NAME: 'AIP'
+    APP_NAME: 'AIP-Model-Runner'    
     HP_FORTIFY_SCAN_FILE_NAME: "fortifyResults-${CI_COMMIT_SHA}.fpr"
     HP_FORTIFY_REPORT_FILE_NAME: "fortifyResults-${CI_COMMIT_SHA}.pdf"
     SECURITY_SCANS_FOLDER: 'security-scans'
@@ -24,13 +78,66 @@ fortify_build:
   script:
     - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} -clean
     - mkdir $WORKSPACE/${SECURITY_SCANS_FOLDER}
-    - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} "**/*.ts"
-    - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} "src/**/*.py"  -python-version 3 -python-path `python3 -c "import sys;sys.path.append(r'~/.local/');print(':'.join(sys.path))"` -Dcom.fortify.sca.follow.imports=false
+    #- pip3 install -r ./requirements.txt --user
+    - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} "src/**/*.py"  -python-version 3 -python-path `python3 -c "import sys;sys.path.append(r'~/.local/');print(':'.join(sys.path))"` -Dcom.fortify.sca.follow.imports=false        
     - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} -show-files
     - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} -scan -f "$WORKSPACE/${SECURITY_SCANS_FOLDER}/${HP_FORTIFY_SCAN_FILE_NAME}"
     - /opt/Fortify/bin/ReportGenerator -format pdf -f "$WORKSPACE/${SECURITY_SCANS_FOLDER}/${HP_FORTIFY_REPORT_FILE_NAME}" -source "$WORKSPACE/${SECURITY_SCANS_FOLDER}/${HP_FORTIFY_SCAN_FILE_NAME}" -showSuppressed -showHidden
-  after_script:
-    - python3 /opt/hp_fortify_sca/bin/fortify_to_gitlab.py fortify-scan-results.fpr || true
   artifacts:
     paths:
       - security-scans/
+
+
+bandit-sast: 
+  stage: sast 
+
+
+semgrep-sast: 
+  stage: sast 
+
+
+sonarqube_scanning: 
+  stage: sast 
+
+
+container_scanning:
+  stage: dast 
+  variables:
+    DOCKER_IMAGE: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG}
+
+
+owasp_depcheck_scan:
+  stage: dast
+  variables:
+    SUBFOLDER_TO_SCAN: ./
+    dependency_files: requirements.txt
+  cache:
+    paths:
+      - ./
+
+
+pytest_functionality: 
+  stage: test
+  tags:
+    - dind
+  before_script:
+    # Login to iron bank per instructions here: https://discourse.gs.mil/t/how-do-i-use-platform-one-iron-bank-hosted-images-at-nga/5187/2
+    - docker login -u ${REGISTERY1_USERNAME} -p ${REGISTERY1_PASSWORD} registry1.dso.mil 
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+    - docker pull ${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG}
+    - mkdir -p certs/ && cp /certs/tls-ca-bundle.pem certs/tls-ca-bundle.pem
+  script: 
+    - |
+      docker build --target runner \
+                    -f docker/Dockerfile.mr_container \
+                    --build-arg PIP_INSTALL_LOCATION=$PIP_INSTALL_LOCATION \
+                    --build-arg BUILD_CERT=$BUILD_CERT \
+                    --build-arg BASE_CONTAINER=${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG} \
+                    -t ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG} .
+    - | 
+      docker build --target unit-test \
+                    -f docker/Dockerfile.mr_container \
+                    --build-arg PIP_INSTALL_LOCATION=$PIP_INSTALL_LOCATION \
+                    --build-arg BUILD_CERT=$BUILD_CERT \
+                    -t aip-mr-container-test:latest .
+    - docker run -i aip-mr-container-test:latest
