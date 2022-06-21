@@ -1,0 +1,36 @@
+stages:
+  - build
+  - test
+  - deploy
+
+include:
+  - template: Security/SAST.gitlab-ci.yml
+
+fortify_build:
+  stage: build
+  image: gitlab-registry.gs.mil/chargeback/docker/fortify-sca-py38:latest
+  tags:
+    - standard
+  only:
+    - mainline-ts-scan
+  variables:
+    CLASSPATH: "/usr/share/java/*.jar"
+    JOB_NAME: "python_scan"
+    APP_NAME: 'AIP'
+    HP_FORTIFY_SCAN_FILE_NAME: "fortifyResults-${CI_COMMIT_SHA}.fpr"
+    HP_FORTIFY_REPORT_FILE_NAME: "fortifyResults-${CI_COMMIT_SHA}.pdf"
+    SECURITY_SCANS_FOLDER: 'security-scans'
+    WORKSPACE: "."
+  script:
+    - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} -clean
+    - mkdir $WORKSPACE/${SECURITY_SCANS_FOLDER}
+    - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} "**/*.ts"
+    - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} "src/**/*.py"  -python-version 3 -python-path `python3 -c "import sys;sys.path.append(r'~/.local/');print(':'.join(sys.path))"` -Dcom.fortify.sca.follow.imports=false
+    - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} -show-files
+    - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} -scan -f "$WORKSPACE/${SECURITY_SCANS_FOLDER}/${HP_FORTIFY_SCAN_FILE_NAME}"
+    - /opt/Fortify/bin/ReportGenerator -format pdf -f "$WORKSPACE/${SECURITY_SCANS_FOLDER}/${HP_FORTIFY_REPORT_FILE_NAME}" -source "$WORKSPACE/${SECURITY_SCANS_FOLDER}/${HP_FORTIFY_SCAN_FILE_NAME}" -showSuppressed -showHidden
+  after_script:
+    - python3 /opt/hp_fortify_sca/bin/fortify_to_gitlab.py fortify-scan-results.fpr || true
+  artifacts:
+    paths:
+      - security-scans/
