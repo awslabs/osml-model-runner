@@ -1,5 +1,5 @@
 ARG BASE_REGISTRY=registry1.dso.mil
-ARG BASE_IMAGE=opensource/python/python38
+ARG BASE_IMAGE
 ARG BASE_TAG=latest
 
 FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG} as gdal-base

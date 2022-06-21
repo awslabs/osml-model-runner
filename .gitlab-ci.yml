@@ -1,13 +1,18 @@
+default:
+  tags:
+    - dind
+
 stages:
   - build
   - test
-  - deploy
+  - sast_scan
+  - dast
 
 include:
   - template: Security/SAST.gitlab-ci.yml
 
-fortify_build:
-  stage: build
+fortify_scan:
+  stage: sast_scan
   image: gitlab-registry.gs.mil/chargeback/docker/fortify-sca-py38:latest
   tags:
     - standard
@@ -34,3 +39,27 @@ fortify_build:
   artifacts:
     paths:
       - security-scans/
+
+build_container:
+  stage: build
+  script:
+    - export BASE_IMAGE=ironbank/opensource/python/python38
+    - docker build -f docker/Dockerfile.mr_container --build-arg BASE_IMAGE=$BASE_IMAGE -t ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG} .
+
+pytest_container:
+  stage: test
+  script:
+    - echo I ran a test
+
+# TODO: Fix this dast tool we found in anothe repo
+# Concrete scan job
+# dast_container_scan:
+#   stage: dast
+#   include:
+#     - project: BlueFactory/docker/templates
+#       file: Docker-Build.gitlab-ci.yml
+#   variables:
+#     # Enable scanning for inherited jobs
+#     CONTAINER_SCANNING_DISABLED: ""
+#     # the image to scan
+#     DOCKER_IMAGE: "${CI_REGISTRY_IMAGE}:test-transfer"
