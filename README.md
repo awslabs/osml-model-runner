@@ -22,7 +22,7 @@ This application has been hardened and built on top of an IronBank container loc
     1. docker user name: `Username`
     2. password: `CLI Secret`
 5. In the CLI:
-    1. `docker login registry1.dso.mil (http://registry1.dso.mil/) -u {Username} -p {CLI Secret}`
+    1. `docker login registry1.dso.mil -u {Username} -p {CLI Secret}`
 6. To build locally you can use: 
 ```bash
 docker build -f docker/Dockerfile.mr_container --build-arg BASE_REGISTRY=registry1.dso.mil --build-arg BASE_IMAGE=ironbank/opensource/python/python38 -t mr-container:latest .
