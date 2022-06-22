@@ -43,7 +43,8 @@ fortify_scan:
 build_container:
   stage: build
   script:
-    - export BASE_IMAGE=ironbank/opensource/python/python38
+    - export BASE_REGISTRY=maven-integration/aws/aws-aip/aip-model-runner/registry1.dso.mil/
+    - export BASE_IMAGE=python38
     - docker build -f docker/Dockerfile.mr_container --build-arg BASE_IMAGE=$BASE_IMAGE -t ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG} .
 
 pytest_container:
