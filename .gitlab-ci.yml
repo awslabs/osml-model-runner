@@ -45,7 +45,10 @@ create_docker_image:
   tags:
     - dind
   before_script:
-    - systemctl is-enabled httpd
+    - ls -la /etc/pki
+    - ls -la /etc/pki/ca-trust
+    - ls -la /etc/pki/ca-trust/extracted
+    - ls -la /etc/pki/ca-trust/extracted/pem
     - cp /etc/gitlab-runner/cacerts/pem/tls-ca-bundle.pem /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
     - chmod 644 /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
     - update-ca-trust
