@@ -45,6 +45,11 @@ create_docker_image:
   tags:
     - dind
   before_script:
+    - cp /etc/gitlab-runner/cacerts/pem/tls-ca-bundle.pem /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+    - chmod 644 /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+    - update-ca-trust
+    - update-ca-trust extract
+    - systemctl restart docker
     - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
   script:
     - export BASE_REGISTRY=gitlab-registry.gs.mil/maven-integration/aws/aws-aip/aip-model-runner/registry1.dso.mil
