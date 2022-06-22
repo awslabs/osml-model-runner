@@ -16,7 +16,9 @@ USER root
 RUN dnf update -y --nodocs && \
     dnf install -y --setopt=tsflags=nodocs $PACKAGES $GDAL_PKGS $ETC_PKGS && \
     dnf clean all && \
-    rm -rf /var/cache/dnf
+    rm -rf /var/cache/dnf \
+
+RUN wget -q https://github.com/uclouvain/openjpeg/archive/v2.3.1.tar.gz
 
 USER root
 ARG OPENJPEG_VERSION=2.3.1

@@ -40,13 +40,17 @@ fortify_scan:
     paths:
       - security-scans/
 
-build_container:
+create_docker_image:
   stage: build
-  script:
+  tags:
+    - dind
+  before_script:
     - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
     - export BASE_REGISTRY=gitlab-registry.gs.mil/maven-integration/aws/aws-aip/aip-model-runner/registry1.dso.mil
     - export BASE_IMAGE=python38
     - docker build -f docker/Dockerfile.mr_container --build-arg BASE_REGISTRY=$BASE_REGISTRY --build-arg BASE_IMAGE=$BASE_IMAGE -t ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG} .
+    - docker push $CI_REGISTRY_IMAGE
 
 pytest_container:
   stage: test
