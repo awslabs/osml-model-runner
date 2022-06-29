@@ -1,3 +1,7 @@
+default:
+  tags:
+    - dind
+
 stages:
   - build
   - sast
