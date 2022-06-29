@@ -2,12 +2,12 @@ import argparse
 import logging
 import os
 
-from codeguru_profiler_agent import Profiler
+# from codeguru_profiler_agent import Profiler
 
 from aws_model_runner import model_runner
 from aws_model_runner.metrics import configure_metrics, start_metrics, stop_metrics
 
-CODEGURU_PROFILING_GROUP = os.environ.get("CODEGURU_PROFILING_GROUP")
+# CODEGURU_PROFILING_GROUP = os.environ.get("CODEGURU_PROFILING_GROUP")
 
 
 def configure_logging(verbose: bool):
@@ -37,8 +37,8 @@ if __name__ == "__main__":
     configure_logging(args.verbose)
 
     configure_metrics("AIP/ModelRunner", "cw")
-    if CODEGURU_PROFILING_GROUP:
-        Profiler(profiling_group_name=CODEGURU_PROFILING_GROUP).start()
+    #if CODEGURU_PROFILING_GROUP:
+        # Profiler(profiling_group_name=CODEGURU_PROFILING_GROUP).start()
     start_metrics()
     model_runner.monitor_work_queues()
     stop_metrics()

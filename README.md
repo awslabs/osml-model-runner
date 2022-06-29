@@ -23,32 +23,7 @@ This application has been hardened and built on top of an IronBank container loc
     2. password: `CLI Secret`
 5. In the CLI:
     1. `docker login registry1.dso.mil -u {Username} -p {CLI Secret}`
-6. To build locally you can use: 
-```bash
-docker build -f docker/Dockerfile.mr_container --build-arg BASE_REGISTRY=registry1.dso.mil --build-arg BASE_IMAGE=ironbank/opensource/python/python38 -t mr-container:latest .
-```
-7. 
-
-## How to install certs.
-1. First follow these steps to make sure you have httpd installed: 
-https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/SSL-on-amazon-linux-2.html
-2. Either go here and download: https://public.cyber.mil/pki-pke/ or 
-```bash
-curl -Ok https://dl.dod.cyber.mil/wp-content/uploads/pki-pke/zip/certificates_pkcs7_DoD.zip 
-```
-2. Install
-```bash
-unzip certificates_pkcs7_DoD.zip
-openssl pkcs7 -print_certs -in ./Certificates_PKCS7_v5.7_DoD/Certificates_PKCS7_v5.7_DoD.pem.p7b -out /etc/pki/ca-trust/source/anchors/ca-bundle.pem
-chmod 644 /etc/pki/ca-trust/source/anchors/ca-bundle.pem
-update-ca-trust
-update-ca-trust extract
-```
-3. Restart docker
-```bash
-systemctl restart docker
-```
-
+        
 
 ## Key Design Concepts
 
@@ -91,14 +66,20 @@ by multiple model runs.
 ## Development Environment
 
 
-To run the container in a test mode: 
+To run the container in a test mode and work inside it. 
 
 ```shell
-docker run -it -v/path/to/test:/home/test --entrypoint /bin/bash .
+docker run -it -v `pwd`/:/home/ --entrypoint /bin/bash .
 ```
 
 ```bash
 python3 -m pytest test
+```
+
+To build the test container stage and run it: 
+```shell 
+docker build --target unit-test -f docker/Dockerfile.mr_container -t aip-mr-container-test:latest .
+docker run --rm -it aip-mr-container-test:latest
 ```
 
 ## Linting/Formatting
@@ -108,7 +89,5 @@ This package uses a number of tools to enforce formatting, linting, and general 
 - [mypy](http://mypy-lang.org/) to enforce static type checking
 - [flake8](https://pypi.python.org/pypi/flake8) to check pep8 compliance and logical errors in code
 
-## Building
-
-
-
+## Common Errors in SDLC
+DISA Break/Inspect - we can't gaurantee pipelines work and sometimes it is worth to just restart if it appears pipeline broke due to connection problems, sometimes they break network traffic to inspect and inspect packets without providing clear guidance on how. 

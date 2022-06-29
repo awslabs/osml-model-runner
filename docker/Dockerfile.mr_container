@@ -1,30 +1,27 @@
-ARG BASE_REGISTRY
-ARG BASE_IMAGE
-ARG BASE_TAG=latest
-
-FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG} as gdal-base
+ARG BASE_CONTAINER=registry1.dso.mil/ironbank/opensource/python:v3.10.5
+FROM ${BASE_CONTAINER} as gdal-base
 
 # Setup build env for PROJ
-ARG PACKAGES="wget unzip make libtool gcc-c++ sqlite sqlite-devel cmake pkg-config "
+ARG PACKAGES="wget unzip make libtool gcc-c++ sqlite sqlite-devel cmake pkg-config openssl"
 
 # For PROJ and GDAL
 ARG GDAL_PKGS="curl-devel libtiff-devel zlib-devel libzstd libjpeg-turbo-devel libpng-devel libwebp-devel expat-devel postgresql-devel"
 
 ARG ETC_PKGS="rsync"
 
+# Set wget to use PFS rather than certs - probably should introduce a check sum validator 
+# https://stackoverflow.com/questions/52588948/problem-with-wget-command-ssl3-check-cert-and-algorithmdh-key-too-small
+ARG WGET='wget --no-check-certificate --cipher PFS'
+
 USER root
 RUN dnf update -y --nodocs && \
     dnf install -y --setopt=tsflags=nodocs $PACKAGES $GDAL_PKGS $ETC_PKGS && \
     dnf clean all && \
     rm -rf /var/cache/dnf
-
-
-RUN curl -Ok https://github.com/uclouvain/openjpeg/archive/v2.3.1.tar.gz
-
 USER root
 ARG OPENJPEG_VERSION=2.3.1
 RUN if test "${OPENJPEG_VERSION}" != ""; then ( \
-    wget -q https://github.com/uclouvain/openjpeg/archive/v${OPENJPEG_VERSION}.tar.gz \
+    ${WGET} https://github.com/uclouvain/openjpeg/archive/v${OPENJPEG_VERSION}.tar.gz \
     && tar xzf v${OPENJPEG_VERSION}.tar.gz \
     && rm -f v${OPENJPEG_VERSION}.tar.gz \
     && cd openjpeg-${OPENJPEG_VERSION} \
@@ -43,7 +40,7 @@ RUN if test "${OPENJPEG_VERSION}" != ""; then ( \
 ARG PROJ_DATUMGRID_VERSION=1.8
 ARG PROJ_DATUMGRID_FILENAME=proj-datumgrid.zip
 RUN if test "${PROJ_DATUMGRID_VERSION}" != ""; then ( \
-    wget -q http://download.osgeo.org/proj/proj-datumgrid-${PROJ_DATUMGRID_VERSION}.zip -O ${PROJ_DATUMGRID_FILENAME} \
+    ${WGET} http://download.osgeo.org/proj/proj-datumgrid-${PROJ_DATUMGRID_VERSION}.zip -O ${PROJ_DATUMGRID_FILENAME} \
     && cp ./${PROJ_DATUMGRID_FILENAME} /tmp \
     && mkdir -p /build_projgrids/usr/share/proj \
     && unzip -q -j -u -o /tmp/${PROJ_DATUMGRID_FILENAME} -d /build_projgrids/usr/share/proj \
@@ -63,7 +60,7 @@ ARG RSYNC_REMOTE
 USER root
 ARG PROJ_VERSION=8.2.1
 ARG PROJ_FILENAME=proj.tar.gz
-RUN wget -q https://github.com/OSGeo/PROJ/archive/${PROJ_VERSION}.tar.gz -O ${PROJ_FILENAME} \
+RUN ${WGET} https://github.com/OSGeo/PROJ/archive/${PROJ_VERSION}.tar.gz -O ${PROJ_FILENAME} \
     && cp ./${PROJ_FILENAME} /tmp
 
 RUN mkdir proj \
@@ -102,7 +99,7 @@ RUN cd /proj \
 # Build GDAL
 ARG GDAL_VERSION=3.4.2
 ARG GDAL_FILENAME=gdal.tar.gz
-RUN wget -q https://github.com/OSGeo/gdal/releases/download/v${GDAL_VERSION}/gdal-${GDAL_VERSION}.tar.gz -O ${GDAL_FILENAME} \
+RUN ${WGET} https://github.com/OSGeo/gdal/releases/download/v${GDAL_VERSION}/gdal-${GDAL_VERSION}.tar.gz -O ${GDAL_FILENAME} \
     && cp ./${GDAL_FILENAME} /tmp
 
 RUN if test "${RSYNC_REMOTE}" != ""; then \
@@ -157,14 +154,17 @@ RUN if test "${RSYNC_REMOTE}" != ""; then \
             /build/usr/share/gdal/netcdf_config.xsd \
        ;do rm $i; done)
 
+FROM ${BASE_CONTAINER} as cert-base 
+COPY /certs/tls-ca-bundle.pem /certs/tls-ca-bundle.pem
 
-FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG} as runner
 
-
-#FROM ${UBI_FINAL_IMAGE} as mapproxy
-
-# GDAL: Part of the original GDAL Dockerfile
+# Swap BASE_CONTAINER to a container output while building cert-base if you need to override the pip mirror 
+FROM ${BASE_CONTAINER} as runner
+# Only override if you're using a mirror with a cert pulled in using cert-base as a build parameter
+ARG BUILD_CERT=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem 
+ARG PIP_INSTALL_LOCATION=https://pypi.org/simple/
 ARG PACKAGES="libstdc++ sqlite-libs libcurl libtiff zlib libzstd libjpeg-turbo libpng openjpeg2 libwebp expat libpq"
+
 
 USER root
 RUN dnf update -y \
@@ -204,27 +204,29 @@ WORKDIR /home
 COPY bin/ /home/bin
 COPY src/ /home/src
 COPY setup.py /home
-
+COPY requirements.txt /home/ 
 
 # Update C env vars so compiler can find gdal
 ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
 ENV C_INCLUDE_PATH=/usr/include/gdal
 
-RUN pip3 install \
-    pip -U \
-    urllib3
+# Upgrade pip 
+RUN pip3 install \    
+    --index-url ${PIP_INSTALL_LOCATION} \ 
+    --cert ${BUILD_CERT} \
+    pip -U 
+
+
+RUN pip3 install \    
+    --index-url ${PIP_INSTALL_LOCATION} \ 
+    --cert ${BUILD_CERT} \
+    -r /home/requirements.txt
+    # codeguru_profiler_agent
+
 
 RUN pip3 install \
-    numpy \
-    boto3 \
-    geojson \
-    shapely \
-    codeguru_profiler_agent \
-    # Dev env
-    pytest \
-    mock
-
-RUN pip3 install \
+    --index-url ${PIP_INSTALL_LOCATION} \ 
+    --cert ${BUILD_CERT} \
     GDAL==$(gdal-config --version | awk -F'[.]' '{print $1"."$2"."$3}') --global-option=build_ext --global-option="-I/usr/include/gdal"
 
 RUN python3 setup.py install
@@ -236,3 +238,17 @@ RUN rm -rf /usr/lib/python3.6/site-packages/urllib3*
 USER 1000
 
 CMD ["python3", "bin/mr-entry-point.py"]
+
+FROM runner as unit-test
+
+COPY test/ /home/test
+COPY requirements-test.txt /home
+WORKDIR /home 
+
+USER root 
+RUN pip3 install \
+    --index-url ${PIP_INSTALL_LOCATION} \ 
+    --cert ${BUILD_CERT} \
+    -r requirements-test.txt
+USER 1000
+CMD ["python3", "-m", "pytest", "test/"]
