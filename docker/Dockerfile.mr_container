@@ -97,7 +97,7 @@ RUN cd /proj \
     && for i in /build_proj/usr/bin/*; do strip -s $i 2>/dev/null || /bin/true; done
 
 # Build GDAL
-ARG GDAL_VERSION=3.4.2
+ARG GDAL_VERSION=3.5.1
 ARG GDAL_FILENAME=gdal.tar.gz
 RUN ${WGET} https://github.com/OSGeo/gdal/releases/download/v${GDAL_VERSION}/gdal-${GDAL_VERSION}.tar.gz -O ${GDAL_FILENAME} \
     && cp ./${GDAL_FILENAME} /tmp

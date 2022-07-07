@@ -15,8 +15,8 @@ include:
   - project: 'DevOps/security-scanning/scanning-templates'
     file: '/owasp-depcheck.yml'
   - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
-    ref: master
-    file: '/Container-Scanning.gitlab-ci.yml'
+    ref: grype
+    file: '/Container-Scanning.gitlab-ci.yml' 
 
 
 variables: 
@@ -47,23 +47,26 @@ create_runner:
                     -t ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG} .
     - docker push ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG}
 
-create_gdal_base:
-  # This stage exists for posterity and so we can audit our gdal base build easily, 
-  #   allowing devs to quickly pull a complex changed gdal for debugging
-  stage: build
-  tags:
-    - dind
-  before_script:
-    # Login to iron bank per instructions here: https://discourse.gs.mil/t/how-do-i-use-platform-one-iron-bank-hosted-images-at-nga/5187/2
-    - docker login -u ${REGISTERY1_USERNAME} -p ${REGISTERY1_PASSWORD} registry1.dso.mil 
-    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
-  script:
-    - mkdir -p certs/ && cp /certs/tls-ca-bundle.pem certs/tls-ca-bundle.pem
-    - | 
-      docker build --target gdal-base \
-                    -f docker/Dockerfile.mr_container \
-                    -t ${CI_REGISTRY_IMAGE}/gdal-base:${CI_COMMIT_REF_SLUG} .
-    - docker push ${CI_REGISTRY_IMAGE}/gdal-base:${CI_COMMIT_REF_SLUG}
+
+# TODO: Stage should be added back in when we figure out how we can use
+#  it to accelerate builds on downstream stages, currently stages always do a full rebuild 
+# create_gdal_base:
+#   # This stage exists for posterity and so we can audit our gdal base build easily, 
+#   #   allowing devs to quickly pull a complex changed gdal for debugging
+#   stage: build
+#   tags:
+#     - dind
+#   before_script:
+#     # Login to iron bank per instructions here: https://discourse.gs.mil/t/how-do-i-use-platform-one-iron-bank-hosted-images-at-nga/5187/2
+#     - docker login -u ${REGISTERY1_USERNAME} -p ${REGISTERY1_PASSWORD} registry1.dso.mil 
+#     - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+#   script:
+#     - mkdir -p certs/ && cp /certs/tls-ca-bundle.pem certs/tls-ca-bundle.pem
+#     - | 
+#       docker build --target gdal-base \
+#                     -f docker/Dockerfile.mr_container \
+#                     -t ${CI_REGISTRY_IMAGE}/gdal-base:${CI_COMMIT_REF_SLUG} .
+#     - docker push ${CI_REGISTRY_IMAGE}/gdal-base:${CI_COMMIT_REF_SLUG}
 
 
 fortify_build:
@@ -103,11 +106,40 @@ semgrep-sast:
 sonarqube_scanning: 
   stage: sast 
 
+# Serves to perform grype scans until inherieted pipeline resolves permanent false loop 
+grype_scanner:
+  stage: dast
+  before_script: 
+    - WORK_DIR="$PWD"
+    - cd /etc/pki/ca-trust/source/anchors
+    - awk 'BEGIN {c=0;} /BEGIN CERT/{c++} { print > "cert." c ".pem"}' < /certs/tls-ca-bundle.pem
+    - cd "$WORK_DIR"
+  image:
+    name: $CI_REGISTRY/dso-millennium-falcon/docker/grype:4-fips
+  variables:
+    DOCKER_CERT_PATH: /etc/pki/ca-trust/source/anchors
+    CONTAINER_SCANNING_DISABLED: "true"
+    CS_ANALYZER_IMAGE: $CI_REGISTRY/dso-millennium-falcon/docker/grype:4-fips
+    ADDITIONAL_CA_CERT_BUNDLE: /certs/tls-ca-bundle.pem
+    GIT_STRATEGY: none
+    DOCKER_IMAGE: ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG}
+    DOCKERFILE_PATH: docker/Dockerfile.mr_container
+  allow_failure: true
+  artifacts:
+    reports:
+      container_scanning: gl-container-scanning-report.json
+      dependency_scanning: gl-dependency-scanning-report.json
+    paths: [gl-container-scanning-report.json, gl-dependency-scanning-report.json]
+  dependencies: []
+  script:
+    - gtcs scan
+
 
 container_scanning:
-  stage: dast 
+  stage: dast
   variables:
-    DOCKER_IMAGE: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG}
+    DOCKER_IMAGE: ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG}
+    DOCKERFILE_PATH: docker/Dockerfile.mr_container
 
 
 owasp_depcheck_scan:
@@ -128,9 +160,9 @@ pytest_functionality:
     # Login to iron bank per instructions here: https://discourse.gs.mil/t/how-do-i-use-platform-one-iron-bank-hosted-images-at-nga/5187/2
     - docker login -u ${REGISTERY1_USERNAME} -p ${REGISTERY1_PASSWORD} registry1.dso.mil 
     - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
-    - docker pull ${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG}
     - mkdir -p certs/ && cp /certs/tls-ca-bundle.pem certs/tls-ca-bundle.pem
   script: 
+    - docker pull ${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG}
     - |
       docker build --target runner \
                     -f docker/Dockerfile.mr_container \
