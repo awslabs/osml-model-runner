@@ -37,6 +37,7 @@ create_runner:
       docker build --target cert-base \
                     -f docker/Dockerfile.mr_container \
                     -t ${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG} .
+    - docker push ${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG}
     - |
       docker build --target runner \
                     -f docker/Dockerfile.mr_container \
@@ -161,6 +162,7 @@ pytest_functionality:
     - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
     - mkdir -p certs/ && cp /certs/tls-ca-bundle.pem certs/tls-ca-bundle.pem
   script: 
+    - docker pull ${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG}
     - |
       docker build --target runner \
                     -f docker/Dockerfile.mr_container \
