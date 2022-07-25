@@ -1,92 +1,93 @@
-# AIP Model Runner
+# AIP Model Runner Container
 
-### Wormhole enabled test
+This package contains an application used to orchestrate the execution of ML models on large satellite images. The
+application monitors an input queue for processing requests, decomposes the image into a set of smaller regions and
+tiles, invokes a ML model endpoint with each tile, and finally aggregates all of the results into a single output. The
+application itself has been containerized and is designed to run on a distributed cluster of machines collaborating
+across instances to process images as quickly as possible.
 
-## Getting started
+This application has been hardened and built on top of an IronBank container located:
+* https://repo1.dso.mil/dsop/opensource/python/python38/-/blob/development/Dockerfile
+* OS=RHEL 8
+* Python=Python 3.8 (python38@sha256:7ec293f50da6961131a7d42f40dc8078dd13fbbe0f4eb7a9b37b427c360f2797)
+* OPENJPEG_VERSION=2.3.1
+* PROJ=8.2.1
+* GDAL=3.4.2
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## Using Iron Bank Registry 
+1. Log into: `https://registry1.dso.mil/`
+2. Click on your `username` in the upper right.
+3. In drop down menu select `User Profile`
+4. In the menu that appears:
+    1. docker user name: `Username`
+    2. password: `CLI Secret`
+5. In the CLI:
+    1. `docker login registry1.dso.mil -u {Username} -p {CLI Secret}`
+        
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## Key Design Concepts
 
-## Add your files
+### Image Tiling
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+The images to be processed by this application are expected to range anywhere from 500MB to 500GB in size. The upper
+bound is consistently growing as sensors become increasingly capable of collecting larger swaths of high resolution
+data. To handle these images the application applies two levels of tiling. The first is region based tiling in which the
+application breaks the full image up into pieces that are small enough for a single machine to handle. All regions after
+the first are placed on a second queue so other model runners can start processing those regions in parallel. The second
+tiling phase is to break each region up into individual chunks that will be sent to the ML models. Many ML model
+containers are configured to process images that are between 512 and 2048 pixels in size so the full processing of a
+large 200,000 x 200,000 satellite image can result in >10,000 requests.
 
+### Lazy IO & Encoding Formats with Internal Tiles
+
+The images themselves are assumed to reside in S3 and are assumed to be compressed and encoded in such a way as to
+facilitate piecewise access to tiles without downloading the entire image. The GDAL library, a frequently used open
+source implementation of GIS data tools, has the ability to read images directly from S3 making use of partial range
+reads to only download the part of the overall image necessary to process the region.
+
+### Tile Overlap and Merging Results
+
+Many of the ML algorithms we expect to run will involve object detection or feature extraction. It is possible that
+features of interest would fall on the tile boundaries and therefore be missed by the ML models because they are only
+seeing a fractional object. This application mitigates that by allowing requests to specify an overlap region size that
+should be tuned to the expected size of the objects. Each tile sent to the ML model will be cut from the full image
+overlapping the previous by the specified amount. Then the results from each tile are aggregated with the aid of a Non
+Maximal Suppression algorithm used to eliminate duplicates in cases where an object in an overlap region was picked up
+by multiple model runs.
+
+## Package Layout
+
+* **/src**: This is the Python implementation of this application.
+* **/test**: Unit tests have been implemented using [pytest](https://docs.pytest.org).
+* **/bin**: The entry point for the containerized application.
+* **/configuration**: The Dockerfile template used by the build system to package the application.
+* **/scripts**: Utility scripts that are not part of the main application frequently used in development / testing.
+
+## Development Environment
+
+
+To run the container in a test mode and work inside it. 
+
+```shell
+docker run -it -v `pwd`/:/home/ --entrypoint /bin/bash .
 ```
-cd existing_repo
-git remote add origin https://gitlab.gs.mil/maven-integration/aws/aws-aip/aip-model-runner.git
-git branch -M main
-git push -uf origin main
+
+```bash
+python3 -m pytest test
 ```
 
-## Integrate with your tools
+To build the test container stage and run it: 
+```shell 
+docker build --target unit-test -f docker/Dockerfile.mr_container -t aip-mr-container-test:latest .
+docker run --rm -it aip-mr-container-test:latest
+```
 
-- [ ] [Set up project integrations](https://gitlab.gs.mil/maven-integration/aws/aws-aip/aip-model-runner/-/settings/integrations)
+## Linting/Formatting
 
-## Collaborate with your team
+This package uses a number of tools to enforce formatting, linting, and general best practices:
+- [Black](https://github.com/ambv/black) and [isort](https://github.com/timothycrosley/isort) for formatting with a max line length of 100
+- [mypy](http://mypy-lang.org/) to enforce static type checking
+- [flake8](https://pypi.python.org/pypi/flake8) to check pep8 compliance and logical errors in code
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!).  Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+## Common Errors in SDLC
+DISA Break/Inspect - we can't gaurantee pipelines work and sometimes it is worth to just restart if it appears pipeline broke due to connection problems, sometimes they break network traffic to inspect and inspect packets without providing clear guidance on how. 
