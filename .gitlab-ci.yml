@@ -153,7 +153,7 @@ owasp_depcheck_scan:
       - ./
 
 pytest_functionality: 
-  stage: build
+  stage: test
   image: gitlab-registry.gs.mil/maven-integration/aws/aws-aip/aip-model-runner/aip-mr-runner:main
   script: 
     - pip3 install --index-url $PIP_INSTALL_LOCATION --cert $BUILD_CERT -r requirements-test.txt -t . 
