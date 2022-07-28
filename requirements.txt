@@ -1,5 +1,5 @@
-urllib3
-numpy
-boto3
-geojson
-shapely 
+urllib3==1.26.11
+numpy==1.23.1
+boto3==1.24.37
+geojson==2.5.0
+shapely==1.8.2

@@ -250,5 +250,4 @@ RUN pip3 install \
     --index-url ${PIP_INSTALL_LOCATION} \ 
     --cert ${BUILD_CERT} \
     -r requirements-test.txt
-USER 1000
-CMD ["python3", "-m", "pytest", "test/"]
+CMD ["python3", "-m", "pytest", "--cov=aws_model_runner", "test/"]
