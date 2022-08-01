@@ -1,3 +1,4 @@
+import asyncio
 import multiprocessing
 
 import mock
@@ -5,45 +6,22 @@ import pytest
 import shapely.geometry
 import shapely.wkt
 
-from aws_model_runner.georeference import GDALAffineCameraModel
-from aws_model_runner.job_table import JobTable
-from aws_model_runner.metrics import configure_metrics
-from aws_model_runner.model_runner import (
-    calculate_processing_bounds,
-    create_gdal_translate_kwargs,
-    get_image_type,
-    load_gdal_dataset,
-    process_region_request,
-)
-from aws_model_runner.model_runner_api import RegionRequest
-
-configure_metrics("test", "stdout")
+from configuration import TEST_ENV_CONFIG
 
 
 @pytest.fixture
+@mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
 def test_dataset_and_camera():
+    from aws_oversightml_model_runner.app import load_gdal_dataset
+
     ds, camera_model = load_gdal_dataset("./test/data/GeogToWGS84GeoKey5.tif")
     return ds, camera_model
 
 
-def test_gdal_load_success(test_dataset_and_camera):
-    ds = test_dataset_and_camera[0]
-    camera_model = test_dataset_and_camera[1]
-
-    assert ds is not None
-    assert ds.RasterXSize == 101
-    assert ds.RasterYSize == 101
-
-    assert camera_model is not None
-    assert isinstance(camera_model, GDALAffineCameraModel)
-
-
-def test_gdal_load_invalid():
-    with pytest.raises(ValueError):
-        ds, camera_model = load_gdal_dataset("./test/data/does-not-exist.tif")
-
-
+@mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
 def test_calculate_processing_bounds_no_roi(test_dataset_and_camera):
+    from aws_oversightml_model_runner.app import calculate_processing_bounds
+
     ds = test_dataset_and_camera[0]
     camera_model = test_dataset_and_camera[1]
 
@@ -52,7 +30,10 @@ def test_calculate_processing_bounds_no_roi(test_dataset_and_camera):
     assert processing_bounds == ((0, 0), (101, 101))
 
 
+@mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
 def test_calculate_processing_bounds_full_image(test_dataset_and_camera):
+    from aws_oversightml_model_runner.app import calculate_processing_bounds
+
     ds = test_dataset_and_camera[0]
     camera_model = test_dataset_and_camera[1]
     roi = shapely.wkt.loads("POLYGON ((8 50, 10 50, 10 60, 8 60, 8 50))")
@@ -62,7 +43,10 @@ def test_calculate_processing_bounds_full_image(test_dataset_and_camera):
     assert processing_bounds == ((0, 0), (101, 101))
 
 
+@mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
 def test_calculate_processing_bounds_intersect(test_dataset_and_camera):
+    from aws_oversightml_model_runner.app import calculate_processing_bounds
+
     ds = test_dataset_and_camera[0]
     camera_model = test_dataset_and_camera[1]
     roi = shapely.wkt.loads(
@@ -80,11 +64,19 @@ def test_calculate_processing_bounds_intersect(test_dataset_and_camera):
     assert processing_bounds == ((0, 0), (50, 50))
 
 
+@mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
 def test_calculate_processing_bounds_chip(test_dataset_and_camera):
+    from aws_oversightml_model_runner.app import calculate_processing_bounds
+
     ds = test_dataset_and_camera[0]
     camera_model = test_dataset_and_camera[1]
     roi = shapely.wkt.loads(
-        "POLYGON ((8.999932379599102 52.0023621190119, 8.999932379599102 52.0002787856769, 9.001599046267101 52.0002787856769, 9.001599046267101 52.0023621190119, 8.999932379599102 52.0023621190119))"  # noqa: E501
+        "POLYGON (("
+        "8.999932379599102 52.0023621190119, 8.999932379599102 52.0002787856769, "
+        "9.001599046267101 52.0002787856769, 9.001599046267101 52.0023621190119, "
+        "8.999932379599102 52.0023621190119"
+        "))"
+        # noqa: E501
     )
 
     # Manually verify the lon/lat coordinates of the image positions used in this test with these
@@ -95,38 +87,6 @@ def test_calculate_processing_bounds_chip(test_dataset_and_camera):
 
     # Processing bounds is in ((r, c), (w, h))
     assert processing_bounds == ((15, 10), (60, 75))
-
-
-def test_get_image_type():
-    assert "NITF" == get_image_type("s3://random-bucket/image.ntf")
-    assert "NITF" == get_image_type(
-        "https://foo.bar.com/random/prefix/complex-image.name.image.NITF"
-    )
-    assert "TIFF" == get_image_type("s3://random-bucket/works-with-tiff-too.TIFF")
-    assert "TIFF" == get_image_type("./foo.tif")
-
-
-def test_create_gdal_translate_kwargs(test_dataset_and_camera):
-    ds, camera_model = test_dataset_and_camera
-
-    format_compression_combinations = [
-        ("NITF", "NONE", "IC=NC"),
-        ("NITF", "JPEG", "IC=C3"),
-        ("NITF", "J2K", "IC=C8"),
-        ("NITF", None, "IC=C8"),
-    ]
-
-    for tile_format, tile_compression, expected_options in format_compression_combinations:
-        region_request = RegionRequest(
-            {"tile_format": tile_format, "tile_compression": tile_compression}
-        )
-
-        gdal_translate_kwargs = create_gdal_translate_kwargs(region_request, ds)
-
-        assert gdal_translate_kwargs["creationOptions"] == expected_options
-        assert gdal_translate_kwargs["format"] == tile_format
-        assert gdal_translate_kwargs["scaleParams"] == [[0, 255, 0, 255]]
-        assert gdal_translate_kwargs["outputType"] == 1
 
 
 class RegionRequestMatcher:
@@ -146,14 +106,18 @@ class RegionRequestMatcher:
 # Remember that with mutiple patch decorators the order of the mocks in the parameter list is
 # reversed (i.e. the first mock parameter is the last decorator defined. Also note that the
 # pytest fixtures must come at the end.
-@mock.patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1", "WORKERS_PER_CPU": "1"})
-@mock.patch("aws_model_runner.model_runner.FeatureDetector", autospec=True)
-@mock.patch("aws_model_runner.model_runner.FeatureTable", autospec=True)
-@mock.patch("aws_model_runner.model_runner.ImageTileWorker", autospec=True)
-@mock.patch("aws_model_runner.model_runner.Queue", autospec=True)
+@mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
+@mock.patch("aws_oversightml_model_runner.app.FeatureDetector", autospec=True)
+@mock.patch("aws_oversightml_model_runner.app.FeatureTable", autospec=True)
+@mock.patch("aws_oversightml_model_runner.app.TileWorker", autospec=True)
+@mock.patch("aws_oversightml_model_runner.app.Queue", autospec=True)
 def test_process_region_request(
     mock_queue, mock_tile_worker, mock_feature_table, mock_feature_detector, test_dataset_and_camera
 ):
+    from aws_oversightml_model_runner.app import process_region_request
+    from aws_oversightml_model_runner.classes.job_table import JobTable
+    from aws_oversightml_model_runner.classes.region_request import RegionRequest
+
     region_request = RegionRequest(
         {
             "tile_size": (10, 10),
@@ -173,7 +137,9 @@ def test_process_region_request(
 
     raster_dataset = test_dataset_and_camera[0]
 
-    process_region_request(region_request, mock_job_table, raster_dataset)
+    test_loop = asyncio.new_event_loop()
+    process_region_request(region_request, mock_job_table, raster_dataset, test_loop)
+    test_loop.close()
 
     region_queue_put_calls = [
         mock.call(

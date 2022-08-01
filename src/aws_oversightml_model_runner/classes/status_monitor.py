@@ -1,16 +1,20 @@
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
 import botocore.session
 
+from aws_oversightml_model_runner.utils.constants import BOTO_CONFIG
+
 
 class StatusMonitor:
-    def __init__(self, endpoint: str):
-
+    def __init__(self, endpoint: Optional[str]):
         logging.info("Configuring Status Monitor using Endpoint: {}".format(endpoint))
         if endpoint:
             session = botocore.session.get_session()
-            self.cp_client = session.create_client("oversightml", endpoint_url=endpoint)
+            self.cp_client = session.create_client(
+                "oversightml", endpoint_url=endpoint, config=BOTO_CONFIG
+            )
         else:
             self.cp_client = None
 
@@ -24,5 +28,5 @@ class StatusMonitor:
                     jobArn=job_id,
                     jobStatus=status,
                 )
-        except Exception as status_error:
-            logging.error("Unable to update OversightML CP for: {}".format(job_id), status_error)
+        except Exception:
+            logging.exception("Unable to update OversightML CP for: {}".format(job_id))

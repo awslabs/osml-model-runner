@@ -1,14 +1,16 @@
+import mock
 import shapely.geometry
 
-from aws_model_runner.model_runner_api import (
-    ImageRequest,
-    ModelHostingOptions,
-    RegionRequest,
-    TileFormats,
-)
+from aws_oversightml_model_runner.utils.image_helper import ImageCompression, ImageFormats
+from aws_oversightml_model_runner.utils.request_helper import ModelHostingOptions
+
+from configuration import TEST_ENV_CONFIG
 
 
+@mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
 def test_region_request_constructor():
+    from aws_oversightml_model_runner.classes.region_request import RegionRequest
+
     region_request_template = {
         "model_name": "test-model-name",
         "model_hosting_type": "SM_ENDPOINT",
@@ -42,11 +44,14 @@ def test_region_request_constructor():
     # Checks to ensure the defaults are set
     assert rr.tile_size == (1024, 1024)
     assert rr.tile_overlap == (50, 50)
-    assert rr.tile_format == TileFormats.NITF
-    assert rr.tile_compression is None
+    assert rr.tile_format == ImageFormats.NITF
+    assert rr.tile_compression == ImageCompression.NONE
 
 
+@mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
 def test_image_request_constructor():
+    from aws_oversightml_model_runner.classes.image_request import ImageRequest
+
     image_request_template = {
         "model_name": "test-model-name",
         "model_hosting_type": "SM_ENDPOINT",
@@ -82,7 +87,10 @@ def test_image_request_constructor():
     assert ir.roi is None
 
 
+@mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
 def test_image_request_from_message():
+    from aws_oversightml_model_runner.classes.image_request import  ImageRequest
+
     message_body = {
         "jobArn": "arn:aws:oversightml:us-east-1:674401241798:ipj/test-job",
         "jobName": "test-job",
@@ -121,7 +129,10 @@ def test_image_request_from_message():
     assert isinstance(ir.roi, shapely.geometry.Polygon)
 
 
+@mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
 def test_image_request_from_minimal_message():
+    from aws_oversightml_model_runner.classes.image_request import ImageRequest
+
     message_body = {
         "jobArn": "arn:aws:oversightml:us-east-1:674401241798:ipj/test-job",
         "jobName": "test-job",

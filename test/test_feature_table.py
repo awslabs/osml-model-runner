@@ -1,15 +1,14 @@
 import mock
 from botocore.stub import ANY, Stubber
 
-from aws_model_runner.feature_table import FeatureTable
-from aws_model_runner.metrics import configure_metrics
-
-configure_metrics("test", "stdout")
+from configuration import TEST_ENV_CONFIG
 
 
-@mock.patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1"})
+@mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
 def test_get_all_features_paginated():
-    feature_table = FeatureTable("TEST-TABLE-NAME", [1024, 1024], [100, 100])
+    from aws_oversightml_model_runner.classes.feature_table import FeatureTable
+
+    feature_table = FeatureTable("TEST-TABLE-NAME", (1024, 1024), (100, 100))
 
     with Stubber(feature_table.ddb_feature_table.meta.client) as ddb_stubber:
         page_1_params = {
