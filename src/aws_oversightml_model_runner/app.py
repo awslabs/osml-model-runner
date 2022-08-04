@@ -64,7 +64,6 @@ Config = get_config()
 Config.service_name = "AWSOversightML"
 Config.log_group_name = "/aws/OversightML/ModelRunner"
 Config.namespace = "AWSOversightML"
-Config.environment = "local"
 
 # This global variable is setup so that SIGINT and SIGTERM can be used to stop the loop
 # continuously monitoring the region and image work queues.
