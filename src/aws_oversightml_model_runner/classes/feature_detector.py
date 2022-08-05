@@ -5,6 +5,7 @@ from typing import Dict
 import boto3
 import botocore
 import geojson
+from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
 from geojson import FeatureCollection
@@ -45,9 +46,9 @@ class FeatureDetector:
         self.error_count = 0
 
     @metric_scope
-    def find_features(self, payload, metrics) -> FeatureCollection:
+    def find_features(self, payload, metrics: MetricsLogger) -> FeatureCollection:
         logger.info("Invoking Model: {}".format(self.model_name))
-
+        metrics.set_dimensions()
         metrics.put_dimensions({"ModelName": self.model_name})
 
         try:
@@ -69,16 +70,17 @@ class FeatureDetector:
 
         except botocore.exceptions.ClientError as ce:
             self.error_count += 1
-            metrics.put_dimensions(
-                {"StatusCode": ce.response["ResponseMetadata"]["HTTPStatusCode"]}
-            )
-            metrics.put_dimensions({"ErrorCode": ce.response["Error"]["Code"]})
+            metrics.put_metric(ce.response["Error"]["Code"], 1, Unit.COUNT.value)
             metrics.put_metric(MODEL_ERROR_METRIC, 1, Unit.COUNT.value)
-            logger.error("Unable to get detections from model.")
+            logger.error(
+                "Unable to get detections from model - HTTP Status Code: {}, Error Code: {}".format(
+                    ce.response["ResponseMetadata"]["HTTPStatusCode"], ce.response["Error"]["Code"]
+                )
+            )
             logger.exception(ce)
         except JSONDecodeError as de:
             self.error_count += 1
-            metrics.put_dimensions({"ErrorCode": FEATURE_DECODE_ERROR_CODE})
+            metrics.put_metric(FEATURE_DECODE_ERROR_CODE, 1, Unit.COUNT.value)
             metrics.put_metric(MODEL_ERROR_METRIC, 1, Unit.COUNT.value)
             logger.error("Unable to decode response from model.")
             logger.exception(de)

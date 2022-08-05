@@ -64,7 +64,7 @@ class TileWorker(Thread):
 
                 logging.info("# Features Created: {}".format(len(features)))
                 if len(features) > 0:
-                    self.feature_table.add_features(features)
+                    self.feature_table.add_features(features, self.feature_detector.model_name)
 
             finally:
                 self.in_queue.task_done()

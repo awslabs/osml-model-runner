@@ -13,6 +13,7 @@ import geojson
 import shapely.geometry
 import shapely.wkt
 from aws_embedded_metrics.config import get_config
+from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
 from osgeo import gdal
@@ -148,8 +149,10 @@ def process_image_request(
     status_monitor,
     job_table,
     event_loop,
-    metrics=None,
+    metrics: MetricsLogger = None,
 ) -> None:
+    if metrics:
+        metrics.set_dimensions()
     try:
         # TODO: The long term goal is to support AWS provided models hosted by this service as well
         #       as customer provided models where we're managing the endpoints internally. For an
@@ -167,7 +170,7 @@ def process_image_request(
                 "Implementation only supports SageMaker Model Endpoints",
             )
             if metrics:
-                metrics.put_dimensions({"ErrorCode": UNSUPPORTED_MODEL_HOST_ERROR_CODE})
+                metrics.put_metric(UNSUPPORTED_MODEL_HOST_ERROR_CODE, 1, Unit.COUNT.value)
                 metrics.put_metric(IMAGE_PROCESSING_ERROR_METRIC, 1, Unit.COUNT.value)
             return
 
@@ -184,7 +187,7 @@ def process_image_request(
                 image_request.job_arn, "FAILED", "No image URL specified. Image URL is required."
             )
             if metrics:
-                metrics.put_dimensions({"ErrorCode": NO_IMAGE_URL_ERROR_CODE})
+                metrics.put_metric(NO_IMAGE_URL_ERROR_CODE, 1, Unit.COUNT.value)
                 metrics.put_metric(IMAGE_PROCESSING_ERROR_METRIC, 1, Unit.COUNT.value)
             return
 
@@ -223,7 +226,7 @@ def process_image_request(
                     image_request.job_arn, "FAILED", "ROI Has No Intersection With Image"
                 )
                 if metrics:
-                    metrics.put_dimensions({"ErrorCode": INVALID_ROI_ERROR_CODE})
+                    metrics.put_metric(INVALID_ROI_ERROR_CODE, 1, Unit.COUNT.value)
                     metrics.put_metric(IMAGE_PROCESSING_ERROR_METRIC, 1, Unit.COUNT.value)
             else:
                 # Calculate a set of ML engine sized regions that we need to process for this image
@@ -316,7 +319,7 @@ def process_image_request(
         logger.error("Failed to process image!")
         logger.exception(e)
         if metrics:
-            metrics.put_dimensions({"ErrorCode": PROCESSING_FAILURE_ERROR_CODE})
+            metrics.put_metric(PROCESSING_FAILURE_ERROR_CODE, 1, Unit.COUNT.value)
             metrics.put_metric(IMAGE_PROCESSING_ERROR_METRIC, 1, Unit.COUNT.value)
         try:
             if job_table is not None and image_request.image_id is not None:
@@ -341,12 +344,14 @@ def process_region_request(
     job_table: JobTable,
     raster_dataset: gdal.Dataset = None,
     event_loop=None,
-    metrics=None,
+    metrics: MetricsLogger = None,
 ) -> None:
+    if metrics:
+        metrics.set_dimensions()
     if not region_request.is_valid():
         logger.error("Invalid Region Request! {}".format(region_request.__dict__))
         if metrics:
-            metrics.put_dimensions({"ErrorCode": INVALID_REQUEST_ERROR_CODE})
+            metrics.put_metric(INVALID_REQUEST_ERROR_CODE, 1, Unit.COUNT.value)
             metrics.put_metric(REGION_PROCESSING_ERROR_METRIC, 1, Unit.COUNT.value)
         raise ValueError("Invalid Region Request")
 
@@ -468,8 +473,8 @@ def process_region_request(
                                 absolute_tile_path,
                             )
                             if metrics:
-                                metrics.put_dimensions(
-                                    {"ErrorCode": TILE_CREATION_FAILURE_ERROR_CODE}
+                                metrics.put_metric(
+                                    TILE_CREATION_FAILURE_ERROR_CODE, 1, Unit.COUNT.value
                                 )
                                 metrics.put_metric(
                                     REGION_PROCESSING_ERROR_METRIC, 1, Unit.COUNT.value
@@ -517,7 +522,7 @@ def process_region_request(
         logger.error("Failed to process image region!")
         logger.exception(e)
         if metrics:
-            metrics.put_dimensions({"ErrorCode": PROCESSING_FAILURE_ERROR_CODE})
+            metrics.put_metric(PROCESSING_FAILURE_ERROR_CODE, 1, Unit.COUNT.value)
             metrics.put_metric(REGION_PROCESSING_ERROR_METRIC, 1, Unit.COUNT.value)
         try:
             if job_table is not None and region_request.image_id is not None:

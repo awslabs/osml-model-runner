@@ -1,6 +1,6 @@
 import os
 
-from schema import Optional, Schema
+from schema import Schema
 
 
 class ServiceConfig:

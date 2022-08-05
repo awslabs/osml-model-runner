@@ -4,6 +4,7 @@ from typing import Dict, List
 
 import boto3
 import geojson
+from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
 from boto3 import dynamodb
@@ -31,7 +32,8 @@ class FeatureTable:
         self.overlap = overlap
 
     @metric_scope
-    def add_features(self, features, metrics):
+    def add_features(self, features, model_name: str, metrics: MetricsLogger):
+        metrics.set_dimensions()
         start_time_millisec = int(time.time() * 1000)
         # These records are temporary and will expire 24 hours after creation. Jobs should take
         # minutes to run so this time should be conservative enough to let a team debug an urgent
@@ -66,20 +68,22 @@ class FeatureTable:
                         ReturnValues="UPDATED_NEW",
                     )
                     if result["ResponseMetadata"]["HTTPStatusCode"] != 200:
-                        metrics.put_dimensions(
-                            {"StatusCode": result["ResponseMetadata"]["HTTPStatusCode"]}
-                        )
-                        metrics.put_dimensions({"ErrorCode": FEATURE_UPDATE_ERROR_CODE})
+                        metrics.put_metric(FEATURE_UPDATE_ERROR_CODE, 1, Unit.COUNT.value)
                         metrics.put_metric(FEATURE_ERROR_METRIC, 1, Unit.COUNT.value)
-                        logger.error("Unable to update feature table")
+                        logger.error(
+                            "Unable to update feature table - HTTP Status Code: {}".format(
+                                result["ResponseMetadata"]["HTTPStatusCode"]
+                            )
+                        )
                 except Exception as e:
-                    metrics.put_dimensions({"ErrorCode": FEATURE_UPDATE_EXCEPTION_ERROR_CODE})
+                    metrics.put_metric(FEATURE_UPDATE_EXCEPTION_ERROR_CODE, 1, Unit.COUNT.value)
                     metrics.put_metric(FEATURE_ERROR_METRIC, 1, Unit.COUNT.value)
                     logger.error("Unable to update feature table")
                     logger.exception(e)
 
     @metric_scope
-    def get_all_features(self, image_id: str, metrics) -> List[Feature]:
+    def get_all_features(self, image_id: str, metrics: MetricsLogger) -> List[Feature]:
+        metrics.set_dimensions()
         all_features_retrieved = False
         deduped_features: List[Feature] = []
 
