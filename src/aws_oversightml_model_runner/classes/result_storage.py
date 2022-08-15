@@ -6,6 +6,8 @@ import boto3
 import geojson
 from geojson import Feature, FeatureCollection
 
+from aws_oversightml_model_runner.utils.constants import BOTO_CONFIG
+
 
 class ResultStorage:
     def __init__(
@@ -23,11 +25,12 @@ class ResultStorage:
                 aws_access_key_id=assumed_credentials["AccessKeyId"],
                 aws_secret_access_key=assumed_credentials["SecretAccessKey"],
                 aws_session_token=assumed_credentials["SessionToken"],
+                config=BOTO_CONFIG,
             )
         else:
             # If no invocation role is provided the assumption is that the default role for this
             # container will be sufficient to write to the S3 bucket.
-            self.s3Client = boto3.client("s3")
+            self.s3Client = boto3.client("s3", config=BOTO_CONFIG)
 
     def write_to_s3(self, image_id: str, features: List[Feature]) -> None:
         logging.info("Writing Image Results to S3")

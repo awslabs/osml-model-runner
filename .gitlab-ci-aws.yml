@@ -1,0 +1,29 @@
+include:
+- template: Security/SAST.gitlab-ci.yml
+- template: Security/Secret-Detection.gitlab-ci.yml
+
+stages:
+  - test
+  - sast_scans 
+
+run probe:
+  image: registry.gitlab.aws.dev/tsd/probe/standalone-scanner:latest
+  stage: sast_scans
+  tags:
+  - amd64-always-pull-image
+  script:
+  - /usr/bin/python3 /exec/app.py
+  artifacts:
+    paths:
+    - ${CI_PROJECT_DIR}/probe-out/*
+
+secret_detection: 
+  stage: sast_scans 
+
+sast:
+  stage: sast_scans
+  variables:
+    SECURE_LOG_LEVEL: "debug"
+  artifacts:
+    reports:
+      sast: gl-sast-report.json

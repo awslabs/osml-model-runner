@@ -3,10 +3,12 @@ import time
 import boto3
 import botocore
 
+from aws_oversightml_model_runner.utils.constants import BOTO_CONFIG
+
 
 class JobTable:
     def __init__(self, table_name: str):
-        self.ddb_job_table = boto3.resource("dynamodb").Table(table_name)
+        self.ddb_job_table = boto3.resource("dynamodb", config=BOTO_CONFIG).Table(table_name)
 
     def image_started(self, image_id: str):
         start_time_millisec = int(time.time() * 1000)
@@ -16,16 +18,14 @@ class JobTable:
         expire_time_millisec = start_time_millisec + (24 * 60 * 60 * 1000)
 
         try:
-            self.ddb_job_table.update_item(
-                Key={
+            self.ddb_job_table.put_item(
+                Item={
                     "image_id": image_id,
-                },
-                UpdateExpression="SET start_time = :start_time, expire_time = :expire_time",
-                ConditionExpression="attribute_not_exists(start_time) OR start_time < :start_time",
-                ExpressionAttributeValues={
-                    ":start_time": start_time_millisec,
-                    ":expire_time": expire_time_millisec,
-                },
+                    "start_time": start_time_millisec,
+                    "expire_time": expire_time_millisec,
+                    "region_success": 0,
+                    "region_error": 0,
+                }
             )
         except botocore.exceptions.ClientError as e:
             # Ignore the ConditionalCheckFailedException, bubble up
