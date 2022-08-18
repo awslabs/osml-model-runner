@@ -5,6 +5,8 @@ from abc import ABC, abstractmethod
 from typing import List, Tuple
 
 import geojson
+from osgeo import gdal, osr
+
 
 logger = logging.getLogger(__name__)
 
@@ -136,3 +138,41 @@ class GDALAffineCameraModel(CameraModel):
         gt_out[3] = (-gt_in[1] * gt_in[3] + gt_in[0] * gt_in[4]) * inv_det
 
         return gt_out
+
+class GCPCameraModel(CameraModel): 
+    def __init__(self, ds):
+        """
+        Camera model to allow us to cacluate geocoordinates with GCP coordinates 
+        """
+        super().__init__()
+        self.pszProjection = ds.GetProjectionRef()
+        self.gcps = ds.GetGCPs()
+        self.adfGeoTransform = gdal.GCPsToGeoTransform(); 
+
+        self.hProj = osr.SpatialReference(self.pszProjection)
+        self.hLatLong = self.hProj.CloneGeogCS()
+        self.hTransform = osr.CoordinateTransformation(self.hProj, self.hLatLong)
+
+    def image_to_world(self, xy_coord: Tuple) -> Tuple:
+        longitude = (
+            self.adfGeoTransform[0] + self.adfGeoTransform[1] * xy_coord[0] + self.adfGeoTransform[2] * xy_coord[1]
+        )
+        latitude = (
+            self.adfGeoTransform[3] + self.adfGeoTransform[4] * xy_coord[0] + self.adfGeoTransform[5] * xy_coord[1]
+        )
+
+        return longitude, latitude
+
+    def world_to_image(self, lonlat_coord: Tuple) -> Tuple:
+        # To implement. 
+        # x = (
+        #     self.inv_transform[0]
+        #     + lonlat_coord[0] * self.inv_transform[1]
+        #     + lonlat_coord[1] * self.inv_transform[2]
+        # )
+        # y = (
+        #     self.inv_transform[3]
+        #     + lonlat_coord[0] * self.inv_transform[4]
+        #     + lonlat_coord[1] * self.inv_transform[5]
+        # )
+        # return x, y
