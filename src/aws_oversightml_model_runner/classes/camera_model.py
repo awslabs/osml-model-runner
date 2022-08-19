@@ -145,7 +145,7 @@ class GCPCameraModel(CameraModel):
         Camera model to allow us to calculate geographic coordinates with GCP coordinates
         """
         super().__init__()
-        self.pszProjection = ds.GetProjectionRef()
+        self.pszProjection = ds.GetGCPProjection()
         self.gcps = ds.GetGCPs()
         self.adfGeoTransform = gdal.GCPsToGeoTransform()
 

@@ -27,9 +27,14 @@ def load_gdal_dataset(image_path: str) -> Tuple[gdal.Dataset, Optional[CameraMod
     camera_model = None
     transform = ds.GetGeoTransform(can_return_null=True)
     if transform:
+        logger.info(f"Attemping to use GCP Camera Model for iamge: {image_path}") 
         camera_model = GDALAffineCameraModel(transform)
-    else: 
+    elif ds.GetGCPCound() > 0:
+        logger.info(f"Attemping to use GCP Camera Model for iamge: {image_path}") 
         camera_model = GCPCameraModel(ds) 
+    else: 
+        logger.error(f"Unable to GeoRegister on image: {image_path}") 
+        raise SystemError(f"Provided image {image_path} is not in a supported GeoRegistration Format")
 
     logger.info("GDAL Parsed Image of size: %d x %d", ds.RasterXSize, ds.RasterYSize)
 
