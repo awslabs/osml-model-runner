@@ -1,12 +1,19 @@
 import geojson
 import pytest
-import shapely
 
-from aws_model_runner.georeference import GDALAffineCameraModel
+from aws_oversightml_model_runner.classes.camera_model import GDALAffineCameraModel
+from aws_oversightml_model_runner.utils.gdal_helper import load_gdal_dataset
+
+
+@pytest.fixture
+def test_dataset_and_camera():
+    ds, camera_model = load_gdal_dataset("./test/data/GeogToWGS84GeoKey5.tif")
+    return ds, camera_model
 
 
 @pytest.fixture
 def sample_gdal_cameramodel():
+
     # Test coordinate calculations using geotransform matrix from sample SpaceNet RIO image
     transform = (
         -43.681640625,
@@ -40,6 +47,25 @@ def sample_geojson_detections():
         return geojson.load(geojson_file)
 
 
+def test_gdal_load_success(test_dataset_and_camera):
+
+    ds = test_dataset_and_camera[0]
+    camera_model = test_dataset_and_camera[1]
+
+    assert ds is not None
+    assert ds.RasterXSize == 101
+    assert ds.RasterYSize == 101
+
+    assert camera_model is not None
+    assert isinstance(camera_model, GDALAffineCameraModel)
+
+
+def test_gdal_load_invalid():
+
+    with pytest.raises(ValueError):
+        load_gdal_dataset("./test/data/does-not-exist.tif")
+
+
 def test_gdal_cameramodel(sample_gdal_cameramodel, sample_image_bounds, sample_geo_bounds):
     assert pytest.approx(
         sample_geo_bounds[0], rel=1e-6, abs=1e-6
@@ -53,30 +79,6 @@ def test_gdal_cameramodel(sample_gdal_cameramodel, sample_image_bounds, sample_g
     assert pytest.approx(
         sample_image_bounds[1], rel=1e-6, abs=1e-6
     ) == sample_gdal_cameramodel.world_to_image(sample_geo_bounds[1])
-
-
-def test_point_feature_conversion(sample_gdal_cameramodel, sample_image_bounds, sample_geo_bounds):
-    point_feature: geojson.Feature = geojson.Feature(geometry=geojson.Point(sample_geo_bounds[0]))
-
-    shape = sample_gdal_cameramodel.feature_to_image_shape(point_feature)
-
-    assert isinstance(shape, shapely.geometry.Point)
-    assert pytest.approx(sample_image_bounds[0], rel=0.49, abs=0.49) == shape.coords[0]
-
-
-def test_polygon_feature_conversion(
-    sample_gdal_cameramodel, sample_image_bounds, sample_geo_bounds
-):
-    polygon_feature: geojson.Feature = geojson.Feature(geometry=geojson.Polygon(sample_geo_bounds))
-
-    shape = sample_gdal_cameramodel.feature_to_image_shape(polygon_feature)
-
-    assert isinstance(shape, shapely.geometry.Polygon)
-    for i in range(0, len(sample_image_bounds)):
-        print("TEST: " + str(i))
-        print("SIB: " + str(sample_image_bounds[i]))
-        print("SEC: " + str(shape.exterior.coords[i]))
-        assert pytest.approx(sample_image_bounds[i], rel=0.49, abs=0.49) == shape.exterior.coords[i]
 
 
 def test_geolocate_features(sample_gdal_cameramodel, sample_geojson_detections):

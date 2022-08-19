@@ -6,14 +6,13 @@ import boto3
 import mock
 from botocore.stub import ANY, Stubber
 
-from aws_model_runner.detection_service import FeatureDetector
-from aws_model_runner.metrics import configure_metrics
-
-configure_metrics("test", "stdout")
+from configuration import TEST_ENV_CONFIG
 
 
-@mock.patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1"})
+@mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
 def test_construct_with_execution_role():
+    from aws_oversightml_model_runner.classes.feature_detector import FeatureDetector
+
     sm_client = boto3.client("sagemaker-runtime")
     sm_client_stub = Stubber(sm_client)
     sm_client_stub.activate()
@@ -23,7 +22,7 @@ def test_construct_with_execution_role():
         "SessionToken": "FAKE-SESSION-TOKEN",
         "Expiration": datetime.datetime.now(),
     }
-    with mock.patch("aws_model_runner.detection_service.boto3") as mock_boto3:
+    with mock.patch("aws_oversightml_model_runner.classes.feature_detector.boto3") as mock_boto3:
         mock_boto3.client.return_value = sm_client
         FeatureDetector("test-endpoint", aws_credentials)
         mock_boto3.client.assert_called_once_with(
@@ -35,8 +34,10 @@ def test_construct_with_execution_role():
         )
 
 
-@mock.patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1"})
+@mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
 def test_find_features():
+    from aws_oversightml_model_runner.classes.feature_detector import FeatureDetector
+
     feature_detector = FeatureDetector("test-endpoint")
     sm_runtime_stub = Stubber(feature_detector.sm_client)
     sm_runtime_stub.add_response(

@@ -1,10 +1,9 @@
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional
 
-from osgeo import gdal, gdalconst
+from osgeo import gdal
 
-from .georeference import CameraModel, GDALAffineCameraModel
-from .metrics import MetricsContext, now
+logger = logging.getLogger(__name__)
 
 
 def set_gdal_default_configuration() -> None:
@@ -29,7 +28,7 @@ def set_gdal_default_configuration() -> None:
     }
     for key, val in gdal_default_environment_options.items():
         gdal.SetConfigOption(key, str(val))
-    logging.info("Set GDAL Configuration Options: {}".format(gdal_default_environment_options))
+    logger.info("Set GDAL Configuration Options: {}".format(gdal_default_environment_options))
 
 
 class GDALConfigEnv:
@@ -77,75 +76,3 @@ class GDALConfigEnv:
     def __exit__(self, exc_type, exc_val, exc_traceback):
         for key, val in self.options.items():
             gdal.SetConfigOption(key, self.old_options[key])
-
-
-def load_gdal_dataset(
-    image_path: str, metrics: MetricsContext = None
-) -> Tuple[gdal.Dataset, Optional[CameraModel]]:
-    """
-    This function loads a GDAL raster dataset from the path provided and constructs a camera model
-    abstraction used to georeference locations on this image.
-
-    :param image_path: The path to the raster data, may be a local path or a virtual file system
-                        (e.g. /vsis3/...)
-    :param metrics: Optional metrics instrumentation that will record time required to access
-                    image and metadata
-    :return: the raster dataset and camera model
-    """
-    # Use GDAL to open the image object in S3. Note that we're using GDALs s3 driver to
-    # read directly from the object store as needed to complete the image operations
-    metadata_start_time = now()
-    ds = gdal.Open(image_path)
-    if ds is None:
-        logging.info("Skipping: %s - GDAL Unable to Process", image_path)
-        raise ValueError("GDAL Unable to Load: {}".format(image_path))
-
-    camera_model = None
-    transform = ds.GetGeoTransform()
-    if transform:
-        camera_model = GDALAffineCameraModel(transform)
-
-    logging.info("GDAL Parsed Image of size: %d x %d", ds.RasterXSize, ds.RasterYSize)
-    metadata_end_time = now()
-    if metrics is not None:
-        metrics.put_metric(
-            "MetadataLatency", (metadata_end_time - metadata_start_time), "Microseconds"
-        )
-
-    return ds, camera_model
-
-
-def get_type_and_scales(raster_dataset: gdal.Dataset) -> Tuple[int, List[List[int]]]:
-    scale_params = []
-    num_bands = raster_dataset.RasterCount
-    output_type = gdalconst.GDT_Byte
-    min = 0
-    max = 255
-    for band_num in range(1, num_bands + 1):
-        band = raster_dataset.GetRasterBand(band_num)
-        output_type = band.DataType
-        if output_type == gdalconst.GDT_Byte:
-            min = 0
-            max = 255
-        elif output_type == gdalconst.GDT_UInt16:
-            min = 0
-            max = 65535
-        elif output_type == gdalconst.GDT_Int16:
-            min = -32768
-            max = 32767
-        elif output_type == gdalconst.GDT_UInt32:
-            min = 0
-            max = 4294967295
-        elif output_type == gdalconst.GDT_Int32:
-            min = -2147483648
-            max = 2147483647
-        else:
-            logging.warning(
-                "Image uses unsupported GDAL datatype {}. Defaulting to [0,255] range".format(
-                    output_type
-                )
-            )
-
-        scale_params.append([min, max, min, max])
-
-    return output_type, scale_params

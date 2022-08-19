@@ -1,23 +1,29 @@
+import asyncio
 import logging
 from queue import Queue
 from threading import Thread
 from typing import Dict
 
-from .detection_service import FeatureDetector
-from .feature_table import FeatureTable
+from aws_oversightml_model_runner.classes.feature_detector import FeatureDetector
+from aws_oversightml_model_runner.classes.feature_table import FeatureTable
 
 
-class ImageTileWorker(Thread):
+class TileWorker(Thread):
     def __init__(
-        self, in_queue: Queue, feature_detector: FeatureDetector, feature_table: FeatureTable
+        self,
+        in_queue: Queue,
+        feature_detector: FeatureDetector,
+        feature_table: FeatureTable,
+        event_loop: asyncio.AbstractEventLoop,
     ):
         super().__init__()
         self.in_queue = in_queue
         self.feature_detector = feature_detector
         self.feature_table = feature_table
+        self.loop = event_loop
 
     def run(self) -> None:
-
+        asyncio.set_event_loop(self.loop)
         while True:
             image_info: Dict = self.in_queue.get()
 
@@ -58,7 +64,7 @@ class ImageTileWorker(Thread):
 
                 logging.info("# Features Created: {}".format(len(features)))
                 if len(features) > 0:
-                    self.feature_table.add_features(features)
+                    self.feature_table.add_features(features, self.feature_detector.model_name)
 
             finally:
                 self.in_queue.task_done()

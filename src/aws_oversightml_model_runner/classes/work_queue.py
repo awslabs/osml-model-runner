@@ -4,6 +4,8 @@ import logging
 import boto3
 import botocore
 
+from aws_oversightml_model_runner.utils.constants import BOTO_CONFIG
+
 
 class WorkQueue:
     def __init__(
@@ -13,7 +15,7 @@ class WorkQueue:
         visible_seconds: int = 20 * 60,
         num_messages: int = 1,
     ):
-        self.sqs_client = boto3.client("sqs")
+        self.sqs_client = boto3.client("sqs", config=BOTO_CONFIG)
         self.queue_url = queue_url
         self.wait_seconds = wait_seconds
         self.visible_seconds = visible_seconds
