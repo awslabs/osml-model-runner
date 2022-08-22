@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from typing import List, Tuple
 
 import geojson
+from osgeo import gdal, osr
 
 logger = logging.getLogger(__name__)
 
@@ -92,23 +93,23 @@ class GDALAffineCameraModel(CameraModel):
 
     def image_to_world(self, xy_coord: Tuple) -> Tuple:
         longitude = (
-            self.transform[0] + xy_coord[0] * self.transform[1] + xy_coord[1] * self.transform[2]
+                self.transform[0] + xy_coord[0] * self.transform[1] + xy_coord[1] * self.transform[2]
         )
         latitude = (
-            self.transform[3] + xy_coord[0] * self.transform[4] + xy_coord[1] * self.transform[5]
+                self.transform[3] + xy_coord[0] * self.transform[4] + xy_coord[1] * self.transform[5]
         )
         return longitude, latitude
 
     def world_to_image(self, lonlat_coord: Tuple) -> Tuple:
         x = (
-            self.inv_transform[0]
-            + lonlat_coord[0] * self.inv_transform[1]
-            + lonlat_coord[1] * self.inv_transform[2]
+                self.inv_transform[0]
+                + lonlat_coord[0] * self.inv_transform[1]
+                + lonlat_coord[1] * self.inv_transform[2]
         )
         y = (
-            self.inv_transform[3]
-            + lonlat_coord[0] * self.inv_transform[4]
-            + lonlat_coord[1] * self.inv_transform[5]
+                self.inv_transform[3]
+                + lonlat_coord[0] * self.inv_transform[4]
+                + lonlat_coord[1] * self.inv_transform[5]
         )
         return x, y
 
@@ -136,3 +137,67 @@ class GDALAffineCameraModel(CameraModel):
         gt_out[3] = (-gt_in[1] * gt_in[3] + gt_in[0] * gt_in[4]) * inv_det
 
         return gt_out
+
+
+class GCPCameraModel(CameraModel):
+    def __init__(self, ds):
+        """
+        Camera model to allow us to calculate geographic coordinates with GCP coordinates
+        """
+        super().__init__()
+        self.pszProjection = ds.GetGCPProjection()
+        self.gcps = ds.GetGCPs()
+        self.adfGeoTransform = gdal.GCPsToGeoTransform()
+
+        self.hProj = osr.SpatialReference(self.pszProjection)
+        self.hLatLong = self.hProj.CloneGeogCS()
+        self.hTransform = osr.CoordinateTransformation(self.hProj, self.hLatLong)
+        self.inv_transform = GCPCameraModel.invert_h_transform(self.adfGeoTransform)
+
+    def image_to_world(self, xy_coord: Tuple) -> Tuple:
+        longitude = (
+                self.adfGeoTransform[0] + xy_coord[0] * self.adfGeoTransform[1] + xy_coord[1] * self.adfGeoTransform[2]
+        )
+        latitude = (
+                self.adfGeoTransform[3] + xy_coord[0] * self.adfGeoTransform[4] + xy_coord[1] * self.adfGeoTransform[5]
+        )
+
+        return longitude, latitude
+
+    def world_to_image(self, lonlat_coord: Tuple) -> Tuple:
+        x = (
+                self.inv_transform[0]
+                + lonlat_coord[0] * self.inv_transform[1]
+                + lonlat_coord[1] * self.inv_transform[2]
+        )
+        y = (
+                self.inv_transform[3]
+                + lonlat_coord[0] * self.inv_transform[4]
+                + lonlat_coord[1] * self.inv_transform[5]
+        )
+        return x, y
+
+    @staticmethod
+    def invert_h_transform(ht_in: List) -> List:
+        # we assume a 3rd row that is [1 0 0]
+
+        # Compute determinate
+        det = ht_in[1] * ht_in[5] - ht_in[2] * ht_in[4]
+
+        if abs(det) < 0.000000000000001:
+            return []
+
+        inv_det = 1.0 / det
+
+        # compute adjoint, and divide by determinate
+        ht_out = [0, 0, 0, 0, 0, 0]
+        ht_out[1] = ht_in[5] * inv_det
+        ht_out[4] = -ht_in[4] * inv_det
+
+        ht_out[2] = -ht_in[2] * inv_det
+        ht_out[5] = ht_in[1] * inv_det
+
+        ht_out[0] = (ht_in[2] * ht_in[3] - ht_in[0] * ht_in[5]) * inv_det
+        ht_out[3] = (-ht_in[1] * ht_in[3] + ht_in[0] * ht_in[4]) * inv_det
+
+        return ht_out
