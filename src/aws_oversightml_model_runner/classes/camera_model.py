@@ -147,7 +147,7 @@ class GCPCameraModel(CameraModel):
         super().__init__()
         self.pszProjection = ds.GetGCPProjection()
         self.gcps = ds.GetGCPs()
-        self.adfGeoTransform = gdal.GCPsToGeoTransform()
+        self.adfGeoTransform = gdal.GCPsToGeoTransform(self.gcps)
 
         self.hProj = osr.SpatialReference(self.pszProjection)
         self.hLatLong = self.hProj.CloneGeogCS()
