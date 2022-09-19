@@ -89,11 +89,11 @@ def monitor_work_queues():
     # all of the regions for an image are completed by the cluster before work begins on more
     # images.
     image_work_queue = WorkQueue(
-        SERVICE_CONFIG.image_queue, wait_seconds=0, visible_seconds=20 * 60
+        SERVICE_CONFIG.image_queue, wait_seconds=0
     )
     image_requests_iter = iter(image_work_queue)
     region_work_queue = WorkQueue(
-        SERVICE_CONFIG.region_queue, wait_seconds=10, visible_seconds=20 * 60
+        SERVICE_CONFIG.region_queue, wait_seconds=10
     )
     region_requests_iter = iter(region_work_queue)
     status_monitor = StatusMonitor(SERVICE_CONFIG.cp_api_endpoint)
@@ -232,7 +232,8 @@ def process_image_request(
                 # Calculate a set of ML engine sized regions that we need to process for this image
                 # Region size chosen to break large images into pieces that can be handled by a
                 # single tile worker
-                region_size: ImageDimensions = (20480, 20480)
+                region_side = 20*1024
+                region_size: ImageDimensions = (region_side, region_side)
                 region_overlap: ImageDimensions = image_request.tile_overlap
                 regions = list(
                     generate_crops_for_region(processing_bounds, region_size, region_overlap)

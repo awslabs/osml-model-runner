@@ -22,9 +22,14 @@ def set_gdal_default_configuration() -> None:
         "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
         # This flag will setup verbose output for GDAL. In particular it will show you each range
         # read for the file if using the /vsis3 virtual file system.
-        # 'CPL_DEBUG': 'ON',
+        "CPL_DEBUG": "ON",
+        # Flags to help manage caching strategy across workers in the container and gdal worker 
+        "GDAL_NUM_THREADS": "1", 
+        "GDAL_CACHEMAX": "75%",
+        "VSI_CACHE": "YES", 
+        "VSI_CACHE_SIZE":"10000000000",
         "CPL_VSIL_CURL_CHUNK_SIZE": str(max_curl_chunk_size),
-        "CPL_VSIL_CURL_CACHE_SIZE": str(max_curl_chunk_size * 100),
+        "CPL_VSIL_CURL_CACHE_SIZE": str(max_curl_chunk_size * 500),
     }
     for key, val in gdal_default_environment_options.items():
         gdal.SetConfigOption(key, str(val))
