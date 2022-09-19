@@ -18,7 +18,6 @@ class WorkQueue:
         self.sqs_client = boto3.client("sqs", config=BOTO_CONFIG)
         self.queue_url = queue_url
         self.wait_seconds = wait_seconds
-        self.visible_seconds = visible_seconds
         self.num_messages = num_messages
         pass
 
@@ -31,7 +30,6 @@ class WorkQueue:
                     AttributeNames=["All"],
                     MessageAttributeNames=["All"],
                     MaxNumberOfMessages=self.num_messages,
-                    VisibilityTimeout=self.visible_seconds,
                     WaitTimeSeconds=self.wait_seconds,
                 )
 

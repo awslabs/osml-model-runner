@@ -18,11 +18,15 @@ include:
   - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
     ref: grype
     file: '/Container-Scanning.gitlab-ci.yml' 
-
+  - project: 'maven-integration/public/cicd-examples'
+    ref: main
+    file: '.gitlab-ci.yml'
 
 variables: 
   BUILD_CERT: /certs/tls-ca-bundle.pem
   PIP_INSTALL_LOCATION: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
+  MODEL_NAME: "aip-mr-runner"
+  MODEL_TAG: "mainline"
 
 create_runner:
   stage: build
