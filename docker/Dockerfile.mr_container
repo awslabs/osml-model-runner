@@ -212,12 +212,14 @@ ENV C_INCLUDE_PATH=/usr/include/gdal
 
 # Upgrade pip 
 RUN pip3 install \    
+    --no-cache-dir \
     --index-url ${PIP_INSTALL_LOCATION} \ 
     --cert ${BUILD_CERT} \
     pip -U 
 
 
 RUN pip3 install \    
+    --no-cache-dir \
     --index-url ${PIP_INSTALL_LOCATION} \ 
     --cert ${BUILD_CERT} \
     -r /home/requirements.txt
@@ -225,6 +227,7 @@ RUN pip3 install \
 
 
 RUN pip3 install \
+    --no-cache-dir \
     --index-url ${PIP_INSTALL_LOCATION} \ 
     --cert ${BUILD_CERT} \
     GDAL==$(gdal-config --version | awk -F'[.]' '{print $1"."$2"."$3}') --global-option=build_ext --global-option="-I/usr/include/gdal"
