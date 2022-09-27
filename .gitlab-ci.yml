@@ -8,6 +8,7 @@ stages:
   - dast
   - test 
   - publish 
+  - transfer 
 
 include:
   - template: Security/SAST.gitlab-ci.yml
@@ -201,3 +202,9 @@ Export Image:
     ARTIFACT: "${MODEL_NAME}-${MODEL_TAG}.tar"
   only:
     - mainline
+
+export_unavailable: 
+  stage: transfer 
+
+export-image-diode: 
+  stage: transfer
