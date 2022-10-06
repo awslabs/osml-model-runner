@@ -8,19 +8,24 @@ stages:
   - dast
   - test 
   - publish 
+  - transfer 
 
 include:
   - template: Security/SAST.gitlab-ci.yml
-  - project: 'DevOps/security-scanning/scanning-templates'
-    file: '/sonarqube-check.yml'
-  - project: 'DevOps/security-scanning/scanning-templates'
-    file: '/owasp-depcheck.yml'
+  - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
+    ref: master
+    file: '/Dependency-Scanning.gitlab-ci.yml'
   - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
     ref: grype
     file: '/Container-Scanning.gitlab-ci.yml' 
   - project: 'maven-integration/public/cicd-examples'
     ref: main
     file: '.gitlab-ci.yml'
+  # Add back in as program or security asks for sonarqube or owasp onboarding 
+  # - project: 'DevOps/security-scanning/scanning-templates'
+  #   file: '/sonarqube-check.yml'
+  # - project: 'DevOps/security-scanning/scanning-templates'
+  #   file: '/owasp-depcheck.yml'
 
 variables: 
   BUILD_CERT: /certs/tls-ca-bundle.pem
@@ -107,9 +112,9 @@ bandit-sast:
 semgrep-sast: 
   stage: sast 
 
-
-sonarqube_scanning: 
-  stage: sast 
+# Add back in as program or security asks for sonarqube or owasp onboarding 
+# sonarqube_scanning: 
+#   stage: sast 
 
 # Serves to perform grype scans until inherieted pipeline resolves permanent false loop 
 grype_scanner:
@@ -147,18 +152,26 @@ container_scanning:
     DOCKERFILE_PATH: docker/Dockerfile.mr_container
 
 
-owasp_depcheck_scan:
-  stage: dast
-  variables:
-    SUBFOLDER_TO_SCAN: ./
-    dependency_files: requirements.txt
-  cache:
-    paths:
-      - ./
+gemnasium-python-dependency_scanning: 
+  stage: sast 
+  variables: 
+    SECURE_LOG_LEVEL: "debug"
+    PIP_INDEX_URL: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
+    PIP_TRUSTED_HOST: https://mirrors.gs.mil
+
+# Add back in as program or security asks for sonarqube or owasp onboarding 
+# owasp_depcheck_scan:
+  # stage: dast
+  # variables:
+  #   SUBFOLDER_TO_SCAN: ./
+  #   dependency_files: requirements.txt
+  # cache:
+  #   paths:
+  #     - ./
 
 pytest_functionality: 
   stage: test
-  image: gitlab-registry.gs.mil/maven-integration/aws/aws-aip/aip-model-runner/aip-mr-runner:${CI_COMMIT_REF_SLUG}
+  image: ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG}
   script: 
     - pip3 install --index-url $PIP_INSTALL_LOCATION --cert $BUILD_CERT -r requirements-test.txt -t .
     - python3 -m pytest --cov=aws_oversightml_model_runner test/
@@ -189,3 +202,9 @@ Export Image:
     ARTIFACT: "${MODEL_NAME}-${MODEL_TAG}.tar"
   only:
     - mainline
+
+export_unavailable: 
+  stage: transfer 
+
+export-image-diode: 
+  stage: transfer
