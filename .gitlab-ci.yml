@@ -5,3 +5,7 @@ include:
   - project: 'maven-integration/public/cicd-examples'
     ref: main
     file: '.gitlab-ci.yml'
+
+variables:
+  MODEL_NAME: "aip-mr-runner"
+  MODEL_TAG: "mainline"
