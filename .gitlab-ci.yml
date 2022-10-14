@@ -9,7 +9,7 @@ stages:
   - test 
   - publish 
   - transfer 
-
+ 
 include:
   - template: Security/SAST.gitlab-ci.yml
   - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
