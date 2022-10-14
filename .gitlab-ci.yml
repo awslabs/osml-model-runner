@@ -4,8 +4,7 @@ default:
 
 stages:
   - build
-  - sast
-  - dast
+  - security_scans
   - test 
   - publish 
   - transfer 
@@ -80,7 +79,7 @@ create_runner:
 
 
 fortify_build:
-  stage: sast
+  stage: security_scans
   image: gitlab-registry.gs.mil/chargeback/docker/fortify-sca-py38:latest
   tags:
     - standard
@@ -106,19 +105,19 @@ fortify_build:
 
 
 bandit-sast: 
-  stage: sast 
+  stage: security_scans 
 
 
 semgrep-sast: 
-  stage: sast 
+  stage: security_scans 
 
 # Add back in as program or security asks for sonarqube or owasp onboarding 
 # sonarqube_scanning: 
-#   stage: sast 
+#   stage: security_scans 
 
 # Serves to perform grype scans until inherieted pipeline resolves permanent false loop 
 grype_scanner:
-  stage: dast
+  stage: security_scans
   before_script: 
     - WORK_DIR="$PWD"
     - cd /etc/pki/ca-trust/source/anchors
@@ -146,14 +145,14 @@ grype_scanner:
 
 
 container_scanning:
-  stage: dast
+  stage: security_scans
   variables:
     DOCKER_IMAGE: ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG}
     DOCKERFILE_PATH: docker/Dockerfile.mr_container
 
 
 gemnasium-python-dependency_scanning: 
-  stage: sast 
+  stage: security_scans 
   variables: 
     SECURE_LOG_LEVEL: "debug"
     PIP_INDEX_URL: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
@@ -161,7 +160,7 @@ gemnasium-python-dependency_scanning:
 
 # Add back in as program or security asks for sonarqube or owasp onboarding 
 # owasp_depcheck_scan:
-  # stage: dast
+  # stage: security_scans
   # variables:
   #   SUBFOLDER_TO_SCAN: ./
   #   dependency_files: requirements.txt
@@ -173,7 +172,7 @@ pytest_functionality:
   stage: test
   image: ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG}
   script: 
-    - pip3 install --index-url $PIP_INSTALL_LOCATION --cert $BUILD_CERT -r requirements-test.txt -t .
+    - pip3 install --index-url $PIP_INSTALL_LOCATION --cert $BUILD_CERT -r tests/requirements-test.txt -t .
     - python3 -m pytest --cov=aws_oversightml_model_runner test/
 
 Export Image:
@@ -204,7 +203,7 @@ Export Image:
     - mainline
 
 export_unavailable: 
-  stage: transfer 
+  stage: publish 
 
 export-image-diode: 
-  stage: transfer
+  stage: publish

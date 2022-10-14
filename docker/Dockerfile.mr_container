@@ -65,7 +65,7 @@ RUN ${WGET} https://github.com/OSGeo/PROJ/archive/${PROJ_VERSION}.tar.gz -O ${PR
 
 RUN mkdir proj \
 	&& tar -C proj --strip-components=1 -xf /tmp/${PROJ_FILENAME}
-COPY ./scripts/autogen.sh /proj/autogen.sh
+COPY ./scripts/bash/autogen.sh /proj/autogen.sh
 RUN cd /proj \
     && chmod 777 ./autogen.sh \
     && ./autogen.sh \
@@ -245,12 +245,11 @@ CMD ["python3", "bin/mr-entry-point.py"]
 FROM runner as unit-test
 
 COPY test/ /home/test
-COPY requirements-test.txt /home
 WORKDIR /home 
 
 USER root 
 RUN pip3 install \
     --index-url ${PIP_INSTALL_LOCATION} \ 
     --cert ${BUILD_CERT} \
-    -r requirements-test.txt
+    -r test/requirements-test.txt
 CMD ["python3", "-m", "pytest", "--cov=aws_oversightml_model_runner", "test/"]
