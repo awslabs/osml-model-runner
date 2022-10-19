@@ -29,7 +29,8 @@ class TileWorker(Thread):
         self.metrics = metrics
 
     def run(self) -> None:
-        asyncio.set_event_loop(self.loop)
+        thread_event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(thread_event_loop)
         while True:
             image_info: Dict = self.in_queue.get()
 
@@ -40,6 +41,8 @@ class TileWorker(Thread):
                         self.feature_detector.request_count, self.feature_detector.error_count
                     )
                 )
+                thread_event_loop.stop()
+                thread_event_loop.close()
                 break
 
             try:
