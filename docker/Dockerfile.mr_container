@@ -23,10 +23,9 @@ RUN dnf update -y --nodocs && \
     rm -rf /var/cache/dnf
 USER root
 ARG OPENJPEG_VERSION=2.3.1
-RUN curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/openjpeg-${OPENJPEG_VERSION}.tar.gz --output v${OPENJPEG_VERSION}.tar.gz
 RUN if test "${OPENJPEG_VERSION}" != ""; then ( \
         if "${CI}" eq "true"; then \
-            curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/openjpeg-${OPENJPEG_VERSION}.tar.gz --output v${OPENJPEG_VERSION}.tar.gz ;  \  
+            curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/openjpeg-${OPENJPEG_VERSION}.tar.gz --output ./v${OPENJPEG_VERSION}.tar.gz ;  \  
         else \ 
             wget https://github.com/uclouvain/openjpeg/archive/v${OPENJPEG_VERSION}.tar.gz; \ 
         fi \ 
@@ -49,7 +48,7 @@ ARG PROJ_DATUMGRID_VERSION=1.8
 ARG PROJ_DATUMGRID_FILENAME=proj-datumgrid.zip
 RUN if test "${PROJ_DATUMGRID_VERSION}" != ""; then ( \
         if "${CI}" eq "true"; then \
-            curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/proj-datumgrid-${PROJ_DATUMGRID_VERSION}.zip --output ${PROJ_DATUMGRID_FILENAME};  \  
+            curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/proj-datumgrid-${PROJ_DATUMGRID_VERSION}.zip --output ./${PROJ_DATUMGRID_FILENAME};  \  
         else \ 
             wget http://download.osgeo.org/proj/proj-datumgrid-${PROJ_DATUMGRID_VERSION}.zip -O ${PROJ_DATUMGRID_FILENAME}; \
         fi \ 
@@ -73,7 +72,7 @@ USER root
 ARG PROJ_VERSION=8.2.1
 ARG PROJ_FILENAME=proj.tar.gz
 RUN if "${CI}" eq "true"; then \
-        curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/PROJ-${PROJ_VERSION}.zip --output ${PROJ_FILENAME};  \  
+        curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/PROJ-${PROJ_VERSION}.zip --output ./${PROJ_FILENAME};  \  
     else \ 
         wget https://github.com/OSGeo/PROJ/archive/${PROJ_VERSION}.tar.gz -O ${PROJ_FILENAME}; \
     fi \
@@ -116,7 +115,7 @@ RUN cd /proj \
 ARG GDAL_VERSION=3.5.1
 ARG GDAL_FILENAME=gdal.tar.gz
 RUN if "${CI}" eq "true"; then \
-        curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/gdal-${GDAL_VERSION}.zip --output ${GDAL_FILENAME};  \  
+        curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/gdal-${GDAL_VERSION}.zip --output ./${GDAL_FILENAME};  \  
     else \ 
         wget https://github.com/OSGeo/gdal/releases/download/v${GDAL_VERSION}/gdal-${GDAL_VERSION}.tar.gz -O ${GDAL_FILENAME}; \
     fi \
