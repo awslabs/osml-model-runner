@@ -41,9 +41,14 @@ class TileWorker(Thread):
                         self.feature_detector.request_count, self.feature_detector.error_count
                     )
                 )
-                thread_event_loop.stop()
-                thread_event_loop.close()
-                break
+                try: 
+                    thread_event_loop.stop()
+                    thread_event_loop.close()
+                except Exception as e:
+                    logging.error("Failed to stop and close the thread event loop") 
+                    logging.exception(e)
+                finally: 
+                    break
 
             try:
                 logging.info("Invoking SM Endpoint")
