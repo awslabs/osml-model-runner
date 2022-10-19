@@ -118,8 +118,8 @@ RUN cd /proj \
 ARG GDAL_VERSION=3.5.1
 ARG GDAL_FILENAME=gdal.tar.gz
 RUN if "${CI}" eq "true"; then \
-        curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/gdal-${GDAL_VERSION}.zip \
-        && mv ./gdal-${GDAL_VERSION}.zip ./${GDAL_FILENAME};  \  
+        curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/gdal-${GDAL_VERSION}.tar.gz \
+        && mv ./gdal-${GDAL_VERSION}.tar.gz ./${GDAL_FILENAME};  \  
     else \ 
         wget https://github.com/OSGeo/gdal/releases/download/v${GDAL_VERSION}/gdal-${GDAL_VERSION}.tar.gz -O ${GDAL_FILENAME}; \
     fi \
