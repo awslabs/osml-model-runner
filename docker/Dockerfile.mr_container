@@ -74,8 +74,8 @@ USER root
 ARG PROJ_VERSION=8.2.1
 ARG PROJ_FILENAME=proj.tar.gz
 RUN if "${CI}" eq "true"; then \
-        curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/PROJ-${PROJ_VERSION}.zip \
-        && mv ./PROJ-${PROJ_VERSION}.zip ./${PROJ_FILENAME};  \  
+        curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/PROJ-${PROJ_VERSION}.tar.gz \
+        && mv ./PROJ-${PROJ_VERSION}.tar.gz ./${PROJ_FILENAME};  \  
     else \ 
         wget https://github.com/OSGeo/PROJ/archive/${PROJ_VERSION}.tar.gz -O ${PROJ_FILENAME}; \
     fi \
