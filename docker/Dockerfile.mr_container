@@ -23,6 +23,7 @@ RUN dnf update -y --nodocs && \
     rm -rf /var/cache/dnf
 USER root
 ARG OPENJPEG_VERSION=2.3.1
+RUN curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/openjpeg-${OPENJPEG_VERSION}.tar.gz --output v${OPENJPEG_VERSION}.tar.gz
 RUN if test "${OPENJPEG_VERSION}" != ""; then ( \
         if "${CI}" eq "true"; then \
             curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/openjpeg-${OPENJPEG_VERSION}.tar.gz --output v${OPENJPEG_VERSION}.tar.gz ;  \  
