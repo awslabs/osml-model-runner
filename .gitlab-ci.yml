@@ -174,7 +174,7 @@ pytest_functionality:
   stage: test
   image: ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG}
   script: 
-    - pip3 install --index-url $PIP_INSTALL_LOCATION --cert $BUILD_CERT -r tests/requirements-test.txt -t .
+    - pip3 install --index-url $PIP_INSTALL_LOCATION --cert $BUILD_CERT -r test/requirements-test.txt -t .
     - python3 -m pytest --cov=aws_oversightml_model_runner test/
 
 Export Image:
