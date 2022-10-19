@@ -2,11 +2,8 @@ import argparse
 import logging
 import os
 
-# from codeguru_profiler_agent import Profiler
 
 from aws_oversightml_model_runner import app
-
-# CODEGURU_PROFILING_GROUP = os.environ.get("CODEGURU_PROFILING_GROUP")
 
 
 def configure_logging(verbose: bool):
@@ -34,8 +31,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     configure_logging(args.verbose)
-
-    # if CODEGURU_PROFILING_GROUP:
-    #     Profiler(profiling_group_name=CODEGURU_PROFILING_GROUP).start()
 
     app.monitor_work_queues()

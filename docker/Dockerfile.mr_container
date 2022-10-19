@@ -1,4 +1,7 @@
 ARG BASE_CONTAINER=registry1.dso.mil/ironbank/opensource/python:v3.10.5
+FROM ${BASE_CONTAINER} as cert-base 
+COPY /certs/tls-ca-bundle.pem /certs/tls-ca-bundle.pem
+
 FROM ${BASE_CONTAINER} as gdal-base
 
 # Setup build env for PROJ
@@ -9,9 +12,9 @@ ARG GDAL_PKGS="curl-devel libtiff-devel zlib-devel libzstd libjpeg-turbo-devel l
 
 ARG ETC_PKGS="rsync"
 
-# Set wget to use PFS rather than certs - probably should introduce a check sum validator 
-# https://stackoverflow.com/questions/52588948/problem-with-wget-command-ssl3-check-cert-and-algorithmdh-key-too-small
-ARG WGET='wget --no-check-certificate --cipher PFS'
+ARG CI="false"
+ARG NEXUS_AUTH=""
+ARG NEXUS_ARTIFACT_PATH="https://nexus3.gs.mil/repository/Maven_artifacts/aip/gdal-build-artifacts"
 
 USER root
 RUN dnf update -y --nodocs && \
@@ -21,7 +24,12 @@ RUN dnf update -y --nodocs && \
 USER root
 ARG OPENJPEG_VERSION=2.3.1
 RUN if test "${OPENJPEG_VERSION}" != ""; then ( \
-    ${WGET} https://github.com/uclouvain/openjpeg/archive/v${OPENJPEG_VERSION}.tar.gz \
+        if "${CI}" eq "true"; then \
+            curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/openjpeg-${OPENJPEG_VERSION}.tar.gz \
+            && mv ./openjpeg-${OPENJPEG_VERSION}.tar.gz ./v${OPENJPEG_VERSION}.tar.gz;  \  
+        else \ 
+            wget https://github.com/uclouvain/openjpeg/archive/v${OPENJPEG_VERSION}.tar.gz; \ 
+        fi \ 
     && tar xzf v${OPENJPEG_VERSION}.tar.gz \
     && rm -f v${OPENJPEG_VERSION}.tar.gz \
     && cd openjpeg-${OPENJPEG_VERSION} \
@@ -40,7 +48,12 @@ RUN if test "${OPENJPEG_VERSION}" != ""; then ( \
 ARG PROJ_DATUMGRID_VERSION=1.8
 ARG PROJ_DATUMGRID_FILENAME=proj-datumgrid.zip
 RUN if test "${PROJ_DATUMGRID_VERSION}" != ""; then ( \
-    ${WGET} http://download.osgeo.org/proj/proj-datumgrid-${PROJ_DATUMGRID_VERSION}.zip -O ${PROJ_DATUMGRID_FILENAME} \
+        if "${CI}" eq "true"; then \
+            curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/proj-datumgrid-${PROJ_DATUMGRID_VERSION}.zip \
+            && mv ./proj-datumgrid-${PROJ_DATUMGRID_VERSION}.zip ./${PROJ_DATUMGRID_FILENAME};  \  
+        else \ 
+            wget http://download.osgeo.org/proj/proj-datumgrid-${PROJ_DATUMGRID_VERSION}.zip -O ${PROJ_DATUMGRID_FILENAME}; \
+        fi \ 
     && cp ./${PROJ_DATUMGRID_FILENAME} /tmp \
     && mkdir -p /build_projgrids/usr/share/proj \
     && unzip -q -j -u -o /tmp/${PROJ_DATUMGRID_FILENAME} -d /build_projgrids/usr/share/proj \
@@ -60,12 +73,17 @@ ARG RSYNC_REMOTE
 USER root
 ARG PROJ_VERSION=8.2.1
 ARG PROJ_FILENAME=proj.tar.gz
-RUN ${WGET} https://github.com/OSGeo/PROJ/archive/${PROJ_VERSION}.tar.gz -O ${PROJ_FILENAME} \
+RUN if "${CI}" eq "true"; then \
+        curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/PROJ-${PROJ_VERSION}.tar.gz \
+        && mv ./PROJ-${PROJ_VERSION}.tar.gz ./${PROJ_FILENAME};  \  
+    else \ 
+        wget https://github.com/OSGeo/PROJ/archive/${PROJ_VERSION}.tar.gz -O ${PROJ_FILENAME}; \
+    fi \
     && cp ./${PROJ_FILENAME} /tmp
 
 RUN mkdir proj \
 	&& tar -C proj --strip-components=1 -xf /tmp/${PROJ_FILENAME}
-COPY ./scripts/autogen.sh /proj/autogen.sh
+COPY ./scripts/bash/autogen.sh /proj/autogen.sh
 RUN cd /proj \
     && chmod 777 ./autogen.sh \
     && ./autogen.sh \
@@ -99,7 +117,12 @@ RUN cd /proj \
 # Build GDAL
 ARG GDAL_VERSION=3.5.1
 ARG GDAL_FILENAME=gdal.tar.gz
-RUN ${WGET} https://github.com/OSGeo/gdal/releases/download/v${GDAL_VERSION}/gdal-${GDAL_VERSION}.tar.gz -O ${GDAL_FILENAME} \
+RUN if "${CI}" eq "true"; then \
+        curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/gdal-${GDAL_VERSION}.tar.gz \
+        && mv ./gdal-${GDAL_VERSION}.tar.gz ./${GDAL_FILENAME};  \  
+    else \ 
+        wget https://github.com/OSGeo/gdal/releases/download/v${GDAL_VERSION}/gdal-${GDAL_VERSION}.tar.gz -O ${GDAL_FILENAME}; \
+    fi \
     && cp ./${GDAL_FILENAME} /tmp
 
 RUN if test "${RSYNC_REMOTE}" != ""; then \
@@ -153,10 +176,6 @@ RUN if test "${RSYNC_REMOTE}" != ""; then \
             # netCDF driver
             /build/usr/share/gdal/netcdf_config.xsd \
        ;do rm $i; done)
-
-FROM ${BASE_CONTAINER} as cert-base 
-COPY /certs/tls-ca-bundle.pem /certs/tls-ca-bundle.pem
-
 
 # Swap BASE_CONTAINER to a container output while building cert-base if you need to override the pip mirror 
 FROM ${BASE_CONTAINER} as runner
@@ -245,12 +264,11 @@ CMD ["python3", "bin/mr-entry-point.py"]
 FROM runner as unit-test
 
 COPY test/ /home/test
-COPY requirements-test.txt /home
 WORKDIR /home 
 
 USER root 
 RUN pip3 install \
     --index-url ${PIP_INSTALL_LOCATION} \ 
     --cert ${BUILD_CERT} \
-    -r requirements-test.txt
+    -r test/requirements-test.txt
 CMD ["python3", "-m", "pytest", "--cov=aws_oversightml_model_runner", "test/"]
