@@ -1,4 +1,7 @@
 ARG BASE_CONTAINER=registry1.dso.mil/ironbank/opensource/python:v3.10.5
+FROM ${BASE_CONTAINER} as cert-base 
+COPY /certs/tls-ca-bundle.pem /certs/tls-ca-bundle.pem
+
 FROM ${BASE_CONTAINER} as gdal-base
 
 # Setup build env for PROJ
@@ -169,10 +172,6 @@ RUN if test "${RSYNC_REMOTE}" != ""; then \
             # netCDF driver
             /build/usr/share/gdal/netcdf_config.xsd \
        ;do rm $i; done)
-
-FROM ${BASE_CONTAINER} as cert-base 
-COPY /certs/tls-ca-bundle.pem /certs/tls-ca-bundle.pem
-
 
 # Swap BASE_CONTAINER to a container output while building cert-base if you need to override the pip mirror 
 FROM ${BASE_CONTAINER} as runner
