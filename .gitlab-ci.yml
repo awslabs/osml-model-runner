@@ -1,7 +1,3 @@
-default:
-  tags:
-    - dind
-
 stages:
   - build
   - security_scans
@@ -10,25 +6,11 @@ stages:
   - transfer 
 
 include:
-  - template: Security/SAST.gitlab-ci.yml
-  - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
-    ref: master
-    file: '/Dependency-Scanning.gitlab-ci.yml'
-  - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
-    ref: grype
-    file: '/Container-Scanning.gitlab-ci.yml' 
   - project: 'maven-integration/public/cicd-examples'
     ref: main
     file: '.gitlab-ci.yml'
-  # Add back in as program or security asks for sonarqube or owasp onboarding 
-  # - project: 'DevOps/security-scanning/scanning-templates'
-  #   file: '/sonarqube-check.yml'
-  # - project: 'DevOps/security-scanning/scanning-templates'
-  #   file: '/owasp-depcheck.yml'
 
-variables: 
-  BUILD_CERT: /certs/tls-ca-bundle.pem
-  PIP_INSTALL_LOCATION: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
+variables:
   MODEL_NAME: "aip-mr-runner"
   MODEL_TAG: "mainline"
 
