@@ -1,6 +1,0 @@
-{
-  "imageURL":"s3://spacenet-parrised-devaccount/AOI_1_Rio/srcData/rasterData/3-Band/013022223103.tif",
-  "outputBucket": "spacenet-parrised-devaccount",
-  "outputPrefix": "oversight/AOI_1_Rio",
-  "modelName": "charon-xview-endpoint"
-}
