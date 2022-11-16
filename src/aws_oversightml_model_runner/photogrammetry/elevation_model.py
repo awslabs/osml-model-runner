@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from .coordinates import WorldCoordinate
+from .coordinates import GeodeticWorldCoordinate
 
 
 class ElevationModel(ABC):
@@ -14,9 +14,10 @@ class ElevationModel(ABC):
         pass
 
     @abstractmethod
-    def set_elevation(self, world_coordinate: WorldCoordinate) -> None:
+    def set_elevation(self, world_coordinate: GeodeticWorldCoordinate) -> None:
         """
-        This method updates the z component of a world coordinate to match the surface elevation at x, y.
+        This method updates the elevation component of a world coordinate to match the surface elevation at
+        longitude, latitude.
 
         :param world_coordinate: the coordinate to update
         :return: None
@@ -26,26 +27,23 @@ class ElevationModel(ABC):
 
 class ConstantElevationModel(ElevationModel):
     """
-    A constant elevation model with a single value for all x, y.
+    A constant elevation model with a single value for all longitude, latitude.
     """
 
     def __init__(self, constant_elevation: float):
         """
         Constructs the constant elevation model.
 
-        :param constant_elevation: the z value for all x, y
+        :param constant_elevation: the elevation value for all longitude, latitude
         """
         super().__init__()
         self.constant_elevation = constant_elevation
 
-    def set_elevation(self, world_coordinate: WorldCoordinate) -> None:
+    def set_elevation(self, world_coordinate: GeodeticWorldCoordinate) -> None:
         """
-        Updates world coordinate's z to match the constant elevation.
+        Updates world coordinate's elevation to match the constant elevation.
 
         :param world_coordinate: the coordinate to update
         :return: None
         """
-        world_coordinate.z = self.constant_elevation
-
-
-# TODO: Add more complex digital elevation models here
+        world_coordinate.elevation = self.constant_elevation

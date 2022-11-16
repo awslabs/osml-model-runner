@@ -9,8 +9,6 @@ stages:
 run probe:
   image: registry.gitlab.aws.dev/tsd/probe/standalone-scanner:latest
   stage: sast_scans
-  tags:
-  - amd64-always-pull-image
   script:
   - /usr/bin/python3 /exec/app.py
   artifacts:

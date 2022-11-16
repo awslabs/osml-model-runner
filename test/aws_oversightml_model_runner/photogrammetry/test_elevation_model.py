@@ -1,27 +1,21 @@
-from dataclasses import dataclass
-from unittest.mock import ANY
+import unittest
 
-from aws_oversightml_model_runner.photogrammetry import ConstantElevationModel, WorldCoordinate
-from aws_oversightml_model_runner.photogrammetry.elevation_model import ElevationModel
-
-
-def test_constant_elevation_model():
-    elevation_model = ConstantElevationModel(10.0)
-    world_coordinate = WorldCoordinate([1, 2, 0])
-    assert world_coordinate.z == 0.0
-    elevation_model.set_elevation(world_coordinate)
-    assert world_coordinate.z == 10.0
+from aws_oversightml_model_runner.photogrammetry import (
+    ConstantElevationModel,
+    GeodeticWorldCoordinate,
+)
 
 
-def test_elevation_model_abstract_methods():
-    # to fulfill abstract method unit test
-    ElevationModel.__abstractmethods__ = set()
+class TestElevationModel(unittest.TestCase):
+    def test_constant_elevation_model(self):
+        elevation_model = ConstantElevationModel(10.0)
+        world_coordinate = GeodeticWorldCoordinate([1.0, 2.0, 0.0])
+        assert world_coordinate.elevation == 0.0
+        elevation_model.set_elevation(world_coordinate)
+        assert world_coordinate.longitude == 1
+        assert world_coordinate.latitude == 2
+        assert world_coordinate.elevation == 10.0
 
-    @dataclass
-    class ElevationModelDummy(ElevationModel):
-        pass
 
-    d = ElevationModelDummy()
-    eval = d.set_elevation(ANY)
-
-    assert not eval
+if __name__ == "__main__":
+    unittest.main()
