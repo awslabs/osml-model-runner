@@ -1,19 +1,70 @@
 import logging
+from enum import Enum
 from typing import List, Optional
 from xml.etree import ElementTree
 
+from osgeo import gdal
+
 from aws_oversightml_model_runner.photogrammetry import (
     ChippedImageSensorModel,
-    GDALAffineSensorModel,
+    CompositeSensorModel,
     ImageCoordinate,
     SensorModel,
 )
 
-from .gdal_sensor_model_builder import GDALAffineSensorModelBuilder
+from .gdal_sensor_model_builder import GDALAffineSensorModelBuilder, GDALGCPSensorModelBuilder
+from .projective_sensor_model_builder import ProjectiveSensorModelBuilder
 from .rpc_sensor_model_builder import RPCSensorModelBuilder
 from .rsm_sensor_model_builder import RSMSensorModelBuilder
-from .sensor_model_builder import SensorModelBuilder
 from .xmltre_utils import get_tre_field_value
+
+
+class ChippedImageInfoFacade:
+    """
+    This is a facade class that can be initialized with an ICHIPB TRE. It provides accessors for the values
+    so that they can easily be used to create an ChippedImageSensorModel
+    """
+
+    def __init__(self, ichipb_tre: ElementTree.Element):
+        """
+        Constructor initializes the properties from values in the TRE.
+
+        :param ichipb_tre: the GDAL XML for the ICHIPB TRE
+        """
+        try:
+            # Loop through the Output Product (OP) and Full Image (FI) fields in the ICHIPB TRE and construct
+            # the corresponding image coordinates needed to create a chipped sensor model.
+            self.full_image_coordinates = []
+            self.chipped_image_coordinates = []
+            for grid_point in ["11", "12", "21", "22"]:
+                op_col = get_tre_field_value(ichipb_tre, f"OP_COL_{grid_point}", float)
+                op_row = get_tre_field_value(ichipb_tre, f"OP_ROW_{grid_point}", float)
+                fi_col = get_tre_field_value(ichipb_tre, f"FI_COL_{grid_point}", float)
+                fi_row = get_tre_field_value(ichipb_tre, f"FI_ROW_{grid_point}", float)
+                self.full_image_coordinates.append(ImageCoordinate([fi_col, fi_row]))
+                self.chipped_image_coordinates.append(ImageCoordinate([op_col, op_row]))
+
+            self.full_image_width = get_tre_field_value(ichipb_tre, "FI_COL", int)
+            self.full_image_height = get_tre_field_value(ichipb_tre, "FI_ROW", int)
+        except ValueError as ve:
+            logging.warning(
+                "Unable to parse ICHIPB TRE found in XML metadata. SensorModel is unchanged."
+            )
+            logging.warning(str(ve))
+
+
+class SensorModelTypes(Enum):
+    """
+    This enumeration defines the various sensor model types this factory can build.
+    """
+
+    AFFINE = "AFFINE"
+    PROJECTIVE = "PROJECTIVE"
+    RPC = "RPC"
+    RSM = "RSM"
+
+
+ALL_SENSOR_MODEL_TYPES = [item for item in SensorModelTypes]
 
 
 class SensorModelFactory:
@@ -25,28 +76,33 @@ class SensorModelFactory:
 
     def __init__(
         self,
+        actual_image_width: int,
+        actual_image_height: int,
         xml_tres: Optional[ElementTree.Element] = None,
         geo_transform: Optional[List[float]] = None,
+        ground_control_points: Optional[List[gdal.GCP]] = None,
+        selected_sensor_model_types: Optional[List[SensorModelTypes]] = None,
     ):
         """
         Construct a builder providing whatever metadata is available from the image. All of the parameters are named and
         optional allowing users to provide whatever they can and trusting that this builder will make use of as much of
         the information as possible.
 
-        # TODO: Add an ElevationModel parameter to allow clients to specify a custom DEM to use with sensor models
+        :param actual_image_width: width of the current image
+        :param actual_image_height: height of the current image
         :param xml_tres: the parsed XML representing metadata organized in the tagged record extensions (TRE) format
         :param geo_transform: a GDAL affine transform
+        :param ground_control_points: a list of GDAL GCPs that identify correspondences in the image
+        :param selected_sensor_model_types: a list of sensor models that should be attempted by this factory
         """
-        super().__init__()
+        if selected_sensor_model_types is None:
+            selected_sensor_model_types = ALL_SENSOR_MODEL_TYPES
+        self.actual_image_width = actual_image_width
+        self.actual_image_height = actual_image_height
         self.xml_tres = xml_tres
         self.geo_transform = geo_transform
-        self.builders: List[SensorModelBuilder] = []
-        if xml_tres is not None:
-            self.builders.append(RSMSensorModelBuilder(xml_tres))
-            self.builders.append(RPCSensorModelBuilder(xml_tres))
-            # TODO: Add 4-Corner Support: self.builders.append(CornerInterpolationSensorModelBuilder(xml_tres)
-        if geo_transform is not None:
-            self.builders.append(GDALAffineSensorModelBuilder(geo_transform))
+        self.ground_control_points = ground_control_points
+        self.selected_sensor_model_types = selected_sensor_model_types
 
     def build(self) -> Optional[SensorModel]:
         """
@@ -55,54 +111,81 @@ class SensorModelFactory:
 
         :return: the highest quality sensor model available given the information provided
         """
-        for sensor_model_builder in self.builders:
-            sensor_model = sensor_model_builder.build()
-            if sensor_model is not None:
-                return self.wrap_sensor_model_if_necessary(sensor_model)
-        return None
 
-    def wrap_sensor_model_if_necessary(self, sensor_model: SensorModel) -> SensorModel:
-        """
-        This method creates any additional wrappers around the original sensor model necessary to cover special cases
-        (e.g. chipped imagery).
+        approximate_sensor_model = None
+        precision_sensor_model = None
 
-        :param sensor_model: the original sensor model
-        :return: a composite sensor model
-        """
+        if SensorModelTypes.AFFINE in self.selected_sensor_model_types:
+            if self.geo_transform is not None:
+                approximate_sensor_model = GDALAffineSensorModelBuilder(self.geo_transform).build()
 
-        if self.xml_tres is None or isinstance(sensor_model, GDALAffineSensorModel):
-            return sensor_model
+        if SensorModelTypes.PROJECTIVE in self.selected_sensor_model_types:
+            if self.ground_control_points is not None and len(self.ground_control_points) > 3:
+                approximate_sensor_model = GDALGCPSensorModelBuilder(
+                    self.ground_control_points
+                ).build()
 
-        result = sensor_model
+        if self.xml_tres is not None:
+            # Start with the assumption that the raster we have is the full image. We will update this later if
+            # it turns out we're working with an image chip.
+            full_image_width = self.actual_image_width
+            full_image_height = self.actual_image_height
 
-        # Check to see if this image is a chip from a larger image. Chipped images will have an ICHIPB TRE in
-        # the metadata.
-        ichipb_tre = self.xml_tres.find("./tre[@name='ICHIPB']")
-        if ichipb_tre is not None:
+            # Check to see if this image is a chip from a larger image and if so extract the chip corner information
+            # from the ICHIPB TRE.
+            chipped_image_info = None
+            ichipb_tre = self.xml_tres.find("./tre[@name='ICHIPB']")
+            if ichipb_tre is not None:
+                chipped_image_info = ChippedImageInfoFacade(ichipb_tre)
+                full_image_width = chipped_image_info.full_image_width
+                full_image_height = chipped_image_info.full_image_height
 
-            try:
-                # Loop through the Output Product (OP) and Full Image (FI) fields in the ICHIPB TRE and construct
-                # the corresponding image coordinates needed to create a chipped sensor model.
-                full_image_coordinates = []
-                chipped_image_coordinates = []
-                for grid_point in ["11", "12", "21", "22"]:
-                    op_col = get_tre_field_value(ichipb_tre, f"OP_COL_{grid_point}", float)
-                    op_row = get_tre_field_value(ichipb_tre, f"OP_ROW_{grid_point}", float)
-                    fi_col = get_tre_field_value(ichipb_tre, f"FI_COL_{grid_point}", float)
-                    fi_row = get_tre_field_value(ichipb_tre, f"FI_ROW_{grid_point}", float)
-                    full_image_coordinates.append(ImageCoordinate([fi_col, fi_row]))
-                    chipped_image_coordinates.append(ImageCoordinate([op_col, op_row]))
-
-                # Construct a chipped sensor model that will wrap the original sensor model. This wrapper will
-                # convert the chipped image coordinates to full image coordinates before they are passed to the
-                # original sensor model which assumes it is operating over the full image.
-                result = ChippedImageSensorModel(
-                    full_image_coordinates, chipped_image_coordinates, sensor_model
+            # Attempt to build a robust sensor model from either RSM or RPC metadata in the TREs. These
+            # sensor models always reference the full image so if this is a chip we wrap the resulting sensor
+            # model using information taken from ICHIPB. Note that in the unlikely event that an image has both
+            # RSM and RPC metadata the RSM will be used because it has been developed as a replacement for RPC.
+            precision_sensor_model = None
+            if SensorModelTypes.RSM in self.selected_sensor_model_types:
+                precision_sensor_model = RSMSensorModelBuilder(self.xml_tres).build()
+            if (
+                precision_sensor_model is None
+                and SensorModelTypes.RPC in self.selected_sensor_model_types
+            ):
+                precision_sensor_model = RPCSensorModelBuilder(self.xml_tres).build()
+            if precision_sensor_model is not None and chipped_image_info is not None:
+                precision_sensor_model = ChippedImageSensorModel(
+                    chipped_image_info.full_image_coordinates,
+                    chipped_image_info.chipped_image_coordinates,
+                    precision_sensor_model,
                 )
-            except ValueError as ve:
-                logging.warning(
-                    "Unable to parse ICHIPB TRE found in XML metadata. SensorModel is unchanged."
-                )
-                logging.warning(str(ve))
 
-        return result
+            # Attempt to build an approximate sensor model from information in a corner coordinate TRE. The CSCRNA
+            # TRE is considered more precise than IGEOLO so we will used whenever possible.
+            if SensorModelTypes.PROJECTIVE in self.selected_sensor_model_types:
+                cscrna_tre = self.xml_tres.find("./tre[@name='CSCRNA']")
+                if cscrna_tre is not None:
+                    approximate_sensor_model = ProjectiveSensorModelBuilder(
+                        self.xml_tres, full_image_width, full_image_height
+                    ).build()
+                    if approximate_sensor_model is not None and chipped_image_info is not None:
+                        approximate_sensor_model = ChippedImageSensorModel(
+                            chipped_image_info.full_image_coordinates,
+                            chipped_image_info.chipped_image_coordinates,
+                            approximate_sensor_model,
+                        )
+
+                # TODO: Maybe create a projective sensor model from corner locations derived from the precision model
+                # TODO: Consider using the rough corners from IGEOLO
+
+        # If we have both an approximate and a precision sensor model return them as a composite so applications
+        # can choose which model best meets their needs. If we were only able to construct one or the other then
+        # return what we were able to build.
+        if approximate_sensor_model is not None and precision_sensor_model is not None:
+            return CompositeSensorModel(
+                approximate_sensor_model=approximate_sensor_model,
+                precision_sensor_model=precision_sensor_model,
+            )
+        elif precision_sensor_model is not None:
+            return precision_sensor_model
+        else:
+            return approximate_sensor_model

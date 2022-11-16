@@ -3,35 +3,88 @@ class RetryableJobException(Exception):
     pass
 
 
-class CompleteRegionFailed(Exception):
+class CompleteRegionException(Exception):
     pass
 
 
-class IsImageCompleteFailed(Exception):
+class IsImageCompleteException(Exception):
     pass
 
 
-class StartImageFailed(Exception):
+class StartImageException(Exception):
     pass
 
 
-class ImageStatsFailed(Exception):
+class EndImageException(Exception):
     pass
 
 
-class EndImageFailed(Exception):
-    pass
-
-
-class GetJobItemFailed(Exception):
+class GetImageRequestItemException(Exception):
     pass
 
 
 # DDBHelper Exceptions
-class DDBUpdateFailed(Exception):
+class DDBUpdateException(Exception):
     pass
 
 
-# ControlPlane Exceptions
-class CPUpdateFailed(Exception):
+# Status Monitor Exceptions
+class StatusMonitorException(Exception):
+    pass
+
+
+# ModelRunner Exceptions
+class AggregateFeaturesException(Exception):
+    pass
+
+
+class ProcessRegionException(Exception):
+    pass
+
+
+class LoadImageException(Exception):
+    pass
+
+
+class AddFeaturesException(Exception):
+    pass
+
+
+class ProcessImageException(Exception):
+    pass
+
+
+class SetupTileWorkersException(Exception):
+    pass
+
+
+class ProcessTilesException(Exception):
+    pass
+
+
+class UnsupportedModelException(Exception):
+    pass
+
+
+class InvalidImageURLException(Exception):
+    pass
+
+
+class InvalidImageRequestException(Exception):
+    pass
+
+
+class SNSPublishException(Exception):
+    pass
+
+
+class SelfThrottledRegionException(Exception):
+    pass
+
+
+class InvalidRegionRequestException(Exception):
+    pass
+
+
+class StartRegionException(Exception):
     pass

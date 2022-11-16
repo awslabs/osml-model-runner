@@ -7,7 +7,7 @@ from osgeo import gdal, gdalconst
 
 from aws_oversightml_model_runner.photogrammetry import SensorModel
 
-from .sensor_model_factory import SensorModelFactory
+from .sensor_model_factory import SensorModelFactory, SensorModelTypes
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +27,9 @@ def load_gdal_dataset(image_path: str) -> Tuple[gdal.Dataset, Optional[SensorMod
         logger.info("Skipping: %s - GDAL Unable to Process", image_path)
         raise ValueError("GDAL Unable to Load: {}".format(image_path))
 
-    # Get a GDAL Geo Transform or approximate it from any ground control points available
+    # Get a GDAL Geo Transform and any available GCPs
     geo_transform = ds.GetGeoTransform(can_return_null=True)
-    if geo_transform is None:
-        ground_control_points = ds.GetGCPs()
-        if ground_control_points is not None:
-            geo_transform = gdal.GCPsToGeoTransform(ground_control_points)
+    ground_control_points = ds.GetGCPs()
 
     # If this image has NITF TREs defined parse them
     parsed_tres = None
@@ -40,8 +37,22 @@ def load_gdal_dataset(image_path: str) -> Tuple[gdal.Dataset, Optional[SensorMod
     if xml_tres is not None and len(xml_tres) > 0:
         parsed_tres = ElementTree.fromstring(xml_tres[0])
 
+    selected_sensor_model_types = [
+        SensorModelTypes.AFFINE,
+        SensorModelTypes.PROJECTIVE,
+        # SensorModelTypes.RPC,
+        # TODO: Enable RSM model once testing complete
+        # SensorModelTypes.RSM,
+    ]
     # Create the best sensor model available
-    sensor_model = SensorModelFactory(parsed_tres, geo_transform).build()
+    sensor_model = SensorModelFactory(
+        ds.RasterXSize,
+        ds.RasterYSize,
+        parsed_tres,
+        geo_transform,
+        ground_control_points,
+        selected_sensor_model_types=selected_sensor_model_types,
+    ).build()
 
     return ds, sensor_model
 
