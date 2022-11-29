@@ -1,16 +1,15 @@
-import unittest
+from unittest import TestCase
+from unittest.mock import patch
 from xml.etree import ElementTree
 
 import numpy as np
 import pytest
 
-from aws_oversightml_model_runner.gdal.xmltre_utils import (
-    get_tre_field_value,
-    parse_rpc_coefficients,
-)
+from configuration import TEST_ENV_CONFIG
 
 
-class TestXMLTREUtils(unittest.TestCase):
+@patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
+class TestXMLTREUtils(TestCase):
     def setUp(self):
         """
         Set up virtual DDB resources/tables for each test to use
@@ -18,6 +17,8 @@ class TestXMLTREUtils(unittest.TestCase):
         self.sample_metadata_ms_rpc00b = self.build_metadata_ms_rpc00b()
 
     def test_get_tre_field_value_nominal(self):
+        from aws_oversightml_model_runner.gdal.xmltre_utils import get_tre_field_value
+
         piaimc_tre = self.sample_metadata_ms_rpc00b.find("./tre[@name='PIAIMC']")
         assert piaimc_tre is not None
 
@@ -26,6 +27,8 @@ class TestXMLTREUtils(unittest.TestCase):
         assert get_tre_field_value(piaimc_tre, "MEANGSD", float) == 86.1
 
     def test_parse_rpc_coefficients(self):
+        from aws_oversightml_model_runner.gdal.xmltre_utils import parse_rpc_coefficients
+
         rpc_tre = self.sample_metadata_ms_rpc00b.find("./tre[@name='RPC00B']")
         assert rpc_tre is not None
 
@@ -59,6 +62,8 @@ class TestXMLTREUtils(unittest.TestCase):
         )
 
     def test_get_tre_field_value_invalid(self):
+        from aws_oversightml_model_runner.gdal.xmltre_utils import get_tre_field_value
+
         piaimc_tre = self.sample_metadata_ms_rpc00b.find("./tre[@name='PIAIMC']")
         with pytest.raises(ValueError) as value_error:
             get_tre_field_value(piaimc_tre, "SENSMODE_IN", int)
@@ -73,12 +78,16 @@ class TestXMLTREUtils(unittest.TestCase):
         assert "does not have a value attribute" in str(value_error.value)
 
     def test_parse_rpc_coefficents_invalid_matching(self):
+        from aws_oversightml_model_runner.gdal.xmltre_utils import parse_rpc_coefficients
+
         rpc_tre = self.sample_metadata_ms_rpc00b.find("./tre[@name='RPC00B']")
         with pytest.raises(ValueError) as value_error:
             parse_rpc_coefficients(rpc_tre, "LINE_NUM_COEFF_INVALID")
         assert "does not contain a repeated element named" in str(value_error.value)
 
     def test_parse_rpc_coefficents_invalid_numbers(self):
+        from aws_oversightml_model_runner.gdal.xmltre_utils import parse_rpc_coefficients
+
         rpc_tre = self.sample_metadata_ms_rpc00b.find("./tre[@name='RPC00B']")
 
         repeated = rpc_tre.find("./repeated[@name='LINE_NUM_COEFF']")
@@ -91,6 +100,8 @@ class TestXMLTREUtils(unittest.TestCase):
         )
 
     def test_parse_rpc_coefficents_invalid_group(self):
+        from aws_oversightml_model_runner.gdal.xmltre_utils import parse_rpc_coefficients
+
         rpc_tre = self.sample_metadata_ms_rpc00b.find("./tre[@name='RPC00B']")
 
         repeated = rpc_tre.find("./repeated[@name='LINE_NUM_COEFF']")

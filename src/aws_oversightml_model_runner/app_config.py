@@ -17,6 +17,7 @@ class ServiceConfig:
     The data schema is defined as follows:
     region:  (str) The AWS region where the Model Runner is deployed.
     job_table: (str) The name of the job processing DDB table
+    region_request_table: (str) The name of the region request processing DDB table
     feature_table: (str) The name of the feature aggregation DDB table
     image_queue: (str) The name of the image processing SQS queue
     region_queue: (str) The name of the region processing SQS queue
@@ -29,12 +30,13 @@ class ServiceConfig:
     # required env configuration
     aws_region: str = os.environ["AWS_DEFAULT_REGION"]
     job_table: str = os.environ["JOB_TABLE"]
+    region_request_table: str = os.environ["REGION_REQUEST_TABLE"]
     endpoint_statistics_table = os.environ["ENDPOINT_TABLE"]
     feature_table: str = os.environ["FEATURE_TABLE"]
     image_queue: str = os.environ["IMAGE_QUEUE"]
     region_queue: str = os.environ["REGION_QUEUE"]
     workers_per_cpu: str = os.environ["WORKERS_PER_CPU"]
-    # image_status_topic: str = os.environ["IMAGE_STATUS_TOPIC"]
+    workers: str = os.environ["WORKERS"]
 
     # optional elevation data
     elevation_data_location: Optional[str] = os.getenv("ELEVATION_DATA_LOCATION")
@@ -42,6 +44,8 @@ class ServiceConfig:
     elevation_data_version: str = os.getenv("ELEVATION_DATA_VERSION", "1arc_v3")
 
     # optional env configuration
+    image_status_topic: Optional[str] = os.getenv("IMAGE_STATUS_TOPIC")
+    region_status_topic: Optional[str] = os.getenv("REGION_STATUS_TOPIC")
     cp_api_endpoint: Optional[str] = os.getenv("API_ENDPOINT")
     self_throttling: bool = (
         os.getenv("SM_SELF_THROTTLING", "False") == "True"

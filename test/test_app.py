@@ -1,4 +1,3 @@
-import multiprocessing
 import unittest
 from importlib import reload
 
@@ -22,6 +21,9 @@ from configuration import (
     TEST_IMAGE_KEY,
     TEST_JOB_TABLE_ATTRIBUTE_DEFINITIONS,
     TEST_JOB_TABLE_KEY_SCHEMA,
+    TEST_REGION_ID,
+    TEST_REGION_REQUEST_TABLE_ATTRIBUTE_DEFINITIONS,
+    TEST_REGION_REQUEST_TABLE_KEY_SCHEMA,
     TEST_RESULTS_BUCKET,
     TEST_RESULTS_STREAM,
 )
@@ -87,6 +89,7 @@ class TestModelRunner(unittest.TestCase):
         )
         from aws_oversightml_model_runner.database.feature_table import FeatureTable
         from aws_oversightml_model_runner.database.job_table import JobTable
+        from aws_oversightml_model_runner.database.region_request_table import RegionRequestTable
         from aws_oversightml_model_runner.status.sns_helper import SNSHelper
 
         # Build fake image request to work with
@@ -120,6 +123,15 @@ class TestModelRunner(unittest.TestCase):
             BillingMode="PAY_PER_REQUEST",
         )
         self.job_table = JobTable(TEST_ENV_CONFIG["JOB_TABLE"])
+
+        # Region Request tracking table
+        self.image_request_ddb = self.ddb.create_table(
+            TableName=TEST_ENV_CONFIG["REGION_REQUEST_TABLE"],
+            KeySchema=TEST_REGION_REQUEST_TABLE_KEY_SCHEMA,
+            AttributeDefinitions=TEST_REGION_REQUEST_TABLE_ATTRIBUTE_DEFINITIONS,
+            BillingMode="PAY_PER_REQUEST",
+        )
+        self.region_request_table = RegionRequestTable(TEST_ENV_CONFIG["REGION_REQUEST_TABLE"])
 
         # Endpoint statistics table
         self.endpoint_statistics_ddb = self.ddb.create_table(
@@ -206,8 +218,9 @@ class TestModelRunner(unittest.TestCase):
         # Build our model runner and plug in fake resources
         self.model_runner = ModelRunner()
         self.model_runner.job_table = self.job_table
+        self.model_runner.region_request_table = self.region_request_table
         self.model_runner.endpoint_statistics_table = self.endpoint_statistics_table
-        # self.model_runner.status_monitor.image_status_sns = self.image_status_sns
+        self.model_runner.status_monitor.image_status_sns = self.image_status_sns
 
     def tearDown(self):
         """
@@ -233,6 +246,10 @@ class TestModelRunner(unittest.TestCase):
         import aws_oversightml_model_runner  # noqa: F401
 
     def test_process_image_request(self):
+        from aws_oversightml_model_runner.database import RegionRequestTable
+
+        self.model_runner.region_request_table = Mock(RegionRequestTable, autospec=True)
+
         self.model_runner.process_image_request(self.image_request)
 
         # Check to make sure the job was marked as complete
@@ -275,7 +292,12 @@ class TestModelRunner(unittest.TestCase):
         mock_feature_detector,
     ):
         from aws_oversightml_model_runner.api.region_request import RegionRequest
-        from aws_oversightml_model_runner.database import EndpointStatisticsTable, JobTable
+        from aws_oversightml_model_runner.database import (
+            EndpointStatisticsTable,
+            JobTable,
+            RegionRequestItem,
+            RegionRequestTable,
+        )
         from aws_oversightml_model_runner.gdal.gdal_utils import load_gdal_dataset
 
         region_request = RegionRequest(
@@ -289,6 +311,10 @@ class TestModelRunner(unittest.TestCase):
                 "model_name": TEST_MODEL_ENDPOINT,
                 "model_hosting_type": "SM_ENDPOINT",
             }
+        )
+
+        region_request_item = RegionRequestItem(
+            image_id=TEST_IMAGE_ID, region_id=TEST_REGION_ID, region_pixel_bounds="(0, 0)(50, 50)"
         )
 
         region_queue_put_calls = [
@@ -406,10 +432,15 @@ class TestModelRunner(unittest.TestCase):
         raster_dataset, sensor_model = load_gdal_dataset(region_request.image_url)
 
         self.model_runner.job_table = Mock(JobTable, autospec=True)
+        self.model_runner.region_request_table = Mock(RegionRequestTable, autospec=True)
         self.model_runner.endpoint_statistics_table = Mock(EndpointStatisticsTable, autospec=True)
         self.model_runner.endpoint_statistics_table.current_in_progress_regions.return_value = 0
-        self.model_runner.process_region_request(region_request, raster_dataset, sensor_model)
-        num_workers = multiprocessing.cpu_count()
+        self.model_runner.process_region_request(
+            region_request, region_request_item, raster_dataset, sensor_model
+        )
+
+        # Create tile worker threads to process tiles
+        num_workers = int(TEST_ENV_CONFIG["WORKERS"])
         for i in range(num_workers):
             region_queue_put_calls.append(mock.call(RegionRequestMatcher(None)))
 
@@ -418,6 +449,7 @@ class TestModelRunner(unittest.TestCase):
         assert mock_tile_worker.call_count == num_workers
         assert mock_feature_detector.call_count == num_workers
         assert mock_feature_table.call_count == num_workers
+
         # We're testing a single region here so expecting a single call to both increment and
         # decrement for the model associated with the region
         self.model_runner.endpoint_statistics_table.increment_region_count.assert_called_once_with(
@@ -492,7 +524,11 @@ class TestModelRunner(unittest.TestCase):
         mock_feature_detector,
     ):
         from aws_oversightml_model_runner.api.region_request import RegionRequest
-        from aws_oversightml_model_runner.database import EndpointStatisticsTable, JobTable
+        from aws_oversightml_model_runner.database import (
+            EndpointStatisticsTable,
+            JobTable,
+            RegionRequestTable,
+        )
         from aws_oversightml_model_runner.exceptions import SelfThrottledRegionException
         from aws_oversightml_model_runner.gdal.gdal_utils import load_gdal_dataset
 
@@ -513,6 +549,7 @@ class TestModelRunner(unittest.TestCase):
         raster_dataset, sensor_model = load_gdal_dataset(region_request.image_url)
 
         self.model_runner.job_table = Mock(JobTable, autospec=True)
+        self.model_runner.region_request_table = Mock(RegionRequestTable, autospec=True)
         self.model_runner.endpoint_statistics_table = Mock(EndpointStatisticsTable, autospec=True)
         self.model_runner.endpoint_statistics_table.current_in_progress_regions.return_value = 10000
 

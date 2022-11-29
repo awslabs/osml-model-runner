@@ -2,7 +2,7 @@
 # __init__.py file.
 # flake8: noqa
 
-from .exceptions import SNSPublishException
+from .exceptions import SNSPublishException, StatusMonitorException
 from .image_request_status import ImageRequestStatusMessage
 from .sns_helper import SNSHelper
 from .status_monitor import StatusMonitor

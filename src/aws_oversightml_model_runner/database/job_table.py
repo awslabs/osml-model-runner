@@ -51,6 +51,7 @@ class JobItem(DDBItem):
     model_name: Optional[str] = None
     outputs: Optional[str] = None
     processing_time: Optional[Decimal] = None
+    image_security_classification: Optional[str] = None
 
     def __post_init__(self):
         self.ddb_key = DDBKey(hash_key="image_id", hash_value=self.image_id)

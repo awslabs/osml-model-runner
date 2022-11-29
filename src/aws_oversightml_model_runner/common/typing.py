@@ -1,5 +1,7 @@
-from enum import Enum
+from enum import auto
 from typing import Tuple
+
+from aws_oversightml_model_runner.common import AutoStringEnum
 
 # TODO: Define a Point type so there is no confusion over the meaning of BBox.
 #       (i.e. a two corner box would be (Point, Point) while a UL width height box
@@ -13,44 +15,44 @@ ImageDimensions = Tuple[int, int]
 ImageRegion = Tuple[ImageCoord, ImageDimensions]
 
 
-class ImageCompression(str, Enum):
+class ImageCompression(str, AutoStringEnum):
     """
     Enumeration defining compression algorithms for image.
     """
 
-    NONE = "NONE"
-    JPEG = "JPEG"
-    J2K = "J2K"
-    LZW = "LZW"
+    NONE = auto()
+    JPEG = auto()
+    J2K = auto()
+    LZW = auto()
 
 
-class ImageFormats(str, Enum):
+class ImageFormats(str, AutoStringEnum):
     """
     Enumeration defining image encodings.
     """
 
-    NITF = "NITF"
-    JPEG = "JPEG"
-    PNG = "PNG"
-    GTIFF = "GTIFF"
+    NITF = auto()
+    JPEG = auto()
+    PNG = auto()
+    GTIFF = auto()
 
 
 # TODO - https://issues.amazon.com/issues/AnIMaL-24077
-class ImageRequestStatus(str, Enum):
-    STARTED = "STARTED"
-    IN_PROGRESS = "IN_PROGRESS"
-    PARTIAL = "PARTIAL"
-    SUCCESS = "SUCCESS"
-    FAILED = "FAILED"
+class ImageRequestStatus(str, AutoStringEnum):
+    STARTED = auto()
+    IN_PROGRESS = auto()
+    PARTIAL = auto()
+    SUCCESS = auto()
+    FAILED = auto()
 
 
-class ModelHostingOptions(str, Enum):
+class ModelHostingOptions(str, AutoStringEnum):
     """
     Enumeration defining the hosting options for CV models.
     """
 
-    NONE = "NONE"
-    SM_ENDPOINT = "SM_ENDPOINT"
+    NONE = auto()
+    SM_ENDPOINT = auto()
 
 
 # These sets are constructed to facilitate easy checking of string values against the enumerations

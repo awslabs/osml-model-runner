@@ -2,9 +2,16 @@
 # __init__.py file.
 # flake8: noqa
 
+from .auto_string_enum import AutoStringEnum
 from .credentials_utils import get_credentials_for_assumed_role
 from .endpoint_utils import EndpointUtils
+from .exceptions import InvalidClassificationException
 from .metrics_utils import build_embedded_metrics_config
+from .security_classification import (
+    Classification,
+    ClassificationLevel,
+    classification_asdict_factory,
+)
 from .timer import Timer
 from .typing import (
     VALID_IMAGE_COMPRESSION,

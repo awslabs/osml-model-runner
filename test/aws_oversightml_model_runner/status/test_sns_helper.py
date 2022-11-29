@@ -86,6 +86,15 @@ class TestSnsHelper(TestCase):
         with self.assertRaises(SNSPublishException):
             self.image_status_sns.publish_message(mock_message, mock_attributes)
 
+    def test_publish_message_no_topic(self):
+        from aws_oversightml_model_runner.status.sns_helper import SNSHelper
+
+        image_status_sns = SNSHelper(None)
+        mock_message = "test message 1"
+        mock_attributes = {"key1": "string data", "bin1": b"binary data"}
+        response = image_status_sns.publish_message(mock_message, mock_attributes)
+        assert response is None
+
 
 if __name__ == "__main__":
     unittest.main()

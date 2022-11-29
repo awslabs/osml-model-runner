@@ -1,17 +1,19 @@
 import abc
-from enum import Enum
+from enum import auto
 from typing import List
 
 from geojson import Feature
 
+from aws_oversightml_model_runner.common import AutoStringEnum
 
-class SinkMode(str, Enum):
+
+class SinkMode(str, AutoStringEnum):
     """
     Enumeration defining different sink output modes.
     """
 
-    AGGREGATE = "AGGREGATE"
-    STREAMING = "STREAMING"
+    AGGREGATE = auto()
+    STREAMING = auto()
 
 
 class Sink(abc.ABC):

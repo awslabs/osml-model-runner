@@ -1,16 +1,21 @@
 import unittest
 from math import radians
+from unittest import TestCase
+from unittest.mock import patch
 
 import pytest
 
-from aws_oversightml_model_runner.gdal.gdal_dem_tile_factory import (
-    GDALDigitalElevationModelTileFactory,
-)
-from aws_oversightml_model_runner.photogrammetry import GeodeticWorldCoordinate
+from configuration import TEST_ENV_CONFIG
 
 
-class TestGDALDemTileFactory(unittest.TestCase):
+@patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
+class TestGDALDemTileFactory(TestCase):
     def test_load_geotiff_tile(self):
+        from aws_oversightml_model_runner.gdal.gdal_dem_tile_factory import (
+            GDALDigitalElevationModelTileFactory,
+        )
+        from aws_oversightml_model_runner.photogrammetry import GeodeticWorldCoordinate
+
         tile_factory = GDALDigitalElevationModelTileFactory("./test/data")
         elevation_array, sensor_model = tile_factory.get_tile("n47_e034_3arc_v2.tif")
 

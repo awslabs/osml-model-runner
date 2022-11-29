@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 class EndpointUtils:
     def __init__(self) -> None:
-        # We want an accurate estimation of max regions but we also don't want
-        # to do this caclulation every single time we process a region request
+        # We want an accurate estimation of max regions, but we also don't want
+        # to do this calculation every single time we process a region request
         # (especially if the requests are processing very quickly) so the region
-        # calculation is done at most every 60 second per container per endpoint
+        # calculation is done at every 60 second per container per endpoint
         self.max_region_cache: TTLCache = TTLCache(maxsize=10, ttl=60)
         self.ec2_client = boto3.client("ec2", config=BotoConfig.sagemaker)
 
@@ -33,9 +33,8 @@ class EndpointUtils:
 
             math.floor(10 * VCPUs * Number of Instances) / Workers Per CPU
 
+        :param model_invocation_role:
         :param endpoint_name: The name of the endpoint
-        :param model_invocation_credentials: Role used to invoke the model which
-            will be used here to describe the endpoint and config
         :returns: max endpoint count for the endpoint
         """
         assumed_credentials = None

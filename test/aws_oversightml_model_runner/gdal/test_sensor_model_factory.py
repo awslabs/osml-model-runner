@@ -1,15 +1,13 @@
 import unittest
 import xml.etree.ElementTree as ElementTree
 from math import degrees, radians
+from unittest import TestCase
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 from osgeo import gdal
 
-from aws_oversightml_model_runner.gdal.sensor_model_factory import (
-    SensorModelFactory,
-    SensorModelTypes,
-)
 from aws_oversightml_model_runner.photogrammetry import (
     ChippedImageSensorModel,
     CompositeSensorModel,
@@ -19,6 +17,7 @@ from aws_oversightml_model_runner.photogrammetry import (
     RPCSensorModel,
     RSMPolynomialSensorModel,
 )
+from configuration import TEST_ENV_CONFIG
 
 # Strictly speaking the tests in this file are not pure unit tests of the SensorModelFactory. Here we deliberately
 # did not mock out the underlying sensor models and are instead testing that a fully functional model can be
@@ -28,8 +27,11 @@ from aws_oversightml_model_runner.photogrammetry import (
 # to break them out from the other automated tests.
 
 
-class TestSensorModelFactory(unittest.TestCase):
+@patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
+class TestSensorModelFactory(TestCase):
     def test_sensor_model_builder_ms_rpc00b_with_cscrna(self):
+        from aws_oversightml_model_runner.gdal.sensor_model_factory import SensorModelFactory
+
         with open("test/data/sample-metadata-ms-rpc00b.xml", "rb") as xml_file:
             xml_tres = ElementTree.parse(xml_file)
             sensor_model_builder = SensorModelFactory(2048, 2048, xml_tres=xml_tres)
@@ -74,6 +76,11 @@ class TestSensorModelFactory(unittest.TestCase):
             )
 
     def test_sensor_model_builder_selected_sensors(self):
+        from aws_oversightml_model_runner.gdal.sensor_model_factory import (
+            SensorModelFactory,
+            SensorModelTypes,
+        )
+
         with open("test/data/sample-metadata-ms-rpc00b.xml", "rb") as xml_file:
             xml_tres = ElementTree.parse(xml_file)
             sensor_model_builder = SensorModelFactory(
@@ -87,6 +94,11 @@ class TestSensorModelFactory(unittest.TestCase):
             assert isinstance(sensor_model, ProjectiveSensorModel)
 
     def test_sensor_model_builder_ms_rpc00b_with_chip(self):
+        from aws_oversightml_model_runner.gdal.sensor_model_factory import (
+            SensorModelFactory,
+            SensorModelTypes,
+        )
+
         with open("test/data/sample-metadata-rpc00b-ichipb.xml", "rb") as xml_file:
             xml_tres = ElementTree.parse(xml_file)
             sensor_model_builder = SensorModelFactory(
@@ -113,6 +125,11 @@ class TestSensorModelFactory(unittest.TestCase):
             assert image_coordinate.y == pytest.approx(280, abs=3)
 
     def test_sensor_model_builder_rsmpca(self):
+        from aws_oversightml_model_runner.gdal.sensor_model_factory import (
+            SensorModelFactory,
+            SensorModelTypes,
+        )
+
         with open("test/data/i_6130a_truncated_tres.xml") as xml_file:
             xml_tres = ElementTree.parse(xml_file)
             sensor_model_builder = SensorModelFactory(
@@ -140,6 +157,8 @@ class TestSensorModelFactory(unittest.TestCase):
             )
 
     def test_sensor_model_builder_cscrna(self):
+        from aws_oversightml_model_runner.gdal.sensor_model_factory import SensorModelFactory
+
         with open("test/data/sample-metadata-cscrna.xml", "rb") as xml_file:
             xml_tres = ElementTree.parse(xml_file)
             sensor_model_builder = SensorModelFactory(2048, 2048, xml_tres=xml_tres)
@@ -147,6 +166,8 @@ class TestSensorModelFactory(unittest.TestCase):
             assert isinstance(sensor_model, ProjectiveSensorModel)
 
     def test_sensor_model_builder_gcps(self):
+        from aws_oversightml_model_runner.gdal.sensor_model_factory import SensorModelFactory
+
         gcps = (
             gdal.GCP(121.67722222222223, 13.924722222222222, 0.0, 0.5, 0.5),
             gdal.GCP(121.8261111111111, 13.91861111111111, 0.0, 10239.5, 0.5),

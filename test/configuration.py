@@ -2,10 +2,12 @@
 TEST_ENV_CONFIG = {
     # ModelRunner test config
     "AWS_DEFAULT_REGION": "us-west-2",
+    "WORKERS": "4",
     "WORKERS_PER_CPU": "1",
     "JOB_TABLE": "TEST-JOB-TABLE",
     "ENDPOINT_TABLE": "TEST-ENDPOINT-STATS-TABLE",
     "FEATURE_TABLE": "TEST-FEATURE-TABLE",
+    "REGION_REQUEST_TABLE": "TEST-REGION-REQUEST-TABLE",
     "IMAGE_QUEUE": "TEST-IMAGE-QUEUE",
     "REGION_QUEUE": "TEST-REGION-QUEUE",
     "IMAGE_STATUS_TOPIC": "TEST-IMAGE-STATUS-TOPIC",
@@ -37,6 +39,15 @@ TEST_FEATURE_TABLE_ATTRIBUTE_DEFINITIONS = [
     {"AttributeName": "range_key", "AttributeType": "S"},
 ]
 
+TEST_REGION_REQUEST_TABLE_KEY_SCHEMA = [
+    {"AttributeName": "region_id", "KeyType": "HASH"},
+    {"AttributeName": "image_id", "KeyType": "RANGE"},
+]
+TEST_REGION_REQUEST_TABLE_ATTRIBUTE_DEFINITIONS = [
+    {"AttributeName": "region_id", "AttributeType": "S"},
+    {"AttributeName": "image_id", "AttributeType": "S"},
+]
+
 # S3 Configurations
 TEST_RESULTS_BUCKET = "test-results-bucket"
 TEST_IMAGE_FILE = "./test/data/small.ntf"
@@ -46,5 +57,6 @@ TEST_IMAGE_KEY = "test-image"
 TEST_RESULTS_STREAM = "test-results-stream"
 
 TEST_IMAGE_ID = "test-image-id"
+TEST_REGION_ID = "test-region-id"
 
 TEST_ELEVATION_DATA_LOCATION = "s3://TEST-BUCKET/ELEVATION-DATA-LOCATION"
