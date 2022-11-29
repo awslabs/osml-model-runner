@@ -3,10 +3,6 @@ class AddFeaturesException(Exception):
     pass
 
 
-class CompleteRegionException(Exception):
-    pass
-
-
 class DDBUpdateException(Exception):
     pass
 
@@ -24,4 +20,24 @@ class IsImageCompleteException(Exception):
 
 
 class StartImageException(Exception):
+    pass
+
+
+class StartRegionException(Exception):
+    pass
+
+
+class InvalidRegionRequestException(Exception):
+    pass
+
+
+class GetRegionRequestItemException(Exception):
+    pass
+
+
+class UpdateRegionException(Exception):
+    pass
+
+
+class CompleteRegionException(Exception):
     pass

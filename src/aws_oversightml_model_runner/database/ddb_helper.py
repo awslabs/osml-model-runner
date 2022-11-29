@@ -79,11 +79,7 @@ class DDBHelper:
 
         :return: dict: response from the get_item request
         """
-        return self.table.get_item(
-            Key={
-                ddb_item.ddb_key.hash_key: ddb_item.ddb_key.hash_value,
-            }
-        )["Item"]
+        return self.table.get_item(Key=self.get_keys(ddb_item=ddb_item))["Item"]
 
     def put_ddb_item(self, ddb_item: DDBItem, condition_expression: str = None) -> dict:
         """
@@ -111,11 +107,7 @@ class DDBHelper:
 
         :return: dict: response from the delete_item request
         """
-        return self.table.delete_item(
-            Key={
-                ddb_item.ddb_key.hash_key: ddb_item.ddb_key.hash_value,
-            }
-        )
+        return self.table.delete_item(Key=self.get_keys(ddb_item=ddb_item))
 
     def update_ddb_item(
         self, ddb_item: DDBItem, update_exp: str = None, update_attr: dict = None
@@ -134,14 +126,12 @@ class DDBHelper:
         # then we'll build them from the body
         if not update_exp and not update_attr:
             update_item = ddb_item.to_update()
-            update_exp, update_attr = self.get_update_params(update_item)
+            update_exp, update_attr = self.get_update_params(update_item, ddb_item)
 
         # if we still don't have an update expression then we'll just
         if update_exp and update_attr:
             response = self.table.update_item(
-                Key={
-                    ddb_item.ddb_key.hash_key: ddb_item.ddb_key.hash_value,
-                },
+                Key=self.get_keys(ddb_item=ddb_item),
                 UpdateExpression=update_exp,
                 ExpressionAttributeValues=update_attr,
                 ReturnValues="ALL_NEW",
@@ -188,7 +178,7 @@ class DDBHelper:
         return items
 
     @staticmethod
-    def get_update_params(body: dict) -> Tuple[str, dict]:
+    def get_update_params(body: dict, ddb_item: DDBItem) -> Tuple[str, dict]:
         """
         Generate an update expression and a dict of values to update a dynamodb table.
 
@@ -200,7 +190,26 @@ class DDBHelper:
         update_attr = dict()
 
         for key, val in body.items():
-            update_expr.append(f" {key} = :{key},")
-            update_attr[f":{key}"] = val
+            # need to omit range_key
+            if key != ddb_item.ddb_key.range_key:
+                update_expr.append(f" {key} = :{key},")
+                update_attr[f":{key}"] = val
 
         return "".join(update_expr)[:-1], update_attr
+
+    @staticmethod
+    def get_keys(ddb_item: DDBItem) -> dict:
+        """
+        Determine to see if we need to use both keys to search an item in DDB
+
+        :return Dict = Holding either Hash Key or both Keys (Hash and Range)
+        """
+        if ddb_item.ddb_key.range_key is None:
+            return {
+                ddb_item.ddb_key.hash_key: ddb_item.ddb_key.hash_value,
+            }
+        else:
+            return {
+                ddb_item.ddb_key.hash_key: ddb_item.ddb_key.hash_value,
+                ddb_item.ddb_key.range_key: ddb_item.ddb_key.range_value,
+            }

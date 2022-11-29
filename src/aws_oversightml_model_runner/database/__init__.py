@@ -4,5 +4,18 @@
 
 from .ddb_helper import DDBHelper, DDBItem, DDBKey
 from .endpoint_statistics_table import EndpointStatisticsTable
+from .exceptions import (
+    AddFeaturesException,
+    CompleteRegionException,
+    DDBUpdateException,
+    EndImageException,
+    GetImageRequestItemException,
+    GetRegionRequestItemException,
+    IsImageCompleteException,
+    StartImageException,
+    StartRegionException,
+    UpdateRegionException,
+)
 from .feature_table import FeatureTable
 from .job_table import JobItem, JobTable
+from .region_request_table import RegionRequestItem, RegionRequestTable

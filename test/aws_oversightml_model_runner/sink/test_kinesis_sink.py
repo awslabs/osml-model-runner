@@ -54,7 +54,7 @@ class TestKinesisSink(unittest.TestCase):
             MOCK_KINESIS_RESPONSE,
             {
                 "StreamName": TEST_RESULTS_STREAM,
-                "PartitionKey": "123",
+                "PartitionKey": image_id_with_slashes,
                 "Data": geojson.dumps(geojson.FeatureCollection(self.test_feature_list)),
             },
         )

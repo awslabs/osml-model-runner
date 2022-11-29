@@ -55,7 +55,7 @@ class KinesisSink(Sink):
         # image_id is the concatenation of the job id and source image url in s3. We just
         # want to base our key off of the original image file name so split by '/' and use
         # the last element
-        partition_key = image_id.split("/")[-1]
+        partition_key = image_id.split("s3://")[0]
         pending_features: List[Feature] = []
         pending_features_size: int = 0
 

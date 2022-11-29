@@ -1,5 +1,5 @@
 import logging
-from enum import Enum
+from enum import auto
 from typing import List, Optional
 from xml.etree import ElementTree
 
@@ -12,6 +12,7 @@ from aws_oversightml_model_runner.photogrammetry import (
     SensorModel,
 )
 
+from ..common import AutoStringEnum
 from .gdal_sensor_model_builder import GDALAffineSensorModelBuilder, GDALGCPSensorModelBuilder
 from .projective_sensor_model_builder import ProjectiveSensorModelBuilder
 from .rpc_sensor_model_builder import RPCSensorModelBuilder
@@ -53,15 +54,15 @@ class ChippedImageInfoFacade:
             logging.warning(str(ve))
 
 
-class SensorModelTypes(Enum):
+class SensorModelTypes(str, AutoStringEnum):
     """
     This enumeration defines the various sensor model types this factory can build.
     """
 
-    AFFINE = "AFFINE"
-    PROJECTIVE = "PROJECTIVE"
-    RPC = "RPC"
-    RSM = "RSM"
+    AFFINE = auto()
+    PROJECTIVE = auto()
+    RPC = auto()
+    RSM = auto()
 
 
 ALL_SENSOR_MODEL_TYPES = [item for item in SensorModelTypes]

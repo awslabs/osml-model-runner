@@ -5,7 +5,6 @@ from pathlib import Path
 from queue import Queue
 from typing import Any, Dict, List, Optional, Tuple
 
-import psutil
 from aws_embedded_metrics import MetricsLogger
 from aws_embedded_metrics.unit import Unit
 from osgeo import gdal
@@ -56,7 +55,7 @@ def setup_tile_workers(
         tile_queue: Queue = Queue()
         tile_workers = []
 
-        for _ in range(psutil.cpu_count() * int(ServiceConfig.workers_per_cpu)):
+        for _ in range(int(ServiceConfig.workers)):
             # Set up our feature table to work with the region quest
             feature_table = FeatureTable(
                 ServiceConfig.feature_table,
@@ -181,7 +180,7 @@ def process_tiles(
                             "GDAL unable to create tile %s. Does not exist!",
                             absolute_tile_path,
                         )
-                        if metrics:
+                        if isinstance(metrics, MetricsLogger):
                             metrics.put_metric(
                                 MetricLabels.TILE_CREATION_FAILURE, 1, str(Unit.COUNT.value)
                             )

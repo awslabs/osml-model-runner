@@ -1,22 +1,18 @@
 import json
 import unittest
+from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from aws_oversightml_model_runner.gdal.gdal_utils import (
-    get_extensions_from_driver,
-    get_gdal_driver_extensions,
-    get_image_extension,
-    load_gdal_dataset,
-    normalize_extension,
-    select_extension,
-)
-from aws_oversightml_model_runner.photogrammetry import GDALAffineSensorModel
+from configuration import TEST_ENV_CONFIG
 
 
-class TestGDALUtils(unittest.TestCase):
+@patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
+class TestGDALUtils(TestCase):
     def test_gdal_load_success(self):
+        from aws_oversightml_model_runner.photogrammetry import GDALAffineSensorModel
+
         ds, sensor_model = self.build_dataset_and_sensor_model()
 
         assert ds is not None
@@ -29,6 +25,8 @@ class TestGDALUtils(unittest.TestCase):
     @patch("aws_oversightml_model_runner.gdal.gdal_utils.get_gdal_driver_extensions")
     @patch("aws_oversightml_model_runner.gdal.gdal_utils.gdal")
     def test_get_extensions_from_driver(self, mock_gdal, mock_get_drivers):
+        from aws_oversightml_model_runner.gdal.gdal_utils import get_extensions_from_driver
+
         with open("./test/data/mock_gdal_info.json") as mock_data:
             mock_gdal_info = json.load(mock_data)
         with open("./test/data/mock_driver_lookup.json") as mock_data:
@@ -43,6 +41,8 @@ class TestGDALUtils(unittest.TestCase):
         assert possible_extensions == expected_extensions
 
     def test_get_gdal_driver_extensions(self):
+        from aws_oversightml_model_runner.gdal.gdal_utils import get_gdal_driver_extensions
+
         driver_lookup = get_gdal_driver_extensions()
         assert "GeoTIFF" in driver_lookup
         assert "National Imagery Transmission Format" in driver_lookup
@@ -50,12 +50,16 @@ class TestGDALUtils(unittest.TestCase):
         assert "JPEG JFIF" in driver_lookup
 
     def test_select_extension(self):
+        from aws_oversightml_model_runner.gdal.gdal_utils import select_extension
+
         assert select_extension("some/file_name.dt1", ["dt0", "dt1", "dt2"]) == "DT1"
         assert select_extension("some/tricky_tif.tiff", ["tif", "tiff"]) == "TIFF"
         assert select_extension("some/file_name_without_extension", ["dt0", "dt1", "dt2"]) == "DT0"
         assert select_extension("some/file_name.odd", []) == "UNKNOWN"
 
     def test_normalize_extension(self):
+        from aws_oversightml_model_runner.gdal.gdal_utils import normalize_extension
+
         assert normalize_extension("ntf") == "NITF"
         assert normalize_extension("nTf") == "NITF"
         assert normalize_extension("nitf") == "NITF"
@@ -68,14 +72,20 @@ class TestGDALUtils(unittest.TestCase):
         assert normalize_extension("DT2") == "DT2"
 
     def test_get_image_extension(self):
+        from aws_oversightml_model_runner.gdal.gdal_utils import get_image_extension
+
         assert get_image_extension("./test/data/GeogToWGS84GeoKey5.tif") == "TIFF"
 
     def test_gdal_load_invalid(self):
+        from aws_oversightml_model_runner.gdal.gdal_utils import load_gdal_dataset
+
         with pytest.raises(ValueError):
             load_gdal_dataset("./test/data/does-not-exist.tif")
 
     @staticmethod
     def build_dataset_and_sensor_model():
+        from aws_oversightml_model_runner.gdal.gdal_utils import load_gdal_dataset
+
         ds, sensor_model = load_gdal_dataset("./test/data/GeogToWGS84GeoKey5.tif")
         return ds, sensor_model
 

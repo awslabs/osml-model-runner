@@ -40,8 +40,8 @@ def load_gdal_dataset(image_path: str) -> Tuple[gdal.Dataset, Optional[SensorMod
     selected_sensor_model_types = [
         SensorModelTypes.AFFINE,
         SensorModelTypes.PROJECTIVE,
+        # TODO: Enable RSM and RPC models once testing complete
         # SensorModelTypes.RPC,
-        # TODO: Enable RSM model once testing complete
         # SensorModelTypes.RSM,
     ]
     # Create the best sensor model available

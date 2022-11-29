@@ -61,7 +61,7 @@ class FeatureTable(DDBHelper):
 
     @metric_scope
     def add_features(self, features: List[Feature], metrics: MetricsLogger = None):
-        if metrics:
+        if isinstance(metrics, MetricsLogger):
             metrics.set_dimensions()
         start_time_millisec = int(time.time() * 1000)
         # These records are temporary and will expire 24 hours after creation. Jobs should take
@@ -119,23 +119,26 @@ class FeatureTable(DDBHelper):
                             encoded_features = []
 
                             # Check that we got a success response
-                            if result["ResponseMetadata"]["HTTPStatusCode"] != 200:
-                                metrics.put_metric(
-                                    MetricLabels.FEATURE_UPDATE, 1, str(Unit.COUNT.value)
-                                )
-                                metrics.put_metric(
-                                    MetricLabels.FEATURE_ERROR, 1, str(Unit.COUNT.value)
-                                )
+                            status_code = result.get("ResponseMetadata", {}).get("HTTPStatusCode")
+                            if status_code != 200:
+                                if isinstance(metrics, MetricsLogger):
+                                    metrics.put_metric(
+                                        MetricLabels.FEATURE_UPDATE, 1, str(Unit.COUNT.value)
+                                    )
+                                    metrics.put_metric(
+                                        MetricLabels.FEATURE_ERROR, 1, str(Unit.COUNT.value)
+                                    )
                                 logger.error(
                                     "Unable to update feature table - HTTP Status Code: {}".format(
-                                        result["ResponseMetadata"]["HTTPStatusCode"]
+                                        status_code
                                     )
                                 )
                 except Exception as err:
-                    metrics.put_metric(
-                        MetricLabels.FEATURE_UPDATE_EXCEPTION, 1, str(Unit.COUNT.value)
-                    )
-                    metrics.put_metric(MetricLabels.FEATURE_ERROR, 1, str(Unit.COUNT.value))
+                    if isinstance(metrics, MetricsLogger):
+                        metrics.put_metric(
+                            MetricLabels.FEATURE_UPDATE_EXCEPTION, 1, str(Unit.COUNT.value)
+                        )
+                        metrics.put_metric(MetricLabels.FEATURE_ERROR, 1, str(Unit.COUNT.value))
                     logger.error("There was a problem adding features: {}".format(err))
                     raise AddFeaturesException("Failed to add features for tile!") from err
 
@@ -143,7 +146,7 @@ class FeatureTable(DDBHelper):
     def get_features(
         self, image_id: str, dedupe: Optional[bool] = True, metrics: MetricsLogger = None
     ) -> List[Feature]:
-        if metrics:
+        if isinstance(metrics, MetricsLogger):
             metrics.set_dimensions()
         with Timer(
             task_str="Aggregate and deduplicate image features",
