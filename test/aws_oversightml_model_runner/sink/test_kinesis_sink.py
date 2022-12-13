@@ -6,8 +6,7 @@ import boto3
 import geojson
 import pytest
 from botocore.stub import ANY, Stubber
-
-from configuration import TEST_ENV_CONFIG, TEST_IMAGE_ID, TEST_RESULTS_STREAM
+from configuration import TEST_ENV_CONFIG, TEST_JOB_ID, TEST_RESULTS_STREAM
 
 MOCK_KINESIS_RESPONSE = {
     "ShardId": "shardId-000000000000",
@@ -34,31 +33,11 @@ class TestKinesisSink(unittest.TestCase):
             MOCK_KINESIS_RESPONSE,
             {
                 "StreamName": TEST_RESULTS_STREAM,
-                "PartitionKey": TEST_IMAGE_ID,
+                "PartitionKey": TEST_JOB_ID,
                 "Data": geojson.dumps(geojson.FeatureCollection(self.test_feature_list)),
             },
         )
-        kinesis_sink.write(TEST_IMAGE_ID, self.test_feature_list)
-        kinesis_client_stub.assert_no_pending_responses()
-
-    def test_write_features_default_credentials_image_id_with_slash(self):
-        from aws_oversightml_model_runner.sink import KinesisSink
-
-        image_id_with_slashes = "fake/image/123"
-
-        kinesis_sink = KinesisSink(TEST_RESULTS_STREAM)
-        kinesis_client_stub = Stubber(kinesis_sink.kinesisClient)
-        kinesis_client_stub.activate()
-        kinesis_client_stub.add_response(
-            "put_record",
-            MOCK_KINESIS_RESPONSE,
-            {
-                "StreamName": TEST_RESULTS_STREAM,
-                "PartitionKey": image_id_with_slashes,
-                "Data": geojson.dumps(geojson.FeatureCollection(self.test_feature_list)),
-            },
-        )
-        kinesis_sink.write(image_id_with_slashes, self.test_feature_list)
+        kinesis_sink.write(TEST_JOB_ID, self.test_feature_list)
         kinesis_client_stub.assert_no_pending_responses()
 
     def test_write_features_batch_size_one(self):
@@ -73,11 +52,11 @@ class TestKinesisSink(unittest.TestCase):
                 {"ShardId": "shardId-000000000000", "SequenceNumber": str(index)},
                 {
                     "StreamName": TEST_RESULTS_STREAM,
-                    "PartitionKey": TEST_IMAGE_ID,
+                    "PartitionKey": TEST_JOB_ID,
                     "Data": geojson.dumps(geojson.FeatureCollection([feature])),
                 },
             )
-        kinesis_sink.write(TEST_IMAGE_ID, self.test_feature_list)
+        kinesis_sink.write(TEST_JOB_ID, self.test_feature_list)
         kinesis_client_stub.assert_no_pending_responses()
 
     def test_write_batch_size_three(self):
@@ -95,7 +74,7 @@ class TestKinesisSink(unittest.TestCase):
             MOCK_KINESIS_RESPONSE,
             {
                 "StreamName": TEST_RESULTS_STREAM,
-                "PartitionKey": TEST_IMAGE_ID,
+                "PartitionKey": TEST_JOB_ID,
                 "Data": geojson.dumps(geojson.FeatureCollection(self.test_feature_list[:3])),
             },
         )
@@ -104,11 +83,11 @@ class TestKinesisSink(unittest.TestCase):
             MOCK_KINESIS_RESPONSE,
             {
                 "StreamName": TEST_RESULTS_STREAM,
-                "PartitionKey": TEST_IMAGE_ID,
+                "PartitionKey": TEST_JOB_ID,
                 "Data": geojson.dumps(geojson.FeatureCollection(self.test_feature_list[3:])),
             },
         )
-        kinesis_sink.write(TEST_IMAGE_ID, self.test_feature_list)
+        kinesis_sink.write(TEST_JOB_ID, self.test_feature_list)
         kinesis_client_stub.assert_no_pending_responses()
 
     def test_write_oversized_record(self):
@@ -126,12 +105,12 @@ class TestKinesisSink(unittest.TestCase):
             Member must have length less than or equal to 1048576.""",
             expected_params={
                 "StreamName": TEST_RESULTS_STREAM,
-                "PartitionKey": TEST_IMAGE_ID,
+                "PartitionKey": TEST_JOB_ID,
                 "Data": geojson.dumps(geojson.FeatureCollection(self.test_feature_list)),
             },
         )
         with pytest.raises(Exception) as e_info:
-            kinesis_sink.write(TEST_IMAGE_ID, self.test_feature_list)
+            kinesis_sink.write(TEST_JOB_ID, self.test_feature_list)
         assert str(e_info.value).startswith(
             "An error occurred (ValidationException) when calling the PutRecord operation"
         )

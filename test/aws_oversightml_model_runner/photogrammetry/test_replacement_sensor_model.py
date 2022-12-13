@@ -162,13 +162,8 @@ class TestMathUtils(unittest.TestCase):
         )
         assert np.allclose(world_coordinate.coordinate, new_world_coordinate.coordinate)
 
-    @staticmethod
-    def build_image_domain():
-        return RSMImageDomain(0, 2048, 10, 2038)
-
-    @staticmethod
-    def build_geodetic_ground_domain():
-        ground_domain_vertices = [
+    def test_build_rsm_ground_domain_invalid_count_exception(self):
+        sample_geodetic_ground_vertices = [
             GeodeticWorldCoordinate([radians(0.0), radians(10.0), -100.0]),
             GeodeticWorldCoordinate([radians(0.0), radians(0.0), -100.0]),
             GeodeticWorldCoordinate([radians(10.0), radians(10.0), -100.0]),
@@ -178,7 +173,92 @@ class TestMathUtils(unittest.TestCase):
             GeodeticWorldCoordinate([radians(10.0), radians(10.0), 100.0]),
             GeodeticWorldCoordinate([radians(10.0), radians(0.0), 100.0]),
         ]
-        return RSMGroundDomain(RSMGroundDomainForm.GEODETIC, ground_domain_vertices)
+        del sample_geodetic_ground_vertices[
+            0
+        ]  # remove an element, throw exception if it has only 7 items
+
+        with pytest.raises(ValueError):
+            RSMGroundDomain(RSMGroundDomainForm.GEODETIC, sample_geodetic_ground_vertices)
+
+    def test_build_rsm_ground_domain_empty_coordinate_exception(self):
+        rectangular_coordinate_origin = GeodeticWorldCoordinate([radians(5.0), radians(10.0), 0.0])
+
+        ground_domain_vertices = [
+            WorldCoordinate(np.add(rectangular_coordinate_origin.coordinate, [0.0, 10.0, -100.0])),
+            WorldCoordinate(np.add(rectangular_coordinate_origin.coordinate, [0.0, 0.0, -100.0])),
+            WorldCoordinate(np.add(rectangular_coordinate_origin.coordinate, [10.0, 10.0, -100.0])),
+            WorldCoordinate(np.add(rectangular_coordinate_origin.coordinate, [10.0, 0.0, -100.0])),
+            WorldCoordinate(np.add(rectangular_coordinate_origin.coordinate, [0.0, 10.0, 100.0])),
+            WorldCoordinate(np.add(rectangular_coordinate_origin.coordinate, [0.0, 0.0, 100.0])),
+            WorldCoordinate(np.add(rectangular_coordinate_origin.coordinate, [10.0, 10.0, 100.0])),
+            WorldCoordinate(np.add(rectangular_coordinate_origin.coordinate, [10.0, 0.0, 100.0])),
+        ]
+
+        rectangular_coordinate_unit_vectors = None
+        with pytest.raises(ValueError):
+            RSMGroundDomain(
+                RSMGroundDomainForm.RECTANGULAR,
+                ground_domain_vertices,
+                rectangular_coordinate_origin,
+                rectangular_coordinate_unit_vectors,
+            )
+
+    def test_invalid_rsmloworderpolynomial_exception(self):
+        # Missing 1 index (ZZ), will throw exception if it doesn't meet the requirements
+        with pytest.raises(ValueError):
+            RSMLowOrderPolynomial(
+                [
+                    42.0,  # constant
+                    1.0,  # X
+                    1.0,  # Y
+                    1.0,  # Z
+                    0.0,  # XX
+                    0.0,  # XY
+                    2.0,  # XZ
+                    0.0,  # YY
+                    0.0,  # YZ
+                ]
+            )
+
+    def test_invalid_rsmpolynomial_exception(self):
+        # Missing 1 index (XYZ), will throw exception if it doesn't meet the requirements
+        with pytest.raises(ValueError):
+            RSMPolynomial(
+                2,
+                1,
+                1,
+                [
+                    1.0,  # constant
+                    1.0,  # X
+                    0.0,  # XX
+                    2.0,  # Y
+                    0.0,  # XY
+                    0.0,  # XXY
+                    3.0,  # Z
+                    0.0,  # XZ
+                    0.0,  # XXZ
+                    0.0,  # YZ
+                    0.0,  # XYZ
+                ],
+            )
+
+    @staticmethod
+    def build_image_domain():
+        return RSMImageDomain(0, 2048, 10, 2038)
+
+    @staticmethod
+    def build_geodetic_ground_domain():
+        sample_geodetic_ground_vertices = [
+            GeodeticWorldCoordinate([radians(0.0), radians(10.0), -100.0]),
+            GeodeticWorldCoordinate([radians(0.0), radians(0.0), -100.0]),
+            GeodeticWorldCoordinate([radians(10.0), radians(10.0), -100.0]),
+            GeodeticWorldCoordinate([radians(10.0), radians(0.0), -100.0]),
+            GeodeticWorldCoordinate([radians(0.0), radians(10.0), 100.0]),
+            GeodeticWorldCoordinate([radians(0.0), radians(0.0), 100.0]),
+            GeodeticWorldCoordinate([radians(10.0), radians(10.0), 100.0]),
+            GeodeticWorldCoordinate([radians(10.0), radians(0.0), 100.0]),
+        ]
+        return RSMGroundDomain(RSMGroundDomainForm.GEODETIC, sample_geodetic_ground_vertices)
 
     @staticmethod
     def build_rectangular_ground_domain():

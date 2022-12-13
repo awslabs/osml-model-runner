@@ -3,6 +3,7 @@ import json
 import logging
 import uuid
 from dataclasses import asdict
+from datetime import datetime
 from decimal import Decimal
 from json import dumps
 from typing import List, Optional, Tuple
@@ -43,6 +44,7 @@ from .common import (
     build_embedded_metrics_config,
     get_credentials_for_assumed_role,
 )
+from .common.exceptions import InvalidFeaturePropertiesException
 from .common.security_classification import (
     Classification,
     ClassificationLevel,
@@ -59,6 +61,7 @@ from .database import (
 from .exceptions import (
     AggregateFeaturesException,
     InvalidImageURLException,
+    InvalidSourceException,
     LoadImageException,
     ProcessImageException,
     ProcessRegionException,
@@ -178,12 +181,13 @@ class ModelRunner:
                             region_pixel_bounds = f"{region_request.region_bounds[0]}{region_request.region_bounds[1]}"
                             region_request_item = RegionRequestItem(
                                 image_id=region_request.image_id,
+                                job_id=region_request.job_id,
                                 region_pixel_bounds=region_pixel_bounds,
                                 region_id=region_request.region_id,
                             )
                             self.region_request_table.start_region_request(region_request_item)
                             logging.info(
-                                "Adding Processing Region to RegionRequestTable: imageid: {0} - regionid: {1}".format(
+                                "Adding region request: imageid: {0} - regionid: {1}".format(
                                     region_request_item.image_id, region_request_item.region_id
                                 )
                             )
@@ -228,10 +232,9 @@ class ModelRunner:
 
                             # Check that our image request looks good
                             if not image_request.is_valid():
-                                logger.error(
-                                    "Invalid Image Request! {}".format(image_request_message)
-                                )
-                                raise InvalidImageRequestException("Invalid image request!")
+                                error = "Invalid image request: {}".format(image_request_message)
+                                logger.exception(error)
+                                raise InvalidImageRequestException(error)
 
                             # Process the request
                             self.process_image_request(image_request)
@@ -293,6 +296,7 @@ class ModelRunner:
                 outputs=dumps(image_request.outputs),
                 image_url=image_request.image_url,
                 image_read_role=image_request.image_read_role,
+                feature_properties=dumps(image_request.feature_properties),
             )
 
             # Start the image processing
@@ -305,7 +309,7 @@ class ModelRunner:
             self.validate_model_hosting(image_request_item, metrics)
 
             # Load the relevant image meta data into memory
-            raster_dataset, sensor_model, all_regions = self.load_image_request(
+            image_extension, raster_dataset, sensor_model, all_regions = self.load_image_request(
                 image_request_item, image_request.roi, metrics
             )
 
@@ -321,13 +325,26 @@ class ModelRunner:
                 image_request_item.region_count = Decimal(len(all_regions))
                 image_request_item.width = Decimal(raster_dataset.RasterXSize)
                 image_request_item.height = Decimal(raster_dataset.RasterYSize)
+
+                # If we can get a valid classification from the source image - attach it to features
                 is_security_classification = self.get_image_classification(raster_dataset)
                 if isinstance(is_security_classification, Classification):
+                    # Update the feature_properties to include information on classification
                     image_request_item.image_security_classification = json.dumps(
                         asdict(
                             is_security_classification, dict_factory=classification_asdict_factory
                         )
                     )
+
+                # If we can get a valid source metadata from the source image - attach it to features
+                # else, just pass in whatever custom features if they were provided
+                source_metadata = self.get_source_metadata(image_extension, raster_dataset)
+                if isinstance(source_metadata, dict):
+                    feature_properties: List[dict] = json.loads(
+                        image_request_item.feature_properties
+                    )
+                    feature_properties.append(source_metadata)
+                    image_request_item.feature_properties = json.dumps(feature_properties)
 
                 # Update the image request job to have new derived image data
                 image_request_item = self.job_table.update_image_request(image_request_item)
@@ -336,6 +353,7 @@ class ModelRunner:
                     image_request_item, ImageRequestStatus.IN_PROGRESS, "Processing regions"
                 )
 
+                # Place the resulting region requests on the appropriate work queue
                 self.queue_region_request(all_regions, image_request, raster_dataset, sensor_model)
 
         except Exception as err:
@@ -356,7 +374,7 @@ class ModelRunner:
         # Set aside the first region
         first_region = all_regions.pop(0)
         for region in all_regions:
-            logger.info("Queue region: {}".format(region))
+            logger.info("Queueing region: {}".format(region))
 
             region_pixel_bounds = f"{region[0]}{region[1]}"
             region_id = f"{region_pixel_bounds}-{str(uuid.uuid4())}"
@@ -364,15 +382,16 @@ class ModelRunner:
                 image_request.get_shared_values(), region_bounds=region, region_id=region_id
             )
 
-            # Add item to RegionRequestTable
+            # Create a new entry to the region request being started
             region_request_item = RegionRequestItem(
                 image_id=image_request.image_id,
+                job_id=image_request.job_id,
                 region_pixel_bounds=region_pixel_bounds,
                 region_id=region_id,
             )
             self.region_request_table.start_region_request(region_request_item)
             logging.info(
-                "Adding Processing Region to RegionRequestTable: imageid: {0} - regionid: {1}".format(
+                "Adding region request: imageid: {0} - regionid: {1}".format(
                     region_request_item.image_id, region_request_item.region_id
                 )
             )
@@ -394,12 +413,13 @@ class ModelRunner:
         # Add item to RegionRequestTable
         region_request_item = RegionRequestItem(
             image_id=image_request.image_id,
+            job_id=image_request.job_id,
             region_pixel_bounds=region_pixel_bounds,
             region_id=region_id,
         )
         self.region_request_table.start_region_request(region_request_item)
         logging.info(
-            "Adding Processing Region to RegionRequestTable: imageid: {0} - regionid: {1}".format(
+            "Adding region request: imageid: {0} - regionid: {1}".format(
                 region_request_item.image_id, region_request_item.region_id
             )
         )
@@ -427,6 +447,7 @@ class ModelRunner:
         memory to be processed by tile-workers. If a raster_dataset is not provided directly it will poll the image
         from the region request.
 
+        :param region_request_item:
         :param region_request: the region request
         :param raster_dataset: the raster dataset containing the region
         :param sensor_model: the sensor model for this raster dataset
@@ -492,7 +513,7 @@ class ModelRunner:
                     metrics,
                 )
 
-                # Update RegionRequestTable w/ total tile counts
+                # Update table w/ total tile counts
                 region_request_item.total_tiles = Decimal(total_tile_count)
                 region_request_item = self.region_request_table.update_region_request(
                     region_request_item
@@ -534,7 +555,7 @@ class ModelRunner:
         image_request_item: JobItem,
         roi: shapely.geometry.base.BaseGeometry,
         metrics: MetricsLogger = None,
-    ) -> Tuple[Dataset, Optional[SensorModel], List[ImageRegion]]:
+    ) -> Tuple[str, Dataset, Optional[SensorModel], List[ImageRegion]]:
         """
         Loads the required image file metadata into memory to be chipped apart into regions and
         distributed for region processing.
@@ -601,7 +622,7 @@ class ModelRunner:
 
                 all_regions = generate_crops(processing_bounds, region_size, region_overlap)
 
-        return raster_dataset, sensor_model, all_regions
+        return image_extension, raster_dataset, sensor_model, all_regions
 
     def fail_image_request(
         self, image_request_item: JobItem, err: Exception, metrics: MetricsLogger = None
@@ -650,6 +671,8 @@ class ModelRunner:
 
             features = self.add_security_classification_to_features(image_request_item, features)
 
+            features = self.add_properties_to_features(image_request_item, features)
+
             # Sink the features into the right outputs
             self.sync_features(image_request_item, features)
 
@@ -693,7 +716,7 @@ class ModelRunner:
         Fails a region if it failed to process successfully and updates the table accordingly before
         raising an exception
 
-        :param region_request: The region request to update.
+        :param region_request_item:
         :param metrics: The metrics logger to use to report metrics.
         :return: None
         """
@@ -767,12 +790,10 @@ class ModelRunner:
     def sync_features(image_request_item: JobItem, features: List[Feature]):
         # Ensure we hae outputs defined for where to dump our features
         if image_request_item.outputs:
-            logging.info(
-                "Writing aggregate feature for Image '{}'".format(image_request_item.image_id)
-            )
+            logging.info("Writing aggregate feature for job '{}'".format(image_request_item.job_id))
             for sink in ImageRequest.outputs_to_sinks(json.loads(image_request_item.outputs)):
-                if sink.mode == SinkMode.AGGREGATE:
-                    sink.write(image_request_item.image_id, features)
+                if sink.mode == SinkMode.AGGREGATE and image_request_item.job_id:
+                    sink.write(image_request_item.job_id, features)
         else:
             raise InvalidImageRequestException(
                 "No output destinations were defined for this image request!"
@@ -799,6 +820,23 @@ class ModelRunner:
         return features
 
     @staticmethod
+    def add_properties_to_features(
+        job_item: JobItem, features: List[geojson.Feature]
+    ) -> List[geojson.Feature]:
+        if job_item.feature_properties is not None:
+            try:
+                feature_properties: List[dict] = json.loads(job_item.feature_properties)
+                for feature in features:
+                    for feature_property in feature_properties:
+                        feature["properties"].update(feature_property)
+            except Exception as e:
+                logging.exception(e)
+                raise InvalidFeaturePropertiesException(
+                    "Could not apply custom properties to features!"
+                )
+        return features
+
+    @staticmethod
     def get_image_classification(dataset: Dataset) -> Optional[Classification]:
         metadata = dataset.GetMetadata()
         level_map = {
@@ -816,4 +854,49 @@ class ModelRunner:
                 level=is_level, caveats=is_caveats, releasability=is_releasability
             )
         except InvalidClassificationException:
+            return None
+
+    @staticmethod
+    def get_source_metadata(image_extension: str, dataset: Dataset) -> Optional[dict]:
+        # Currently we only support deriving source metadata from NITF images
+        if image_extension == "NITF":
+            metadata = dataset.GetMetadata()
+            try:
+                # Extract metadata headers from NITF
+                data_type = metadata.get("NITF_ICAT", None)
+                source_id = metadata.get("NITF_FTITLE", None)
+                # Format of datetime string follows 14 digit spec in MIL-STD-2500C for NITFs
+                source_dt = (
+                    datetime.strptime(metadata.get("NITF_IDATIM"), "%Y%m%d%H%M%S").isoformat()
+                    if metadata.get("NITF_IDATIM")
+                    else None
+                )
+                source_classification = ModelRunner.get_image_classification(dataset)
+                source_classification_str = (
+                    source_classification.classification
+                    if isinstance(source_classification, Classification)
+                    else None
+                )
+
+                source_property = {
+                    "source": [
+                        {
+                            "fileType": "NITF",
+                            "info": {
+                                "imageCategory": data_type,
+                                "metadata": {
+                                    "sourceId": source_id,
+                                    "sourceDt": source_dt,
+                                    "classification": source_classification_str,
+                                },
+                            },
+                        }
+                    ]
+                }
+
+                return source_property
+            except InvalidSourceException:
+                return None
+        else:
+            logger.warning(f"Source metadata not available for {image_extension} image extension!")
             return None

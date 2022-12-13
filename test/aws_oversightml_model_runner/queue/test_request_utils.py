@@ -84,13 +84,13 @@ class TestRequestUtils(unittest.TestCase):
     def test_invalid_request_image_read_role(self):
         from aws_oversightml_model_runner.api.request_utils import shared_properties_are_valid
 
-        self.sample_request_data.image_read_role = "010321660603:role/OversightMLS3ReadOnly"
+        self.sample_request_data.image_read_role = "012345678910:role/OversightMLS3ReadOnly"
         assert not shared_properties_are_valid(self.sample_request_data)
 
     def test_invalid_request_model_invocation_role(self):
         from aws_oversightml_model_runner.api.request_utils import shared_properties_are_valid
 
-        self.sample_request_data.model_invocation_role = "010321660603:role/OversightMLModelInvoker"
+        self.sample_request_data.model_invocation_role = "012345678910:role/OversightMLModelInvoker"
         assert not shared_properties_are_valid(self.sample_request_data)
 
     @staticmethod

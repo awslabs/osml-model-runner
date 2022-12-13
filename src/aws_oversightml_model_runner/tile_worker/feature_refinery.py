@@ -17,7 +17,7 @@ from aws_oversightml_model_runner.photogrammetry import (
 
 class LocationGridInterpolator:
     """
-    This class can be used to approximate geodetic world coordinates from an grid of correspondences that is
+    This class can be used to approximate geodetic world coordinates from a grid of correspondences that is
     computed over a given area.
     """
 
@@ -86,7 +86,7 @@ class LocationGridInterpolator:
 class FeatureRefinery:
     """
     A FeatureRefinery is a class that improves and updates the features returned by object detectors. Its primary
-    purpose is to assign geographic coordinates for the features but it can be expanded over time to make other
+    purpose is to assign geographic coordinates for the features, but it can be expanded over time to make other
     adjustments (e.g. assign classification metadata).
     """
 
@@ -147,17 +147,37 @@ class FeatureRefinery:
                 ImageCoordinate(center_xy), elevation_model=self.elevation_model
             )
 
+            # Calculate image coordinates and update feature
+            image_coords = [
+                [bbox[0], bbox[1]],
+                [bbox[0], bbox[3]],
+                [bbox[2], bbox[3]],
+                [bbox[2], bbox[1]],
+            ]
+
+            # Create an ontology based on the models returned feature_types
+            ontology = []
+            for feature_type in feature["properties"]["feature_types"]:
+                ontology.append(
+                    {
+                        "iri": feature_type,
+                        "detectionScore": feature["properties"]["feature_types"][feature_type],
+                    }
+                )
+
+            # Create an original detection property for customer usage
+            feature["properties"]["detection"] = {
+                "type": "Polygon",
+                "pixelCoordinates": image_coords,
+                "ontology": ontology,
+            }
+
             # Calculate the geodetic coordinates of the bounding box
             polygon_image_coords = [
                 initial_sensor_model.image_to_world(
                     ImageCoordinate(image_coord), elevation_model=self.elevation_model
                 )
-                for image_coord in [
-                    [bbox[0], bbox[1]],
-                    [bbox[0], bbox[3]],
-                    [bbox[2], bbox[3]],
-                    [bbox[2], bbox[1]],
-                ]
+                for image_coord in image_coords
             ]
 
             if not isinstance(self.sensor_model, CompositeSensorModel):
@@ -183,7 +203,7 @@ class FeatureRefinery:
                     final_center_location.latitude - approximate_center_location.latitude
                 )
 
-                # Move all of the boundary coordinates by the delta. This assumes that the boundary coordinates are
+                # Move all the boundary coordinates by the delta. This assumes that the boundary coordinates are
                 # relatively close to the center and that they will exhibit the same shift that we saw between the
                 # approximate center and the precision center
                 for image_coord in polygon_image_coords:
@@ -205,26 +225,7 @@ class FeatureRefinery:
             # exterior ring hence creating an array of the coordinates is appropriate here.
             feature["geometry"] = geojson.Polygon([polygon_coords])
 
-            # Geojson features can optionally have a bounding box that contains [min lon, min lat,
-            # max lon, max lat]. This code computes that bounding box from the polygon boundary
-            # coordinates
-            feature["bbox"] = functools.reduce(
-                lambda prev, coord: [
-                    min(coord[0], prev[0]),
-                    min(coord[1], prev[1]),
-                    max(coord[0], prev[2]),
-                    max(coord[1], prev[3]),
-                ],
-                polygon_coords,
-                [math.inf, math.inf, -math.inf, -math.inf],
-            )
-
-            # Adding these because some visualization tools (e.g. kepler.gl) can perform more
-            # advanced rendering (e.g. cluster layers) if the data points have single coordinates.
-            feature["properties"]["center_longitude"] = math.degrees(
-                final_center_location.longitude
-            )
-            feature["properties"]["center_latitude"] = math.degrees(final_center_location.latitude)
+            self.compute_center_lat_long(feature, polygon_coords, final_center_location)
 
     def _geolocate_features_using_approximation_grid(self, features: List[geojson.Feature]) -> None:
         """
@@ -238,7 +239,7 @@ class FeatureRefinery:
         """
 
         # Compute the boundary of these features. Normally this will be similar to the tile boundary but the
-        # interpolation needs to be setup to cover the entire extent so we calculate it explicitly here. If the
+        # interpolation needs to be setup to cover the entire extent, so we calculate it explicitly here. If the
         # features happen to be very tightly packed and only occupy a small portion of the tile we will gain some
         # benefit by creating the same resolution of approximation grid over the smaller area.
         feature_bounds = functools.reduce(
@@ -252,7 +253,7 @@ class FeatureRefinery:
             [math.inf, math.inf, -math.inf, -math.inf],
         )
 
-        # Use the feature boundary to setup an approximation grid for the region
+        # Use the feature boundary to set up an approximation grid for the region
         grid_area_ulx = feature_bounds[0]
         grid_area_uly = feature_bounds[1]
         grid_area_width = feature_bounds[2] - feature_bounds[0]
@@ -298,24 +299,7 @@ class FeatureRefinery:
             # exterior ring hence creating an array of the coordinates is appropriate here.
             feature["geometry"] = geojson.Polygon([polygon_coords])
 
-            # Geojson features can optionally have a bounding box that contains [min lon, min lat,
-            # max lon, max lat]. This code computes that bounding box from the polygon boundary
-            # coordinates
-            feature["bbox"] = functools.reduce(
-                lambda prev, coord: [
-                    min(coord[0], prev[0]),
-                    min(coord[1], prev[1]),
-                    max(coord[0], prev[2]),
-                    max(coord[1], prev[3]),
-                ],
-                polygon_coords,
-                [math.inf, math.inf, -math.inf, -math.inf],
-            )
-
-            # Adding these because some visualization tools (e.g. kepler.gl) can perform more
-            # advanced rendering (e.g. cluster layers) if the data points have single coordinates.
-            feature["properties"]["center_longitude"] = math.degrees(center_location.longitude)
-            feature["properties"]["center_latitude"] = math.degrees(center_location.latitude)
+            self.compute_center_lat_long(feature, polygon_coords, center_location)
 
     @staticmethod
     def radians_coordinate_to_degrees(
@@ -334,3 +318,28 @@ class FeatureRefinery:
             math.degrees(coordinate.latitude),
             coordinate.elevation,
         )
+
+    @staticmethod
+    def compute_center_lat_long(
+        feature: geojson.Feature,
+        polygon_coords: List[tuple],
+        final_center_location: GeodeticWorldCoordinate,
+    ) -> None:
+        # Geojson features can optionally have a bounding box that contains [min lon, min lat,
+        # max lon, max lat]. This code computes that bounding box from the polygon boundary
+        # coordinates
+        feature["bbox"] = functools.reduce(
+            lambda prev, coord: [
+                min(coord[0], prev[0]),
+                min(coord[1], prev[1]),
+                max(coord[0], prev[2]),
+                max(coord[1], prev[3]),
+            ],
+            polygon_coords,
+            [math.inf, math.inf, -math.inf, -math.inf],
+        )
+
+        # Adding these because some visualization tools (e.g. kepler.gl) can perform more
+        # advanced rendering (e.g. cluster layers) if the data points have single coordinates.
+        feature["properties"]["center_longitude"] = math.degrees(final_center_location.longitude)
+        feature["properties"]["center_latitude"] = math.degrees(final_center_location.latitude)

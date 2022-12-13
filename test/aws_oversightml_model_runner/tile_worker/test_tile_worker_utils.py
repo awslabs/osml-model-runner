@@ -2,7 +2,6 @@ import unittest
 from unittest import mock
 
 import pytest
-
 from configuration import TEST_ENV_CONFIG
 
 

@@ -49,6 +49,7 @@ class ImageRequest(object):
         self.tile_format: ImageFormats = ImageFormats.NITF
         self.tile_compression: ImageCompression = ImageCompression.NONE
         self.model_invocation_role: str = ""
+        self.feature_properties: List[dict] = []
         self.roi: Optional[BaseGeometry] = None
 
         for dictionary in initial_data:
@@ -114,6 +115,8 @@ class ImageRequest(object):
                     "prefix": image_request["outputPrefix"],
                 }
             ]
+        if image_request.get("featureProperties"):
+            properties["feature_properties"] = image_request["featureProperties"]
 
         return ImageRequest(properties)
 
@@ -162,6 +165,7 @@ class ImageRequest(object):
     def get_shared_values(self) -> dict:
         return {
             "image_id": self.image_id,
+            "job_id": self.job_id,
             "image_url": self.image_url,
             "image_read_role": self.image_read_role,
             "model_name": self.model_name,

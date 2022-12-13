@@ -4,7 +4,6 @@ from xml.etree import ElementTree
 
 import numpy as np
 import pytest
-
 from configuration import TEST_ENV_CONFIG
 
 

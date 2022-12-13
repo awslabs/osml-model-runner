@@ -1,17 +1,18 @@
 import unittest
 from typing import List
+from unittest.mock import Mock
 
 import boto3
 import geojson
 import mock
+from botocore.exceptions import ClientError
 from botocore.stub import ANY, Stubber
-from moto import mock_dynamodb
-
 from configuration import (
     TEST_ENV_CONFIG,
     TEST_FEATURE_TABLE_ATTRIBUTE_DEFINITIONS,
     TEST_FEATURE_TABLE_KEY_SCHEMA,
 )
+from moto import mock_dynamodb
 
 image_id = "7db12549-3bcb-49c8-acba-25d46ef5cbf3:s3://spacenet-dataset/AOIs/AOI_1_Rio/srcData/mosaic_3band/013022223131.tif"  # noqa
 
@@ -49,6 +50,10 @@ TEST_FEATURE_2 = {
         ]
     },
 }
+
+TEST_MOCK_PUT_EXCEPTION = Mock(
+    side_effect=ClientError({"Error": {"Code": 500, "Message": "ClientError"}}, "put_item")
+)
 
 
 @mock_dynamodb
@@ -127,6 +132,14 @@ class TestFeatureTable(unittest.TestCase):
         ddb_features = self.feature_table.get_features(image_id)
 
         assert len(ddb_features) == len(features)
+
+    def test_add_features_throw_exceptions(self):
+        from aws_oversightml_model_runner.database.exceptions import AddFeaturesException
+
+        features = self.get_feature_list()
+        self.feature_table.table.put_item = TEST_MOCK_PUT_EXCEPTION
+        with self.assertRaises(AddFeaturesException):
+            self.feature_table.add_features(features)
 
     @staticmethod
     def get_feature_list() -> List[geojson.Feature]:

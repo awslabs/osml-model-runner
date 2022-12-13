@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+from configuration import TEST_ENV_CONFIG
 from osgeo import gdal
 
 from aws_oversightml_model_runner.photogrammetry import (
@@ -17,7 +18,6 @@ from aws_oversightml_model_runner.photogrammetry import (
     RPCSensorModel,
     RSMPolynomialSensorModel,
 )
-from configuration import TEST_ENV_CONFIG
 
 # Strictly speaking the tests in this file are not pure unit tests of the SensorModelFactory. Here we deliberately
 # did not mock out the underlying sensor models and are instead testing that a fully functional model can be
@@ -150,10 +150,10 @@ class TestSensorModelFactory(TestCase):
                 ImageCoordinate([0.5, 0.5])
             )
             assert new_geodetic_ground_domain_origin.longitude == pytest.approx(
-                geodetic_ground_domain_origin.longitude, abs=0.0001
+                geodetic_ground_domain_origin.longitude, abs=0.00001
             )
             assert new_geodetic_ground_domain_origin.latitude == pytest.approx(
-                geodetic_ground_domain_origin.latitude, abs=0.0001
+                geodetic_ground_domain_origin.latitude, abs=0.00001
             )
 
     def test_sensor_model_builder_cscrna(self):

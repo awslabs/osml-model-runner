@@ -5,22 +5,21 @@ python3 visualize_sensor_model.py -i ./foo.ntf -a ./annotations.xml -er ./SRTM -
 
 Annotations are expected in a common XML format:
 
-<annotation>
-	<object>
-		<name>building</name>
-		<pose>Unspecified</pose>
-		<truncated>0</truncated>
-		<difficult>0</difficult>
-		<bndbox>
-			<xmin>694</xmin>
-			<ymin>1125</ymin>
-			<xmax>762</xmax>
-			<ymax>1183</ymax>
-		</bndbox>
-	</object>
-	...
-
+    <annotation>
+        <object>
+            <name>building</name>
+            <pose>Unspecified</pose>
+            <truncated>0</truncated>
+            <difficult>0</difficult>
+            <bndbox>
+                <xmin>694</xmin>
+                <ymin>1125</ymin>
+                <xmax>762</xmax>
+                <ymax>1183</ymax>
+            </bndbox>
+        </object>
 """
+
 import argparse
 import os
 from itertools import chain

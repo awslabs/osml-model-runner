@@ -2,9 +2,8 @@ import time
 import unittest
 from unittest import mock
 
-from mock import Mock
-
 from configuration import TEST_ENV_CONFIG
+from mock import Mock
 
 
 @mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)
@@ -77,6 +76,42 @@ class TestTimer(unittest.TestCase):
         time_result = call_args[0][0][1]
         assert time_result >= 1.0
         assert call_args[0][0][2] == "Milliseconds"
+
+    def test_timer_metrics_logger_none(self):
+        from aws_oversightml_model_runner.common import Timer
+
+        mock_logger = Mock()
+        mock_metrics_logger = Mock()
+        mock_metrics_logger.put_metric = None
+        mock_metric_name = "testing"
+        with Timer(
+            task_str="Running a test",
+            metric_name=mock_metric_name,
+            logger=mock_logger,
+            metrics_logger=None,
+        ):
+            time.sleep(1.0)
+
+        call_args = mock_metrics_logger.put_metric
+        assert call_args is None
+
+    def test_timer_throw_exception(self):
+        from aws_oversightml_model_runner.common import Timer
+
+        mock_logger = Mock()
+        mock_metrics_logger = Mock()
+        mock_metrics_logger.put_metric = None
+        mock_metric_name = "testing"
+        with Timer(
+            task_str="Running a test",
+            metric_name=mock_metric_name,
+            logger=mock_logger,
+            metrics_logger=mock_metrics_logger,
+        ):
+            time.sleep(1.0)
+
+        call_args = mock_metrics_logger.put_metric
+        assert call_args is None
 
 
 if __name__ == "__main__":

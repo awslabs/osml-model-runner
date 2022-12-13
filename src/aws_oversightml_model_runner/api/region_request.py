@@ -30,6 +30,7 @@ class RegionRequest(object):
         """
         self.region_id: str = ""
         self.image_id: str = ""
+        self.job_id: str = ""
         self.image_url: str = ""
         self.image_read_role: str = ""
         self.model_name: str = ""

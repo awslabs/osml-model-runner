@@ -1,6 +1,6 @@
 import unittest
 
-legacy_execution_role = "arn:aws:iam::010321660603:role/OversightMLBetaInvokeRole"
+legacy_execution_role = "arn:aws:iam::012345678910:role/OversightMLBetaInvokeRole"
 
 
 class TestImageRequest(unittest.TestCase):
@@ -46,11 +46,11 @@ class TestImageRequest(unittest.TestCase):
     @staticmethod
     def build_request_data():
         return {
-            "job_arn": "arn:aws:oversightml:us-east-1:674401241798:ipj/test-job",
+            "job_arn": "arn:aws:oversightml:us-east-1:012345678910:ipj/test-job",
             "job_id": "test-job",
             "image_id": "test-image-id",
             "image_url": "test-image-url",
-            "image_read_role": "arn:aws:iam::010321661213:role/OversightMLS3ReadOnly",
+            "image_read_role": "arn:aws:iam::012345678910:role/OversightMLS3ReadOnly",
             "output_bucket": "unit-test",
             "output_prefix": "region-request",
             "tile_size": (10, 10),
@@ -58,7 +58,7 @@ class TestImageRequest(unittest.TestCase):
             "tile_format": "NITF",
             "model_name": "test-model-name",
             "model_hosting_type": "SM_ENDPOINT",
-            "model_invocation_role": "arn:aws:iam::010321661213:role/OversightMLModelInvoker",
+            "model_invocation_role": "arn:aws:iam::012345678910:role/OversightMLModelInvoker",
         }
 
 

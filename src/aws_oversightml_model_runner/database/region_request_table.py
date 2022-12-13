@@ -50,6 +50,7 @@ class RegionRequestItem(DDBItem):
 
     region_id: str
     image_id: str
+    job_id: Optional[str] = None
     start_time: Optional[Decimal] = None
     last_updated_time: Optional[Decimal] = None
     end_time: Optional[Decimal] = None
@@ -70,8 +71,8 @@ class RegionRequestItem(DDBItem):
 
 class RegionRequestTable(DDBHelper):
     """
-    RegionRequestTable is a class meant to help OSML with accessing and interacting with the region processing jobs we track
-    as part of the region table. It extends the DDBHelper class and provides its own item data class for use when
+    RegionRequestTable is a class meant to help OSML with accessing and interacting with the region processing jobs we
+    track as part of the region table. It extends the DDBHelper class and provides its own item data class for use when
     working with items from the table. It also sets the key for which we index on this table in the constructor.
 
     :param table_name: (str) the name of the table to interact with
@@ -82,7 +83,7 @@ class RegionRequestTable(DDBHelper):
 
     def start_region_request(self, region_request_item: RegionRequestItem) -> RegionRequestItem:
         """
-        Start an region processing request for given region pixel bounds, this should be the first record
+        Start a region processing request for given region pixel bounds, this should be the first record
         for this region in the table.
 
         :param region_request_item:
@@ -164,7 +165,7 @@ class RegionRequestTable(DDBHelper):
                 self.get_ddb_item(RegionRequestItem(region_id=region_id, image_id=image_id)),
             )
         except Exception as e:
-            logger.warn(
+            logger.warning(
                 GetRegionRequestItemException("Failed to get RegionRequestItem! {0}".format(e))
             )
             return None
