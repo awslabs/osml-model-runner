@@ -123,7 +123,9 @@ def feature_nms(feature_list: List[geojson.Feature], threshold=0.75) -> List[geo
         overlap = (w * h) / area[indices[:last]]
 
         indices = np.delete(
-            indices, np.concatenate(([last], np.asarray(overlap > threshold).nonzero()[0]))
+            # This line throws a false positive for mypy: https://github.com/python/mypy/issues/12144
+            indices,
+            np.concatenate(([last], np.asarray(overlap > threshold).nonzero()[0])),  # type: ignore
         )
 
     selected_feature_ids = feature_bbox_array[pick][:, 0]

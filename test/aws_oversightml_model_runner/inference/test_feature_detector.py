@@ -3,12 +3,12 @@ import io
 import json
 import unittest
 from json import JSONDecodeError
+from unittest.mock import Mock
 
 import boto3
 import botocore
 import mock
 from botocore.stub import ANY, Stubber
-
 from configuration import TEST_ENV_CONFIG
 
 MOCK_RESPONSE = {
@@ -104,19 +104,26 @@ class TestFeatureDetector(unittest.TestCase):
     def test_find_features_throw_client_exception(self):
         from aws_oversightml_model_runner.inference.feature_detector import FeatureDetector
 
+        sm_client = boto3.client("sagemaker-runtime")
+        sm_client_stub = Stubber(sm_client)
         feature_detector = FeatureDetector("test-endpoint")
-        sm_runtime_stub = Stubber(feature_detector.sm_client)
-        sm_runtime_stub.add_response(
+        feature_detector.sm_client = sm_client
+        sm_client_stub.add_response(
             "invoke_endpoint",
             expected_params={"EndpointName": "test-endpoint", "Body": ANY},
             service_response=MOCK_RESPONSE,
         )
-        sm_runtime_stub.add_client_error(
+        sm_client_stub.add_client_error(
             botocore.exceptions.ClientError(
                 {"Error": {"Code": 500, "Message": "ClientError"}}, "update_item"
             )
         )
-        sm_runtime_stub.activate()
+        feature_detector.sm_client.invoke_endpoint = Mock(
+            side_effect=botocore.exceptions.ClientError(
+                {"Error": {"Code": 500, "Message": "ClientError"}}, "send_message"
+            )
+        )
+        sm_client_stub.activate()
 
         with open("./test/data/GeogToWGS84GeoKey5.tif", "rb") as image_file:
             encoded_image = image_file.read()

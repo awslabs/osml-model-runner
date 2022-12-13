@@ -52,11 +52,12 @@ TEST_REGION_REQUEST_TABLE_ATTRIBUTE_DEFINITIONS = [
 TEST_RESULTS_BUCKET = "test-results-bucket"
 TEST_IMAGE_FILE = "./test/data/small.ntf"
 TEST_IMAGE_BUCKET = "test-image-bucket"
-TEST_IMAGE_KEY = "test-image"
+TEST_IMAGE_KEY = "small.ntf"
 
 TEST_RESULTS_STREAM = "test-results-stream"
 
 TEST_IMAGE_ID = "test-image-id"
+TEST_JOB_ID = "test-job-id"
 TEST_REGION_ID = "test-region-id"
 
 TEST_ELEVATION_DATA_LOCATION = "s3://TEST-BUCKET/ELEVATION-DATA-LOCATION"

@@ -3,11 +3,10 @@ from typing import Any, Dict
 
 import mock
 import shapely.geometry
-
 from configuration import TEST_ENV_CONFIG
 
 base_request = {
-    "jobArn": "arn:aws:oversightml:us-east-1:674401241798:ipj/test-job",
+    "jobArn": "arn:aws:oversightml:us-east-1:012345678910:ipj/test-job",
     "jobName": "test-job",
     "jobId": "5f4e8a55-95cf-4d96-95cd-9b037f767eff",
     "imageUrls": ["s3://fake-bucket/images/test-image-id"],
@@ -28,14 +27,14 @@ class TestModelRunnerAPI(unittest.TestCase):
         region_request_template = {
             "model_name": "test-model-name",
             "model_hosting_type": "SM_ENDPOINT",
-            "model_invocation_role": "arn:aws:iam::010321660603:role/OversightMLBetaModelInvokerRole",
+            "model_invocation_role": "arn:aws:iam::012345678910:role/OversightMLBetaModelInvokerRole",
         }
 
         rr = RegionRequest(
             region_request_template,
             image_id="test-image-id",
             image_url="s3://fake-bucket/images/test-image-id",
-            image_read_role="arn:aws:iam::010321660603:role/OversightMLBetaS3ReadOnly",
+            image_read_role="arn:aws:iam::012345678910:role/OversightMLBetaS3ReadOnly",
             region_bounds=[0, 1, 2, 3],
         )
 
@@ -47,13 +46,13 @@ class TestModelRunnerAPI(unittest.TestCase):
         assert rr.model_hosting_type == ModelHostingOptions.SM_ENDPOINT
         assert (
             rr.model_invocation_role
-            == "arn:aws:iam::010321660603:role/OversightMLBetaModelInvokerRole"
+            == "arn:aws:iam::012345678910:role/OversightMLBetaModelInvokerRole"
         )
 
         # Checks to ensure the keyword arguments are set
         assert rr.image_id == "test-image-id"
         assert rr.image_url == "s3://fake-bucket/images/test-image-id"
-        assert rr.image_read_role == "arn:aws:iam::010321660603:role/OversightMLBetaS3ReadOnly"
+        assert rr.image_read_role == "arn:aws:iam::012345678910:role/OversightMLBetaS3ReadOnly"
         assert rr.region_bounds == [0, 1, 2, 3]
 
         # Checks to ensure the defaults are set
@@ -70,7 +69,7 @@ class TestModelRunnerAPI(unittest.TestCase):
         image_request_template = {
             "model_name": "test-model-name",
             "model_hosting_type": "SM_ENDPOINT",
-            "image_read_role": "arn:aws:iam::010321660603:role/OversightMLBetaS3ReadOnly",
+            "image_read_role": "arn:aws:iam::012345678910:role/OversightMLBetaS3ReadOnly",
         }
         fake_s3_sink = {
             "type": "S3",
@@ -80,7 +79,7 @@ class TestModelRunnerAPI(unittest.TestCase):
         }
         ir = ImageRequest(
             image_request_template,
-            job_arn="arn:aws:oversightml:us-east-1:674401241798:ipj/test-job",
+            job_arn="arn:aws:oversightml:us-east-1:012345678910:ipj/test-job",
             job_name="test-job",
             job_id="5f4e8a55-95cf-4d96-95cd-9b037f767eff",
             image_id="5f4e8a55-95cf-4d96-95cd-9b037f767eff:s3://fake-bucket/images/test-image-id",
@@ -94,7 +93,7 @@ class TestModelRunnerAPI(unittest.TestCase):
             ir.image_id
             == "5f4e8a55-95cf-4d96-95cd-9b037f767eff:s3://fake-bucket/images/test-image-id"
         )
-        assert ir.image_read_role == "arn:aws:iam::010321660603:role/OversightMLBetaS3ReadOnly"
+        assert ir.image_read_role == "arn:aws:iam::012345678910:role/OversightMLBetaS3ReadOnly"
         assert ir.tile_size == (1024, 1024)
         assert ir.tile_overlap == (50, 50)
         assert ir.model_name == "test-model-name"
@@ -103,7 +102,7 @@ class TestModelRunnerAPI(unittest.TestCase):
         assert ir.tile_format == "NITF"
         assert ir.tile_compression == ImageCompression.NONE
         assert ir.job_id == "5f4e8a55-95cf-4d96-95cd-9b037f767eff"
-        assert ir.job_arn == "arn:aws:oversightml:us-east-1:674401241798:ipj/test-job"
+        assert ir.job_arn == "arn:aws:oversightml:us-east-1:012345678910:ipj/test-job"
         assert len(ir.outputs) == 1
         sinks = ImageRequest.outputs_to_sinks(ir.outputs)
         s3_sink: Sink = sinks[0]
@@ -131,13 +130,13 @@ class TestModelRunnerAPI(unittest.TestCase):
         updates: Dict[str, Any] = {
             "jobStatus": "SUBMITTED",
             "processingSubmitted": "2021-09-14T00:18:32.130000+00:00",
-            "imageReadRole": "arn:aws:iam::010321660603:role/OversightMLS3ReadOnly",
+            "imageReadRole": "arn:aws:iam::012345678910:role/OversightMLS3ReadOnly",
             "outputs": [
                 {
                     "type": "S3",
                     "bucket": "fake-bucket",
                     "prefix": "images/outputs",
-                    "assumedRole": "arn:aws:iam::010321660603:role/OversightMLBetaS3ReadOnlyRole",
+                    "assumedRole": "arn:aws:iam::012345678910:role/OversightMLBetaS3ReadOnlyRole",
                 }
             ],
             "imageProcessorTileSize": 2048,
@@ -157,7 +156,7 @@ class TestModelRunnerAPI(unittest.TestCase):
             ir.image_id
             == "5f4e8a55-95cf-4d96-95cd-9b037f767eff:s3://fake-bucket/images/test-image-id"
         )
-        assert ir.image_read_role == "arn:aws:iam::010321660603:role/OversightMLS3ReadOnly"
+        assert ir.image_read_role == "arn:aws:iam::012345678910:role/OversightMLS3ReadOnly"
         assert ir.tile_size == (2048, 2048)
         assert ir.tile_overlap == (100, 100)
         assert ir.model_name == "test-model-name"
@@ -165,7 +164,7 @@ class TestModelRunnerAPI(unittest.TestCase):
         assert ir.tile_format == "PNG"
         assert ir.tile_compression == ImageCompression.NONE
         assert ir.job_id == "5f4e8a55-95cf-4d96-95cd-9b037f767eff"
-        assert ir.job_arn == "arn:aws:oversightml:us-east-1:674401241798:ipj/test-job"
+        assert ir.job_arn == "arn:aws:oversightml:us-east-1:012345678910:ipj/test-job"
         assert len(ir.outputs) == 1
         sinks = ImageRequest.outputs_to_sinks(ir.outputs)
         s3_sink: Sink = sinks[0]
@@ -200,7 +199,7 @@ class TestModelRunnerAPI(unittest.TestCase):
         assert ir.tile_format == "NITF"
         assert ir.tile_compression == ImageCompression.NONE
         assert ir.job_id == "5f4e8a55-95cf-4d96-95cd-9b037f767eff"
-        assert ir.job_arn == "arn:aws:oversightml:us-east-1:674401241798:ipj/test-job"
+        assert ir.job_arn == "arn:aws:oversightml:us-east-1:012345678910:ipj/test-job"
         assert len(ir.outputs) == 1
         sinks = ImageRequest.outputs_to_sinks(ir.outputs)
         s3_sink: Sink = sinks[0]
@@ -245,7 +244,7 @@ class TestModelRunnerAPI(unittest.TestCase):
         assert ir.tile_format == "NITF"
         assert ir.tile_compression == ImageCompression.NONE
         assert ir.job_id == "5f4e8a55-95cf-4d96-95cd-9b037f767eff"
-        assert ir.job_arn == "arn:aws:oversightml:us-east-1:674401241798:ipj/test-job"
+        assert ir.job_arn == "arn:aws:oversightml:us-east-1:012345678910:ipj/test-job"
         assert len(ir.outputs) == 2
         sinks = ImageRequest.outputs_to_sinks(ir.outputs)
         s3_sink: Sink = sinks[0]

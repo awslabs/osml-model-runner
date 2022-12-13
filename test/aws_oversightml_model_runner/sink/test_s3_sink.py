@@ -5,7 +5,6 @@ from unittest import mock
 import boto3
 import geojson
 from botocore.stub import ANY, Stubber
-
 from configuration import TEST_ENV_CONFIG, TEST_IMAGE_ID, TEST_RESULTS_BUCKET
 
 TEST_PREFIX = "folder"

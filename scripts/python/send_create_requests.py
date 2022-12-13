@@ -5,8 +5,11 @@
 # Note that this code assumes the oversightml service has been registered with your boto3 installation. If you're
 # running this script from your development environment this requires copying the compiled coral model into your
 # boto3 installation. A helper script AWSOversightMLCPModel/install_c2j_boto3.sh has been provided for this purpose.
-# Additional details are available here: https://w.amazon.com/bin/view/AWS/DeveloperResources/AWSSDKsAndTools/CLI/CustomModels/
-# TODO: Move this script out of this package since it depends on a lot more of the system than just the model runner
+# Additional details are available here: https://w.amazon.com/bin/view/AWS/DeveloperResources/AWSSDKsAndTools/CLI
+# /CustomModels/
+#
+# TODO: Move this script out of this package since it depends on a lot more of the system than just
+#  the model runner
 import argparse
 import datetime
 import os

@@ -5,14 +5,13 @@ from unittest.mock import Mock
 
 import boto3
 from botocore.exceptions import ClientError
-from moto import mock_dynamodb
-
 from configuration import (
     TEST_ENV_CONFIG,
     TEST_IMAGE_ID,
     TEST_JOB_TABLE_ATTRIBUTE_DEFINITIONS,
     TEST_JOB_TABLE_KEY_SCHEMA,
 )
+from moto import mock_dynamodb
 
 TEST_MOCK_PUT_EXCEPTION = Mock(
     side_effect=ClientError({"Error": {"Code": 500, "Message": "ClientError"}}, "put_item")
@@ -121,7 +120,7 @@ class TestJobTable(unittest.TestCase):
     def test_complete_region_failure(self):
         from aws_oversightml_model_runner.database.exceptions import CompleteRegionException
 
-        self.job_table.table.update_item = TEST_MOCK_PUT_EXCEPTION
+        self.job_table.table.update_item = TEST_MOCK_UPDATE_EXCEPTION
         self.job_table.start_image_request(self.job_item)
         with self.assertRaises(CompleteRegionException):
             self.job_table.complete_region_request(TEST_IMAGE_ID)
@@ -129,10 +128,30 @@ class TestJobTable(unittest.TestCase):
     def test_end_image_failure(self):
         from aws_oversightml_model_runner.database.exceptions import EndImageException
 
-        self.job_table.table.update_item = TEST_MOCK_PUT_EXCEPTION
+        self.job_table.table.update_item = TEST_MOCK_UPDATE_EXCEPTION
         self.job_table.start_image_request(self.job_item)
         with self.assertRaises(EndImageException):
             self.job_table.end_image_request(TEST_IMAGE_ID)
+
+    def test_get_image_request_failure(self):
+        from aws_oversightml_model_runner.database.exceptions import GetImageRequestItemException
+
+        self.job_table.table.update_item = TEST_MOCK_UPDATE_EXCEPTION
+        self.job_table.start_image_request(self.job_item)
+        with self.assertRaises(GetImageRequestItemException):
+            self.job_table.get_image_request("DOES-NOT-EXIST-IMAGE-ID")
+
+    def test_is_image_request_complete_failure(self):
+        from aws_oversightml_model_runner.database.exceptions import IsImageCompleteException
+
+        self.job_table.table.update_item = TEST_MOCK_PUT_EXCEPTION
+        self.job_table.start_image_request(self.job_item)
+        self.job_item.region_count = None
+        self.job_item.region_success = None
+        self.job_item.region_error = None
+
+        with self.assertRaises(IsImageCompleteException):
+            self.job_table.is_image_request_complete(self.job_item)
 
 
 if __name__ == "__main__":

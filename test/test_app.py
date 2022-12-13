@@ -2,11 +2,9 @@ import unittest
 from importlib import reload
 
 import boto3
+import geojson
 import mock
 from botocore.exceptions import ClientError
-from mock import Mock
-from moto import mock_dynamodb, mock_ec2, mock_kinesis, mock_s3, mock_sagemaker, mock_sns, mock_sqs
-
 from configuration import (
     TEST_ACCOUNT,
     TEST_ELEVATION_DATA_LOCATION,
@@ -27,6 +25,8 @@ from configuration import (
     TEST_RESULTS_BUCKET,
     TEST_RESULTS_STREAM,
 )
+from mock import Mock
+from moto import mock_dynamodb, mock_ec2, mock_kinesis, mock_s3, mock_sagemaker, mock_sns, mock_sqs
 
 TEST_MOCK_PUT_EXCEPTION = Mock(
     side_effect=ClientError({"Error": {"Code": 500, "Message": "ClientError"}}, "put_item")
@@ -92,6 +92,31 @@ class TestModelRunner(unittest.TestCase):
         from aws_oversightml_model_runner.database.region_request_table import RegionRequestTable
         from aws_oversightml_model_runner.status.sns_helper import SNSHelper
 
+        # Create custom properties to be passed into the image request
+        self.test_custom_feature_properties = {
+            "modelMetadata": {
+                "modelName": "test-model-name",
+                "ontologyName": "test-ontology--name",
+                "ontologyVersion": "test-ontology-version",
+                "classification": "test-classification",
+            }
+        }
+
+        # This is the expected results for the source property derived from the small test image
+        self.test_feature_source_property = [
+            {
+                "fileType": "NITF",
+                "info": {
+                    "imageCategory": "VIS",
+                    "metadata": {
+                        "sourceId": "Checks an uncompressed 1024x1024 8 bit mono image with GEOcentric data. Airfield",
+                        "sourceDt": "1996-12-17T10:26:30",
+                        "classification": "UNCLASSIFIED",
+                    },
+                },
+            }
+        ]
+
         # Build fake image request to work with
         self.image_request = ImageRequest.from_external_message(
             {
@@ -103,6 +128,7 @@ class TestModelRunner(unittest.TestCase):
                     {"type": "S3", "bucket": TEST_RESULTS_BUCKET, "prefix": f"{TEST_IMAGE_ID}/"},
                     {"type": "Kinesis", "stream": TEST_RESULTS_STREAM, "batchSize": 1000},
                 ],
+                "featureProperties": [self.test_custom_feature_properties],
                 "imageProcessor": {"name": TEST_MODEL_ENDPOINT, "type": "SM_ENDPOINT"},
                 "imageProcessorTileSize": 2048,
                 "imageProcessorTileOverlap": 50,
@@ -262,6 +288,24 @@ class TestModelRunner(unittest.TestCase):
 
         # Check to make sure the feature was assigned a real geo coordinate
         assert features[0]["geometry"]["type"] == "Polygon"
+
+        # Grab the feature results from virtual S3 bucket
+        results_key = self.s3.list_objects(Bucket=TEST_RESULTS_BUCKET)["Contents"][0]["Key"]
+        results_contents = self.s3.get_object(
+            Bucket=TEST_RESULTS_BUCKET,
+            Key=results_key,
+        )["Body"].read()
+
+        # Load them into memory as geojson
+        results_features = geojson.loads(results_contents.decode("utf-8"))["features"]
+
+        # Check that the provided custom feature property was added
+        assert results_features[0]["properties"][
+            "modelMetadata"
+        ] == self.test_custom_feature_properties.get("modelMetadata")
+
+        # Check we got the correct source data for the small.ntf file
+        assert results_features[0]["properties"]["source"] == self.test_feature_source_property
 
         # Check that we calculated the max in progress regions
         # Test instance type is set to m5.12xl with 48 vcpus. Default

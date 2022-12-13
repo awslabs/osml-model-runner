@@ -4,9 +4,8 @@ from unittest import TestCase
 from unittest.mock import patch
 
 import boto3
-from moto import mock_sns, mock_sqs
-
 from configuration import TEST_ENV_CONFIG, TEST_IMAGE_ID
+from moto import mock_sns, mock_sqs
 
 
 @mock_sqs

@@ -51,17 +51,13 @@ class KinesisSink(Sink):
         # Only aggregate mode is supported at the moment
         return SinkMode.AGGREGATE
 
-    def write(self, image_id: str, features: List[Feature]) -> None:
-        # image_id is the concatenation of the job id and source image url in s3. We just
-        # want to base our key off of the original image file name so split by '/' and use
-        # the last element
-        partition_key = image_id.split("s3://")[0]
+    def write(self, job_id: str, features: List[Feature]) -> None:
         pending_features: List[Feature] = []
         pending_features_size: int = 0
 
         for feature in features:
             if self.batch_size == 1:
-                self._flush_stream(partition_key, [feature])
+                self._flush_stream(job_id, [feature])
             else:
                 feature_size = sys.getsizeof(geojson.dumps(feature))
                 if (
@@ -71,7 +67,7 @@ class KinesisSink(Sink):
                 ) or pending_features_size + feature_size > (
                     int(ServiceConfig.kinesis_max_record_size)
                 ):
-                    self._flush_stream(partition_key, pending_features)
+                    self._flush_stream(job_id, pending_features)
                     pending_features = []
                     pending_features_size = 0
 
@@ -80,9 +76,9 @@ class KinesisSink(Sink):
 
         # Flush any remaining features
         if pending_features:
-            self._flush_stream(partition_key, pending_features)
+            self._flush_stream(job_id, pending_features)
         logger.info(
-            f"Wrote {len(features)} features for Image '{image_id}' to Kinesis Stream '{self.stream}'"
+            f"Wrote {len(features)} features for job '{job_id}' to Kinesis Stream '{self.stream}'"
         )
 
     @staticmethod

@@ -1,9 +1,8 @@
 import unittest
 
 import mock
-from osgeo import gdal
-
 from configuration import TEST_ENV_CONFIG
+from osgeo import gdal
 
 
 @mock.patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)

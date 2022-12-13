@@ -1,20 +1,18 @@
 import unittest
-
-# from decimal import Decimal
 from unittest import mock
 from unittest.mock import Mock
 
 import boto3
 from botocore.exceptions import ClientError
-from moto import mock_dynamodb
-
 from configuration import (
     TEST_ENV_CONFIG,
     TEST_IMAGE_ID,
+    TEST_JOB_ID,
     TEST_REGION_ID,
     TEST_REGION_REQUEST_TABLE_ATTRIBUTE_DEFINITIONS,
     TEST_REGION_REQUEST_TABLE_KEY_SCHEMA,
 )
+from moto import mock_dynamodb
 
 TEST_MOCK_PUT_EXCEPTION = Mock(
     side_effect=ClientError({"Error": {"Code": 500, "Message": "ClientError"}}, "put_item")
@@ -48,7 +46,7 @@ class TestRegionRequestTable(unittest.TestCase):
         )
         self.region_request_table = RegionRequestTable(TEST_ENV_CONFIG["REGION_REQUEST_TABLE"])
         self.region_request_item = RegionRequestItem(
-            region_id=TEST_REGION_ID, image_id=TEST_IMAGE_ID
+            region_id=TEST_REGION_ID, image_id=TEST_IMAGE_ID, job_id=TEST_JOB_ID
         )
 
     def tearDown(self):
@@ -59,7 +57,7 @@ class TestRegionRequestTable(unittest.TestCase):
         self.table.delete()
         self.ddb = None
         self.region_request_table = None
-        self.job_item = None
+        self.region_request_item = None
 
     def test_region_started_success(self):
         """
@@ -73,6 +71,7 @@ class TestRegionRequestTable(unittest.TestCase):
         )
         assert resulting_region_request_item.image_id == TEST_IMAGE_ID
         assert resulting_region_request_item.region_id == TEST_REGION_ID
+        assert resulting_region_request_item.job_id == TEST_JOB_ID
         assert resulting_region_request_item.region_status == RegionRequestStatus.STARTING
 
     def test_region_complete_success(self):
@@ -137,7 +136,7 @@ class TestRegionRequestTable(unittest.TestCase):
         """
         from aws_oversightml_model_runner.database.exceptions import CompleteRegionException
 
-        self.region_request_table.table.update_item = TEST_MOCK_PUT_EXCEPTION
+        self.region_request_table.table.update_item = TEST_MOCK_UPDATE_EXCEPTION
         self.region_request_table.start_region_request(self.region_request_item)
         with self.assertRaises(CompleteRegionException):
             self.region_request_table.complete_region_request(TEST_IMAGE_ID, TEST_REGION_ID)
@@ -148,7 +147,7 @@ class TestRegionRequestTable(unittest.TestCase):
         """
         from aws_oversightml_model_runner.database.exceptions import UpdateRegionException
 
-        self.region_request_table.table.update_item = TEST_MOCK_PUT_EXCEPTION
+        self.region_request_table.table.update_item = TEST_MOCK_UPDATE_EXCEPTION
         self.region_request_table.start_region_request(self.region_request_item)
         with self.assertRaises(UpdateRegionException):
             self.region_request_table.update_region_request(self.region_request_item)
@@ -157,7 +156,7 @@ class TestRegionRequestTable(unittest.TestCase):
         """
         Validate that throw the correct GetRegionFailed exception
         """
-        self.region_request_table.table.update_item = TEST_MOCK_PUT_EXCEPTION
+        self.region_request_table.table.update_item = TEST_MOCK_UPDATE_EXCEPTION
         self.region_request_table.start_region_request(self.region_request_item)
 
         resulting_region_request = self.region_request_table.get_region_request(

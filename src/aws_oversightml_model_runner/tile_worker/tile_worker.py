@@ -65,7 +65,6 @@ class TileWorker(Thread):
                             tile_bbox[2] + ulx,
                             tile_bbox[3] + uly,
                         ]
-
                         feature["properties"]["bounds_imcoords"] = full_image_bbox
                         feature["properties"]["image_id"] = image_info["image_id"]
                         features.append(feature)

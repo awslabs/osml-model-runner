@@ -2,9 +2,8 @@ from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch
 
-from shapely.geometry import Point
-
 from configuration import TEST_ENV_CONFIG
+from shapely.geometry import Point
 
 
 @patch.dict("os.environ", TEST_ENV_CONFIG, clear=True)

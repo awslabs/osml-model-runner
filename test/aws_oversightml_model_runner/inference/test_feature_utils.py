@@ -4,7 +4,6 @@ from unittest import mock
 import geojson
 import pytest
 import shapely
-
 from configuration import TEST_ENV_CONFIG
 
 

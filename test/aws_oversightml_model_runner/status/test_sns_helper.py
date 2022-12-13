@@ -5,9 +5,8 @@ from unittest.mock import Mock, patch
 
 import boto3
 from botocore.exceptions import ClientError
-from moto import mock_sns, mock_sqs
-
 from configuration import TEST_ENV_CONFIG
+from moto import mock_sns, mock_sqs
 
 TEST_MOCK_PUBLISH_EXCEPTION = Mock(
     side_effect=ClientError({"Error": {"Code": 500, "Message": "ClientError"}}, "publish")
