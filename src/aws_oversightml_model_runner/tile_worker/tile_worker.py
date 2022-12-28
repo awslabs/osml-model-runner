@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime
 from queue import Queue
 from threading import Thread
 from typing import Dict, Optional
@@ -67,6 +68,8 @@ class TileWorker(Thread):
                         ]
                         feature["properties"]["bounds_imcoords"] = full_image_bbox
                         feature["properties"]["image_id"] = image_info["image_id"]
+                        feature["properties"]["inferenceTime"] = datetime.now().isoformat()
+
                         features.append(feature)
 
                 logging.info("# Features Created: {}".format(len(features)))

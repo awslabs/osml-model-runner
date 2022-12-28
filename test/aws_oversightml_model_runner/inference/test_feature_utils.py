@@ -1,4 +1,5 @@
 import unittest
+from typing import List
 from unittest import mock
 
 import geojson
@@ -107,12 +108,13 @@ class TestFeatureUtils(unittest.TestCase):
         from aws_oversightml_model_runner.inference.feature_utils import features_to_image_shapes
 
         with open("./test/data/feature_examples.geojson", "r") as geojson_file:
-            sample_features = geojson.load(geojson_file)["features"]
-        # We should have 1 feature for each of the 6 geojson types
-        assert len(sample_features) == 6
+            features: List[geojson.Feature] = geojson.load(geojson_file)["features"]
 
-        shapes = features_to_image_shapes(self.build_gdal_sensor_model(), sample_features)
-        assert len(shapes) == len(sample_features)
+        # We should have 1 feature for each of the 6 geojson types
+        assert len(features) == 6
+
+        shapes = features_to_image_shapes(self.build_gdal_sensor_model(), features)
+        assert len(shapes) == len(features)
         assert isinstance(shapes[0], shapely.geometry.Point)
         assert isinstance(shapes[1], shapely.geometry.MultiPoint)
         assert isinstance(shapes[2], shapely.geometry.LineString)
@@ -125,12 +127,15 @@ class TestFeatureUtils(unittest.TestCase):
 
         sample_image_bounds = [(0, 0), (19584, 0), (19584, 19584), (0, 19584)]
         polygon_feature: geojson.Feature = geojson.Feature(
-            geometry=geojson.Polygon(
+            geometry=geojson.geometry.Polygon(
                 [
-                    (-43.681640625, -22.939453125, 0.0),
-                    (-43.59375, -22.939453125, 0.0),
-                    (-43.59375, -23.02734375, 0.0),
-                    (-43.681640625, -23.02734375, 0.0),
+                    (
+                        [-43.681640625, -22.939453125, 0.0],
+                        [-43.59375, -22.939453125, 0.0],
+                        [-43.59375, -23.02734375, 0.0],
+                        [-43.681640625, -23.02734375, 0.0],
+                        [-43.681640625, -22.939453125, 0.0],
+                    )
                 ]
             )
         )

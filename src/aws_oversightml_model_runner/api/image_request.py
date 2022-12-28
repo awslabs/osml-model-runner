@@ -1,19 +1,22 @@
 import logging
 from typing import Any, Dict, List, Optional
 
+import boto3
 import shapely.geometry
 import shapely.wkt
 from shapely.geometry.base import BaseGeometry
 
+from aws_oversightml_model_runner.app_config import BotoConfig
 from aws_oversightml_model_runner.common import (
     ImageCompression,
     ImageDimensions,
     ImageFormats,
     ModelHostingOptions,
+    get_credentials_for_assumed_role,
 )
 from aws_oversightml_model_runner.sink import KinesisSink, S3Sink, Sink
 
-from .exceptions import InvalidImageRequestException
+from .exceptions import InvalidImageRequestException, InvalidS3ObjectException
 from .request_utils import shared_properties_are_valid
 
 logger = logging.getLogger(__name__)
@@ -176,3 +179,30 @@ class ImageRequest(object):
             "tile_format": self.tile_format,
             "tile_compression": self.tile_compression,
         }
+
+    @staticmethod
+    def validate_image_path(image_url, assumed_role) -> bool:
+        bucket, key = image_url.replace("s3://", "").split("/", 1)
+        s3_client = None
+        if assumed_role:
+            assumed_credentials = get_credentials_for_assumed_role(assumed_role)
+            # Here we will be writing to S3 using an IAM role other than the one for this process.
+            s3_client = boto3.client(
+                "s3",
+                aws_access_key_id=assumed_credentials["AccessKeyId"],
+                aws_secret_access_key=assumed_credentials["SecretAccessKey"],
+                aws_session_token=assumed_credentials["SessionToken"],
+                config=BotoConfig.default,
+            )
+        else:
+            # If no invocation role is provided the assumption is that the default role for this
+            # container will be sufficient to read/write to the S3 bucket.
+            s3_client = boto3.client("s3", config=BotoConfig.default)
+
+        try:
+            # head_object is a fastest approach to determine if it exists in S3
+            # also its less expensive to do the head_object approach
+            s3_client.head_object(Bucket=bucket, Key=key)
+            return True
+        except Exception as err:
+            raise InvalidS3ObjectException("This image does not exist!") from err

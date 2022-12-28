@@ -2,7 +2,7 @@
 # __init__.py file.
 # flake8: noqa
 
-from .exceptions import InvalidImageRequestException
+from .exceptions import InvalidImageRequestException, InvalidS3ObjectException
 from .image_request import ImageRequest
 from .region_request import RegionRequest
 from .request_utils import shared_properties_are_valid

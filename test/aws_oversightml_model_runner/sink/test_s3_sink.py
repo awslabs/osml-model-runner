@@ -4,17 +4,27 @@ from unittest import mock
 
 import boto3
 import geojson
+import pytest
+from botocore.exceptions import ClientError
 from botocore.stub import ANY, Stubber
 from configuration import TEST_ENV_CONFIG, TEST_IMAGE_ID, TEST_RESULTS_BUCKET
 
 TEST_PREFIX = "folder"
-MOCK_S3_RESPONSE = {
+MOCK_S3_PUT_OBJECT_RESPONSE = {
     "ResponseMetadata": {
         "RequestId": "5994D680BF127CE3",
         "HTTPStatusCode": 200,
         "RetryAttempts": 1,
     },
     "ETag": '"6299528715bad0e3510d1e4c4952ee7e"',
+}
+
+MOCK_S3_BUCKETS_RESPONSE = {
+    "ResponseMetadata": {
+        "RequestId": "5994D680BF127CE3",
+        "HTTPStatusCode": 200,
+        "RetryAttempts": 1,
+    },
 }
 
 
@@ -30,11 +40,16 @@ class TestS3Sink(unittest.TestCase):
         from aws_oversightml_model_runner.sink import S3Sink
 
         s3_sink = S3Sink(TEST_RESULTS_BUCKET, TEST_PREFIX)
-        s3_client_stub = Stubber(s3_sink.s3Client)
+        s3_client_stub = Stubber(s3_sink.s3_client)
         s3_client_stub.activate()
         s3_client_stub.add_response(
+            "head_bucket",
+            MOCK_S3_BUCKETS_RESPONSE,
+            {"Bucket": TEST_RESULTS_BUCKET},
+        )
+        s3_client_stub.add_response(
             "put_object",
-            MOCK_S3_RESPONSE,
+            MOCK_S3_PUT_OBJECT_RESPONSE,
             {
                 "ACL": "bucket-owner-full-control",
                 "Bucket": TEST_RESULTS_BUCKET,
@@ -51,11 +66,16 @@ class TestS3Sink(unittest.TestCase):
         image_id_with_slashes = "fake/image/123"
 
         s3_sink = S3Sink(TEST_RESULTS_BUCKET, TEST_PREFIX)
-        s3_client_stub = Stubber(s3_sink.s3Client)
+        s3_client_stub = Stubber(s3_sink.s3_client)
         s3_client_stub.activate()
         s3_client_stub.add_response(
+            "head_bucket",
+            MOCK_S3_BUCKETS_RESPONSE,
+            {"Bucket": TEST_RESULTS_BUCKET},
+        )
+        s3_client_stub.add_response(
             "put_object",
-            MOCK_S3_RESPONSE,
+            MOCK_S3_PUT_OBJECT_RESPONSE,
             {
                 "ACL": "bucket-owner-full-control",
                 "Bucket": TEST_RESULTS_BUCKET,
@@ -64,6 +84,38 @@ class TestS3Sink(unittest.TestCase):
             },
         )
         s3_sink.write(image_id_with_slashes, self.sample_feature_list)
+        s3_client_stub.assert_no_pending_responses()
+
+    def test_s3_bucket_404_failure(self):
+        from aws_oversightml_model_runner.sink import InvalidS3BucketException, S3Sink
+
+        s3_sink = S3Sink(TEST_RESULTS_BUCKET, TEST_PREFIX)
+        s3_client_stub = Stubber(s3_sink.s3_client)
+        s3_client_stub.activate()
+        s3_client_stub.add_client_error(
+            "head_bucket",
+            service_error_code="404",
+            service_message="Not Found",
+            expected_params={"Bucket": "test-results-bucket"},
+        )
+        with pytest.raises(InvalidS3BucketException):
+            s3_sink.write(TEST_IMAGE_ID, self.sample_feature_list)
+        s3_client_stub.assert_no_pending_responses()
+
+    def test_s3_bucket_403_failure(self):
+        from aws_oversightml_model_runner.sink import InvalidS3BucketException, S3Sink
+
+        s3_sink = S3Sink(TEST_RESULTS_BUCKET, TEST_PREFIX)
+        s3_client_stub = Stubber(s3_sink.s3_client)
+        s3_client_stub.activate()
+        s3_client_stub.add_client_error(
+            "head_bucket",
+            service_error_code="403",
+            service_message="Forbidden",
+            expected_params={"Bucket": "test-results-bucket"},
+        )
+        with pytest.raises(InvalidS3BucketException):
+            s3_sink.write(TEST_IMAGE_ID, self.sample_feature_list)
         s3_client_stub.assert_no_pending_responses()
 
     @mock.patch("aws_oversightml_model_runner.common.credentials_utils.sts_client")

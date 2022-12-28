@@ -1,9 +1,17 @@
 import unittest
 from typing import Any, Dict
 
+import boto3
 import mock
+import pytest
 import shapely.geometry
-from configuration import TEST_ENV_CONFIG
+from botocore.stub import Stubber
+from configuration import (
+    TEST_ENV_CONFIG,
+    TEST_IMAGE_BUCKET,
+    TEST_IMAGE_KEY,
+    TEST_S3_FULL_BUCKET_PATH,
+)
 
 base_request = {
     "jobArn": "arn:aws:oversightml:us-east-1:012345678910:ipj/test-job",
@@ -268,6 +276,25 @@ class TestModelRunnerAPI(unittest.TestCase):
         with self.assertRaises(InvalidImageRequestException):
             ir = ImageRequest.from_external_message(message_body)
             ImageRequest.outputs_to_sinks(ir.outputs)
+
+    def test_image_request_invalid_image_path(self):
+        from aws_oversightml_model_runner.api.exceptions import InvalidS3ObjectException
+        from aws_oversightml_model_runner.api.image_request import ImageRequest
+        from aws_oversightml_model_runner.app_config import BotoConfig
+
+        s3_client = boto3.client("s3", config=BotoConfig.default)
+        s3_client_stub = Stubber(s3_client)
+        s3_client_stub.activate()
+
+        s3_client_stub.add_client_error(
+            "head_object",
+            service_error_code="404",
+            service_message="Not Found",
+            expected_params={"Bucket": TEST_S3_FULL_BUCKET_PATH},
+        )
+
+        with pytest.raises(InvalidS3ObjectException):
+            ImageRequest.validate_image_path(TEST_S3_FULL_BUCKET_PATH, None)
 
 
 if __name__ == "__main__":

@@ -91,7 +91,7 @@ class TestFeatureDetector(unittest.TestCase):
             expected_params={"EndpointName": "test-endpoint", "Body": ANY},
             service_response=MOCK_RESPONSE,
         )
-        sm_runtime_stub.add_client_error(JSONDecodeError)
+        sm_runtime_stub.add_client_error(str(JSONDecodeError))
         sm_runtime_stub.activate()
 
         with open("./test/data/GeogToWGS84GeoKey5.tif", "rb") as image_file:

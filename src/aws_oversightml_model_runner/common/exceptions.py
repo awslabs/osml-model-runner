@@ -3,5 +3,5 @@ class InvalidClassificationException(Exception):
     pass
 
 
-class InvalidFeaturePropertiesException(Exception):
+class InvalidAssumedRoleException(Exception):
     pass
