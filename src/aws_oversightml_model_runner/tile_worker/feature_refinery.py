@@ -223,7 +223,7 @@ class FeatureRefinery:
             # LinearRing coordinate arrays. For Polygons with multiple rings, the first must be
             # the exterior ring and any others must be interior rings or holes. We only have an
             # exterior ring hence creating an array of the coordinates is appropriate here.
-            feature["geometry"] = geojson.Polygon([polygon_coords])
+            feature["geometry"] = geojson.Polygon([tuple(polygon_coords)])
 
             self.compute_center_lat_long(feature, polygon_coords, final_center_location)
 
@@ -297,7 +297,7 @@ class FeatureRefinery:
             # LinearRing coordinate arrays. For Polygons with multiple rings, the first must be
             # the exterior ring and any others must be interior rings or holes. We only have an
             # exterior ring hence creating an array of the coordinates is appropriate here.
-            feature["geometry"] = geojson.Polygon([polygon_coords])
+            feature["geometry"] = geojson.Polygon([tuple(polygon_coords)])
 
             self.compute_center_lat_long(feature, polygon_coords, center_location)
 

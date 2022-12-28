@@ -9,6 +9,7 @@ from geojson import Feature, FeatureCollection
 from aws_oversightml_model_runner.app_config import BotoConfig, ServiceConfig
 from aws_oversightml_model_runner.common import get_credentials_for_assumed_role
 
+from .exceptions import InvalidKinesisStreamException
 from .sink import Sink, SinkMode
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ class KinesisSink(Sink):
         if assumed_role:
             assumed_credentials = get_credentials_for_assumed_role(assumed_role)
             # Here we will be writing to Kinesis using an IAM role other than the one for this process.
-            self.kinesisClient = boto3.client(
+            self.kinesis_client = boto3.client(
                 "kinesis",
                 aws_access_key_id=assumed_credentials["AccessKeyId"],
                 aws_secret_access_key=assumed_credentials["SecretAccessKey"],
@@ -36,11 +37,11 @@ class KinesisSink(Sink):
         else:
             # If no invocation role is provided the assumption is that the default role for this
             # container will be sufficient to write to the Kinesis stream.
-            self.kinesisClient = boto3.client("kinesis", config=BotoConfig.default)
+            self.kinesis_client = boto3.client("kinesis", config=BotoConfig.default)
 
     def _flush_stream(self, partition_key: str, features: List[Feature]) -> None:
         record = geojson.dumps(FeatureCollection(features))
-        self.kinesisClient.put_record(
+        self.kinesis_client.put_record(
             StreamName=self.stream,
             PartitionKey=partition_key,
             Data=record,
@@ -55,31 +56,66 @@ class KinesisSink(Sink):
         pending_features: List[Feature] = []
         pending_features_size: int = 0
 
-        for feature in features:
-            if self.batch_size == 1:
-                self._flush_stream(job_id, [feature])
+        if self.validate_kinesis_stream():
+            for feature in features:
+                if self.batch_size == 1:
+                    self._flush_stream(job_id, [feature])
+                else:
+                    feature_size = sys.getsizeof(geojson.dumps(feature))
+                    if (
+                        self.batch_size
+                        and pending_features
+                        and len(pending_features) % self.batch_size == 0
+                    ) or pending_features_size + feature_size > (
+                        int(ServiceConfig.kinesis_max_record_size)
+                    ):
+                        self._flush_stream(job_id, pending_features)
+                        pending_features = []
+                        pending_features_size = 0
+
+                    pending_features.append(feature)
+                    pending_features_size += feature_size
+
+            # Flush any remaining features
+            if pending_features:
+                self._flush_stream(job_id, pending_features)
+            logger.info(
+                "Wrote {} features for job '{}' to Kinesis Stream '{}'".format(
+                    len(features), job_id, self.stream
+                )
+            )
+        else:
+            logger.error(
+                "Cannot {} features for job '{}' to Kinesis Stream '{}'".format(
+                    len(features), job_id, self.stream
+                )
+            )
+
+    def validate_kinesis_stream(self) -> bool:
+        """
+        Ensure output Kinesis stream exists/can be written to
+
+        :return bool - True if kinesis stream exist and can be read/written to it
+        """
+        try:
+            describe_stream_response = self.kinesis_client.describe_stream(StreamName=self.stream)
+
+            # check if Stream is ACTIVE
+            stream_status = describe_stream_response["StreamDescription"]["StreamStatus"]
+            if stream_status == "ACTIVE" or stream_status == "UPDATING":
+                # reason to include UPDATING is that Kinesis Stream functions during these operations
+                return True
             else:
-                feature_size = sys.getsizeof(geojson.dumps(feature))
-                if (
-                    self.batch_size
-                    and pending_features
-                    and len(pending_features) % self.batch_size == 0
-                ) or pending_features_size + feature_size > (
-                    int(ServiceConfig.kinesis_max_record_size)
-                ):
-                    self._flush_stream(job_id, pending_features)
-                    pending_features = []
-                    pending_features_size = 0
-
-                pending_features.append(feature)
-                pending_features_size += feature_size
-
-        # Flush any remaining features
-        if pending_features:
-            self._flush_stream(job_id, pending_features)
-        logger.info(
-            f"Wrote {len(features)} features for job '{job_id}' to Kinesis Stream '{self.stream}'"
-        )
+                logging.error(
+                    "{} current status is: {}. It is not in ACTIVE or UPDATING state.".format(
+                        self.stream, stream_status
+                    )
+                )
+                return False
+        except Exception as e:
+            raise InvalidKinesisStreamException(
+                f"Failed to fetch Kinesis stream - {self.stream}"
+            ) from e
 
     @staticmethod
     def name() -> str:

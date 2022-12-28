@@ -1,25 +1,36 @@
 import logging
 import uuid
+from datetime import datetime
 from io import BufferedReader
 from json import dumps
 from math import radians
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
 import geojson
 import numpy as np
 import shapely
 from geojson import FeatureCollection
 from osgeo import gdal
-from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
 
-from aws_oversightml_model_runner.common import ImageDimensions
+from aws_oversightml_model_runner.common import (
+    Classification,
+    ImageDimensions,
+    get_image_classification,
+)
 from aws_oversightml_model_runner.photogrammetry import GeodeticWorldCoordinate, SensorModel
 
 
 def features_to_image_shapes(
-    sensor_model: SensorModel, features: List[geojson.Feature]
+        sensor_model: SensorModel, features: List[geojson.Feature]
 ) -> List[BaseGeometry]:
+    """
+    Convert geojson objects/shapes to shapely shapes
+
+    :param sensor_model: The model to use for the transform
+    :param features: The features to convert
+    :return: A list of shapely shapes
+    """
     shapes: List[BaseGeometry] = []
     if not features:
         return shapes
@@ -33,18 +44,20 @@ def features_to_image_shapes(
             feature_geometry["coordinates"], sensor_model.world_to_image
         )
 
+        feature_geometry["coordinates"] = image_coords
+
         if isinstance(feature_geometry, geojson.Point):
-            shapes.append(shapely.geometry.asPoint(image_coords))
+            shapes.append(shapely.geometry.Point(image_coords))
         elif isinstance(feature_geometry, geojson.LineString):
-            shapes.append(shapely.geometry.asLineString(image_coords))
+            shapes.append(shapely.geometry.LineString(image_coords))
         elif isinstance(feature_geometry, geojson.Polygon):
-            shapes.append(shapely.geometry.asPolygon(image_coords))
+            shapes.append(shapely.geometry.shape(feature_geometry))
         elif isinstance(feature_geometry, geojson.MultiPoint):
-            shapes.append(shapely.geometry.asMultiPoint(image_coords))
+            shapes.append(shapely.geometry.MultiPoint(image_coords))
         elif isinstance(feature_geometry, geojson.MultiLineString):
-            shapes.append(shapely.geometry.asMultiLineString(image_coords))
+            shapes.append(shapely.geometry.MultiLineString(image_coords))
         elif isinstance(feature_geometry, geojson.MultiPolygon):
-            shapes.append(shapely.geometry.asMultiPolygon(image_coords))
+            shapes.append(shapely.geometry.shape(feature_geometry))
         else:
             # Unlikely to get here as we're handling all valid geojson types but if the spec
             # ever changes or if a consumer passes in a custom dictionary that isn't valid
@@ -55,8 +68,15 @@ def features_to_image_shapes(
 
 
 def convert_nested_coordinate_lists(
-    coordinates_or_lists: List, conversion_function: Callable
-) -> List:
+        coordinates_or_lists: List, conversion_function: Callable
+) -> Union[Tuple, List]:
+    """
+    Convert a nested list of coordinates to 3D world GIS coordinates
+
+    :param coordinates_or_lists: A coordinate or list of coordinates to transform
+    :param conversion_function: The function to use for the GIS transform
+    :return: The transformed list of coordinates
+    """
     if not isinstance(coordinates_or_lists[0], List):
         # This appears to be a single coordinate so run it through the supplied conversion
         # function (i.e. world_to_image). Ensure that the coordinate has an elevation and convert
@@ -67,7 +87,7 @@ def convert_nested_coordinate_lists(
         else:
             world_coordinate_3d.append(coordinates_or_lists[2])
         image_coordinate = conversion_function(GeodeticWorldCoordinate(world_coordinate_3d))
-        return image_coordinate.coordinate
+        return tuple(list(image_coordinate.coordinate))
     else:
         # This appears to be a list of lists (i.e. a LineString, Polygon, etc.) so invoke this
         # conversion routine recursively to preserve the nesting structure of the input
@@ -189,14 +209,22 @@ def create_mock_feature_collection(payload: BufferedReader) -> FeatureCollection
 
 
 def calculate_processing_bounds(
-    ds: gdal.Dataset, roi: Optional[BaseGeometry], sensor_model: Optional[SensorModel]
+        ds: gdal.Dataset, roi: Optional[BaseGeometry], sensor_model: Optional[SensorModel]
 ) -> Optional[Tuple[ImageDimensions, ImageDimensions]]:
+    """
+    An area of interest converter
+
+    :param ds: GDAL dataset
+    :param roi: ROI shape
+    :param sensor_model: Sensor model to use for transformations
+    :return: Image dimensions associated with the ROI request
+    """
     processing_bounds: Optional[Tuple[ImageDimensions, ImageDimensions]] = (
         (0, 0),
         (ds.RasterXSize, ds.RasterYSize),
     )
     if roi is not None and sensor_model is not None:
-        full_image_area = Polygon(
+        full_image_area = shapely.geometry.Polygon(
             [(0, 0), (0, ds.RasterYSize), (ds.RasterXSize, ds.RasterYSize), (ds.RasterXSize, 0)]
         )
 
@@ -213,7 +241,7 @@ def calculate_processing_bounds(
                 world_coordinates_3d.append(coord + (0.0,))
         roi_area = features_to_image_shapes(
             sensor_model,
-            [geojson.Feature(geometry=geojson.Polygon(world_coordinates_3d))],
+            [geojson.Feature(geometry=geojson.geometry.Polygon([tuple(world_coordinates_3d)]))],
         )[0]
 
         if roi_area.intersects(full_image_area):
@@ -232,3 +260,57 @@ def calculate_processing_bounds(
             processing_bounds = None
 
     return processing_bounds
+
+
+def get_source_property(image_extension: str, dataset: gdal.Dataset) -> Optional[dict]:
+    """
+
+    :param image_extension: The file extension type of the source image
+    :param dataset: The GDAL dataset to probe for source data
+    :return: The source dictionary property to attach to features
+    """
+    # Currently we only support deriving source metadata from NITF images
+    if image_extension == "NITF":
+        metadata = dataset.GetMetadata()
+        try:
+            # Extract metadata headers from NITF
+            data_type = metadata.get("NITF_ICAT", None)
+            source_id = metadata.get("NITF_FTITLE", None)
+            # Format of datetime string follows 14 digit spec in MIL-STD-2500C for NITFs
+            source_dt = (
+                datetime.strptime(metadata.get("NITF_IDATIM"), "%Y%m%d%H%M%S").isoformat()
+                if metadata.get("NITF_IDATIM")
+                else None
+            )
+            # Determine the image classification from the metadata
+            source_classification = get_image_classification(dataset)
+            source_classification_str = (
+                source_classification.classification
+                if isinstance(source_classification, Classification)
+                else None
+            )
+
+            # Build a source property for features
+            source_property = {
+                "source": [
+                    {
+                        "fileType": "NITF",
+                        "info": {
+                            "imageCategory": data_type,
+                            "metadata": {
+                                "sourceId": source_id,
+                                "sourceDt": source_dt,
+                                "classification": source_classification_str,
+                            },
+                        },
+                    }
+                ]
+            }
+
+            return source_property
+        except Exception as err:
+            logging.warning(f"Source metadata not available for {image_extension} image extension! {err}")
+            return None
+    else:
+        logging.warning(f"Source metadata not available for {image_extension} image extension!")
+        return None

@@ -3,6 +3,8 @@ from enum import auto
 from inspect import signature
 from typing import Any, Dict, List, Optional, Tuple
 
+from osgeo import gdal
+
 from .auto_string_enum import AutoStringEnum
 from .exceptions import InvalidClassificationException
 
@@ -85,3 +87,21 @@ class Classification:
                 else:
                     new_params[k] = v
         return cls(**new_params)
+
+
+def get_image_classification(dataset: gdal.Dataset) -> Optional[Classification]:
+    metadata = dataset.GetMetadata()
+    level_map = {
+        "U": ClassificationLevel.UNCLASSIFIED,
+        "C": ClassificationLevel.CONFIDENTIAL,
+        "S": ClassificationLevel.SECRET,
+        "T": ClassificationLevel.TOP_SECRET,
+    }
+
+    is_level = level_map.get(metadata.get("NITF_ISCLAS", ""))
+    is_caveats = metadata.get("NITF_ISCODE").split() if metadata.get("NITF_ISCODE") else None
+    is_releasability = metadata.get("NITF_ISCTLH") if metadata.get("NITF_ISCTLH") else None
+    try:
+        return Classification(level=is_level, caveats=is_caveats, releasability=is_releasability)
+    except InvalidClassificationException:
+        return None

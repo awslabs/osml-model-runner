@@ -2,7 +2,6 @@ import ast
 import json
 import logging
 import uuid
-from dataclasses import asdict
 from datetime import datetime
 from decimal import Decimal
 from json import dumps
@@ -17,20 +16,6 @@ from geojson import Feature
 from osgeo import gdal
 from osgeo.gdal import Dataset
 
-from aws_oversightml_model_runner.gdal import (
-    GDALConfigEnv,
-    GDALDigitalElevationModelTileFactory,
-    get_image_extension,
-    load_gdal_dataset,
-    set_gdal_default_configuration,
-)
-from aws_oversightml_model_runner.photogrammetry import (
-    DigitalElevationModel,
-    ElevationModel,
-    SensorModel,
-    SRTMTileSet,
-)
-
 from .api import ImageRequest, InvalidImageRequestException, RegionRequest
 from .app_config import MetricLabels, ServiceConfig
 from .common import (
@@ -38,17 +23,10 @@ from .common import (
     ImageDimensions,
     ImageRegion,
     ImageRequestStatus,
-    InvalidClassificationException,
     ModelHostingOptions,
     Timer,
     build_embedded_metrics_config,
     get_credentials_for_assumed_role,
-)
-from .common.exceptions import InvalidFeaturePropertiesException
-from .common.security_classification import (
-    Classification,
-    ClassificationLevel,
-    classification_asdict_factory,
 )
 from .database import (
     EndpointStatisticsTable,
@@ -60,8 +38,8 @@ from .database import (
 )
 from .exceptions import (
     AggregateFeaturesException,
+    InvalidFeaturePropertiesException,
     InvalidImageURLException,
-    InvalidSourceException,
     LoadImageException,
     ProcessImageException,
     ProcessRegionException,
@@ -69,7 +47,15 @@ from .exceptions import (
     SelfThrottledRegionException,
     UnsupportedModelException,
 )
-from .inference import calculate_processing_bounds
+from .gdal import (
+    GDALConfigEnv,
+    GDALDigitalElevationModelTileFactory,
+    get_image_extension,
+    load_gdal_dataset,
+    set_gdal_default_configuration,
+)
+from .inference import calculate_processing_bounds, get_source_property
+from .photogrammetry import DigitalElevationModel, ElevationModel, SensorModel, SRTMTileSet
 from .queue import RequestQueue
 from .sink import SinkMode
 from .status import StatusMonitor
@@ -166,6 +152,10 @@ class ModelRunner:
 
                         # If the image request has a s3 url lets augment its path for virtual hosting
                         if "s3:/" in region_request.image_url:
+                            # Validate that image exists in S3
+                            ImageRequest.validate_image_path(
+                                region_request.image_url, region_request.image_read_role
+                            )
                             image_path = region_request.image_url.replace("s3:/", "/vsis3", 1)
                         else:
                             image_path = region_request.image_url
@@ -326,25 +316,16 @@ class ModelRunner:
                 image_request_item.width = Decimal(raster_dataset.RasterXSize)
                 image_request_item.height = Decimal(raster_dataset.RasterYSize)
 
-                # If we can get a valid classification from the source image - attach it to features
-                is_security_classification = self.get_image_classification(raster_dataset)
-                if isinstance(is_security_classification, Classification):
-                    # Update the feature_properties to include information on classification
-                    image_request_item.image_security_classification = json.dumps(
-                        asdict(
-                            is_security_classification, dict_factory=classification_asdict_factory
-                        )
-                    )
+                feature_properties: List[dict] = json.loads(image_request_item.feature_properties)
 
                 # If we can get a valid source metadata from the source image - attach it to features
                 # else, just pass in whatever custom features if they were provided
-                source_metadata = self.get_source_metadata(image_extension, raster_dataset)
+                source_metadata = get_source_property(image_extension, raster_dataset)
                 if isinstance(source_metadata, dict):
-                    feature_properties: List[dict] = json.loads(
-                        image_request_item.feature_properties
-                    )
                     feature_properties.append(source_metadata)
-                    image_request_item.feature_properties = json.dumps(feature_properties)
+
+                # Update the feature properties
+                image_request_item.feature_properties = json.dumps(feature_properties)
 
                 # Update the image request job to have new derived image data
                 image_request_item = self.job_table.update_image_request(image_request_item)
@@ -589,6 +570,11 @@ class ModelRunner:
 
             # If the image request have a valid s3 image url, otherwise this is a local file
             if "s3:/" in image_request_item.image_url:
+                # Validate that image exists in S3
+                ImageRequest.validate_image_path(
+                    image_request_item.image_url, image_request_item.image_read_role
+                )
+
                 image_path = image_request_item.image_url.replace("s3:/", "/vsis3", 1)
             else:
                 image_path = image_request_item.image_url
@@ -668,8 +654,6 @@ class ModelRunner:
             )
             # Aggregate all the features from our job to the right outputs
             features = self.aggregate_features(image_request_item, feature_table)
-
-            features = self.add_security_classification_to_features(image_request_item, features)
 
             features = self.add_properties_to_features(image_request_item, features)
 
@@ -799,104 +783,67 @@ class ModelRunner:
                 "No output destinations were defined for this image request!"
             )
 
-    @staticmethod
-    def add_security_classification_to_features(
-        job_item: JobItem, features: List[geojson.Feature]
-    ) -> List[geojson.Feature]:
-        if job_item.image_security_classification is not None:
-            try:
-                classification = Classification.from_dict(
-                    json.loads(job_item.image_security_classification)
-                )
-                classification_dict = asdict(
-                    classification, dict_factory=classification_asdict_factory
-                )
-                for feature in features:
-                    feature["properties"]["image_classification"] = classification_dict
-            except InvalidClassificationException:
-                logging.warning(
-                    "Unable to retrieve security classification from database. Not adding to features."
-                )
-        return features
-
-    @staticmethod
     def add_properties_to_features(
-        job_item: JobItem, features: List[geojson.Feature]
+        self, image_request_item: JobItem, features: List[geojson.Feature]
     ) -> List[geojson.Feature]:
-        if job_item.feature_properties is not None:
-            try:
-                feature_properties: List[dict] = json.loads(job_item.feature_properties)
-                for feature in features:
-                    for feature_property in feature_properties:
-                        feature["properties"].update(feature_property)
-            except Exception as e:
-                logging.exception(e)
-                raise InvalidFeaturePropertiesException(
-                    "Could not apply custom properties to features!"
+        """
+        Add arbitrary and controlled property dictionaries to geojson feature properties
+
+        :param image_request_item: The job table item for an image request
+        :param features: The list of features to update
+        :return: Updated list of features
+        """
+        try:
+            feature_properties: List[dict] = json.loads(image_request_item.feature_properties)
+            for feature in features:
+
+                # Update the features with their inference metadata
+                feature["properties"].update(
+                    self.get_inference_metadata_property(
+                        image_request_item, feature["properties"]["inferenceTime"]
+                    )
                 )
+
+                # For the custom provided feature properties, update
+                for feature_property in feature_properties:
+                    feature["properties"].update(feature_property)
+
+                # Remove unneeded feature properties if they are present
+                if feature["properties"].get("inferenceTime"):
+                    del feature["properties"]["inferenceTime"]
+                if feature["properties"].get("bounds_imcoords"):
+                    del feature["properties"]["bounds_imcoords"]
+                if feature["properties"].get("detection_score"):
+                    del feature["properties"]["detection_score"]
+                if feature["properties"].get("feature_types"):
+                    del feature["properties"]["feature_types"]
+                if feature["properties"].get("image_id"):
+                    del feature["properties"]["image_id"]
+
+        except Exception as e:
+            logging.exception(e)
+            raise InvalidFeaturePropertiesException(
+                "Could not apply custom properties to features!"
+            )
         return features
 
     @staticmethod
-    def get_image_classification(dataset: Dataset) -> Optional[Classification]:
-        metadata = dataset.GetMetadata()
-        level_map = {
-            "U": ClassificationLevel.UNCLASSIFIED,
-            "C": ClassificationLevel.CONFIDENTIAL,
-            "S": ClassificationLevel.SECRET,
-            "T": ClassificationLevel.TOP_SECRET,
+    def get_inference_metadata_property(image_request_item: JobItem, inference_time: str) -> dict:
+        """
+        Create an inference dictionary property to append to geojson features
+
+        :param image_request_item: The job table item for an image request
+        :param inference_time: The time the inference was made in epoch millisec
+        :return: An inference metadata dictionary property to attach to features
+        """
+        seconds = float(image_request_item.start_time) / 1000.0
+        receive_time = datetime.fromtimestamp(seconds).isoformat()
+        inference_metadata_property = {
+            "inferenceMetadata": {
+                "jobId": image_request_item.job_id,
+                "filePath": image_request_item.image_url,
+                "receiveTime": receive_time,
+                "inferenceTime": inference_time,
+            }
         }
-
-        is_level = level_map.get(metadata.get("NITF_ISCLAS", ""))
-        is_caveats = metadata.get("NITF_ISCODE").split() if metadata.get("NITF_ISCODE") else None
-        is_releasability = metadata.get("NITF_ISCTLH") if metadata.get("NITF_ISCTLH") else None
-        try:
-            return Classification(
-                level=is_level, caveats=is_caveats, releasability=is_releasability
-            )
-        except InvalidClassificationException:
-            return None
-
-    @staticmethod
-    def get_source_metadata(image_extension: str, dataset: Dataset) -> Optional[dict]:
-        # Currently we only support deriving source metadata from NITF images
-        if image_extension == "NITF":
-            metadata = dataset.GetMetadata()
-            try:
-                # Extract metadata headers from NITF
-                data_type = metadata.get("NITF_ICAT", None)
-                source_id = metadata.get("NITF_FTITLE", None)
-                # Format of datetime string follows 14 digit spec in MIL-STD-2500C for NITFs
-                source_dt = (
-                    datetime.strptime(metadata.get("NITF_IDATIM"), "%Y%m%d%H%M%S").isoformat()
-                    if metadata.get("NITF_IDATIM")
-                    else None
-                )
-                source_classification = ModelRunner.get_image_classification(dataset)
-                source_classification_str = (
-                    source_classification.classification
-                    if isinstance(source_classification, Classification)
-                    else None
-                )
-
-                source_property = {
-                    "source": [
-                        {
-                            "fileType": "NITF",
-                            "info": {
-                                "imageCategory": data_type,
-                                "metadata": {
-                                    "sourceId": source_id,
-                                    "sourceDt": source_dt,
-                                    "classification": source_classification_str,
-                                },
-                            },
-                        }
-                    ]
-                }
-
-                return source_property
-            except InvalidSourceException:
-                return None
-        else:
-            logger.warning(f"Source metadata not available for {image_extension} image extension!")
-            return None
+        return inference_metadata_property

@@ -27,9 +27,9 @@ class InvalidImageURLException(Exception):
     pass
 
 
-class InvalidSourceException(Exception):
+class SelfThrottledRegionException(Exception):
     pass
 
 
-class SelfThrottledRegionException(Exception):
+class InvalidFeaturePropertiesException(Exception):
     pass

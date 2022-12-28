@@ -53,6 +53,7 @@ TEST_RESULTS_BUCKET = "test-results-bucket"
 TEST_IMAGE_FILE = "./test/data/small.ntf"
 TEST_IMAGE_BUCKET = "test-image-bucket"
 TEST_IMAGE_KEY = "small.ntf"
+TEST_S3_FULL_BUCKET_PATH = "s3://test-results-bucket/test/data/small.ntf"
 
 TEST_RESULTS_STREAM = "test-results-stream"
 
