@@ -319,7 +319,7 @@ class FeatureRefinery:
             }
         }
 
-        :param features: the list of features that need their "properties" blob conformed. 
+        :param feature: the feature that needs its "properties" blob conformed
         """
 
         # Create an ontology based on the models returned feature_types
