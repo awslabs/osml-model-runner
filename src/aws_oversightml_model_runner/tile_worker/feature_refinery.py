@@ -148,29 +148,7 @@ class FeatureRefinery:
             )
 
             # Calculate image coordinates and update feature
-            image_coords = [
-                [bbox[0], bbox[1]],
-                [bbox[0], bbox[3]],
-                [bbox[2], bbox[3]],
-                [bbox[2], bbox[1]],
-            ]
-
-            # Create an ontology based on the models returned feature_types
-            ontology = []
-            for feature_type in feature["properties"]["feature_types"]:
-                ontology.append(
-                    {
-                        "iri": feature_type,
-                        "detectionScore": feature["properties"]["feature_types"][feature_type],
-                    }
-                )
-
-            # Create an original detection property for customer usage
-            feature["properties"]["detection"] = {
-                "type": "Polygon",
-                "pixelCoordinates": image_coords,
-                "ontology": ontology,
-            }
+            image_coords = self.imcoords_bbox_to_polygon(bbox)
 
             # Calculate the geodetic coordinates of the bounding box
             polygon_image_coords = [
@@ -300,6 +278,69 @@ class FeatureRefinery:
             feature["geometry"] = geojson.Polygon([tuple(polygon_coords)])
 
             self.compute_center_lat_long(feature, polygon_coords, center_location)
+
+    @staticmethod
+    def imcoords_bbox_to_polygon(bbox: List[float])->List[List[float]]: 
+        """
+        converts a bbox of image coordinates into a four point polygon of coordinates. 
+
+
+        :param bbox: list of pixel coordinates bounding box: [a, b, c ,d]
+        :return: list of pixel coordinates as a 4 point polygon: [[a,b],[a,d],[c,d],[c,b]]
+        """
+        return [
+                [bbox[0], bbox[1]],
+                [bbox[0], bbox[3]],
+                [bbox[2], bbox[3]],
+                [bbox[2], bbox[1]],
+            ]
+
+
+    @staticmethod
+    def feature_property_transformation(feature: geojson.Feature) -> None: 
+        """
+        Mutate a feature list property blob inplace into the bellow structure: 
+
+        "properties": {
+            "detection": {
+                "type": "Polygon",
+                "pixelCoordinates": [
+                    [0, 0],
+                    [0, 10],
+                    [10, 10],
+                    [10, 0]
+                ],
+                "ontology": [
+                    {
+                    "iri": "https://myOntology.com/object/001",
+                    "detectionScore": 0.42
+                    }
+                ]
+            }
+        }
+
+        :param feature: the feature that needs its "properties" blob conformed
+        """
+
+        # Create an ontology based on the models returned feature_types
+
+        ontology = []
+        for feature_type in feature["properties"]["feature_types"]:
+            ontology.append(
+                {
+                    "iri": feature_type,
+                    "detectionScore": feature["properties"]["feature_types"][feature_type],
+                }
+            )
+
+        bbox = feature["properties"]["bounds_imcoords"]
+        # Create an original detection property for customer usage
+        feature["properties"]["detection"] = {
+            "type": "Polygon",
+            "pixelCoordinates": FeatureRefinery.imcoords_bbox_to_polygon(bbox),
+            "ontology": ontology,
+        }
+
 
     @staticmethod
     def radians_coordinate_to_degrees(
