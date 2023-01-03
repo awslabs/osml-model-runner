@@ -69,7 +69,7 @@ class TileWorker(Thread):
                         feature["properties"]["bounds_imcoords"] = full_image_bbox
                         feature["properties"]["image_id"] = image_info["image_id"]
                         feature["properties"]["inferenceTime"] = datetime.now().isoformat()
-
+                        FeatureRefinery.feature_property_transformation(feature)
                         features.append(feature)
 
                 logging.info("# Features Created: {}".format(len(features)))
