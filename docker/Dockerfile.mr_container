@@ -1,4 +1,4 @@
-ARG BASE_CONTAINER=registry1.dso.mil/ironbank/opensource/python:v3.10.5
+ARG BASE_CONTAINER=registry1.dso.mil/ironbank/opensource/python:v3.10.9
 FROM ${BASE_CONTAINER} as cert-base 
 COPY /certs/tls-ca-bundle.pem /certs/tls-ca-bundle.pem
 
