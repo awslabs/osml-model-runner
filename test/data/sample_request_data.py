@@ -9,7 +9,7 @@ SAMPLE_REGION_REQUEST_DATA = {
     "model_hosting_type": "SM_ENDPOINT",
     "output_bucket": "unit-test",
     "output_prefix": "region-request",
-    "execution_role": "arn:aws:iam::010321660603:role/OversightMLBetaInvokeRole",
+    "execution_role": "arn:aws:iam::012345678910:role/OversightMLBetaInvokeRole",
 }
 
 SAMPLE_IMAGE_REQUEST_DATA = {

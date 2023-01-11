@@ -1,11 +1,18 @@
 from math import degrees, radians, sqrt
-from typing import List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.optimize import minimize
 
-from . import ConstantElevationModel, GeodeticWorldCoordinate, ImageCoordinate, WorldCoordinate
-from .sensor_model import SensorModel
+from . import (
+    ConstantElevationModel,
+    ElevationModel,
+    GeodeticWorldCoordinate,
+    ImageCoordinate,
+    WorldCoordinate,
+)
+from .math_utils import equilateral_triangle
+from .sensor_model import SensorModel, SensorModelOptions
 
 
 class RPCPolynomial:
@@ -138,6 +145,7 @@ class RPCSensorModel(SensorModel):
         self.line_denominator_poly = line_den_poly
         self.samp_numerator_poly = samp_num_poly
         self.samp_denominator_poly = samp_den_poly
+        self.default_elevation_model = ConstantElevationModel(self.height_off)
 
     def world_to_image(self, geodetic_coordinate: GeodeticWorldCoordinate) -> ImageCoordinate:
         """
@@ -170,16 +178,22 @@ class RPCSensorModel(SensorModel):
         row = rn * self.line_scale + self.line_off
         return ImageCoordinate([col, row])
 
-    def image_to_world(self, image_coordinate: ImageCoordinate) -> GeodeticWorldCoordinate:
+    def image_to_world(
+        self,
+        image_coordinate: ImageCoordinate,
+        elevation_model: Optional[ElevationModel] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> GeodeticWorldCoordinate:
         """
         This function implements the image to world transform by iteratively invoking world to image within a
         minimization routine to find a matching image coordinate. The longitude and latitude parameters are searched
         independently while the elevation of the world coordinate comes from the elevation model.
 
         :param image_coordinate: the image coordinate (x, y)
+        :param elevation_model: an optional elevation model used to fix the elevation of the image coordinate
+        :param options: a optional dictionary of hints, this camera supports initial_guess and initial_search_distance
         :return: the corresponding world coordinate (longitude, latitude, surface(longitude, latitude))
         """
-        elevation_model = ConstantElevationModel(self.height_off)
 
         # This is the function we will be minimizing. Given a x,y coordinate in the ground domain we use invoke the
         # ground_domain_to_image function to get a projection of that location in the image. Then we compute the
@@ -189,7 +203,9 @@ class RPCSensorModel(SensorModel):
             ground_domain_coordinate = GeodeticWorldCoordinate(
                 [lonlat_coord[0], lonlat_coord[1], 0.0]
             )
-            elevation_model.set_elevation(ground_domain_coordinate)
+            self.default_elevation_model.set_elevation(ground_domain_coordinate)
+            if elevation_model:
+                elevation_model.set_elevation(ground_domain_coordinate)
             new_image_coordinate = self.world_to_image(ground_domain_coordinate)
             return sqrt(
                 (image_coordinate.x - new_image_coordinate.x) ** 2
@@ -198,22 +214,41 @@ class RPCSensorModel(SensorModel):
 
         # Select an initial guess using the normalization offsets for this camera model. Normally these are values
         # near an image corner or the center
-        initial_guess = np.array([radians(self.long_off), radians(self.lat_off)])
+        initial_guess = (
+            options.get(SensorModelOptions.INITIAL_GUESS) if options is not None else None
+        )
+        if initial_guess is None:
+            initial_guess = np.array([radians(self.long_off), radians(self.lat_off)])
+        if isinstance(initial_guess, List):
+            initial_guess = np.array(initial_guess)
+
+        initial_search_distance = (
+            options.get(SensorModelOptions.INITIAL_SEARCH_DISTANCE) if options is not None else None
+        )
+        if initial_search_distance is None:
+            initial_search_distance = radians(0.5)
 
         # Iteratively adjust the initial guess to minimize the distance to the target image coordinate. We are only
-        # allowing the x,y components to vary here and the z is fixed to the elevation model. For now this is a
-        # default constant elevation model but if we expand this capability to support an external digital elevation
-        # model we can update the elevation model to force a search that tracks the ground terrain.
+        # allowing the x,y components to vary here and the z is fixed to the elevation model. The starting simplex
+        # is estimated as a triangle centered on the normalization offsets for this RPC.
         res = minimize(
             distance_to_target_coordinate,
             initial_guess,
             method="Nelder-Mead",
-            options={"xatol": radians(0.000001), "fatol": radians(0.000001)},
+            options={
+                "xatol": radians(0.000001),
+                "fatol": 0.5,
+                "initial_simplex": equilateral_triangle(
+                    initial_guess.tolist(), initial_search_distance
+                ),
+            },
         )
 
         # The minimization result is an (x,y) tuple so we need to expand it to x,y,z and replace the z component with
         # the height from the elevation model. Note that the units of this are radians, radians, meters
         world_coordinate = GeodeticWorldCoordinate(np.append(res.x, 0.0))
-        elevation_model.set_elevation(world_coordinate)
+        self.default_elevation_model.set_elevation(world_coordinate)
+        if elevation_model:
+            elevation_model.set_elevation(world_coordinate)
 
         return world_coordinate

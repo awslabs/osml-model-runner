@@ -1,8 +1,9 @@
 shapely==1.8.2
 aws-embedded-metrics==2.0.1
-boto3==1.24.37
-botocore==1.27.82
+boto3==1.26.35
+botocore==1.29.35
 geojson==2.5.0
+cachetools==3.1.0
 numpy==1.23.1
 scikit-optimize==0.9.0
 scikit-image==0.19.3
@@ -13,3 +14,4 @@ scipy==1.9.1
 dacite==1.6.0
 argparse==1.4.0
 uuid==1.30
+dacite==1.6.0
