@@ -249,6 +249,7 @@ RUN pip3 install \
     --no-cache-dir \
     --index-url ${PIP_INSTALL_LOCATION} \ 
     --cert ${BUILD_CERT} \
+    scikit-image==0.19.3 \
     GDAL==$(gdal-config --version | awk -F'[.]' '{print $1"."$2"."$3}') --global-option=build_ext --global-option="-I/usr/include/gdal"
 
 RUN python3 setup.py install
