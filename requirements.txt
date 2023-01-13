@@ -6,7 +6,6 @@ geojson==2.5.0
 cachetools==3.1.0
 numpy==1.23.1
 scikit-optimize==0.9.0
-scikit-image==0.19.3
 pyproj==3.4.0
 setuptools==57.0.0
 psutil==5.9.2
