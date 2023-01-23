@@ -9,6 +9,9 @@ import boto3
 
 BUCKET_NAME = os.environ["BUCKET_NAME"]
 OBJECT_PREFIX = os.environ["OBJECT_PREFIX"]
+ACCOUNT_USER = os.environ["USER"]
+ACCOUNT_NUMBER = os.environ["ACCOUNT_NUMBER"]
+REGION = os.environ["REGION"]
 
 s3_client = boto3.client("s3")
 sqs_client = boto3.client("sqs")
@@ -22,16 +25,16 @@ def ListObjects(bucket_name, prefix):
 
 if __name__ == "__main__":
 
-    for key in ListObjects(bucket_name, object_prefix):
+    for key in ListObjects(BUCKET_NAME, OBJECT_PREFIX):
         if not key.endswith(".tif"):
             continue
         message_body = {
-            "jobArn": "arn:aws:oversightml:us-east-1:010321660603:ipj/test-job",
+            "jobArn": "arn:aws:oversightml:" + REGION + ":" + ACCOUNT_NUMBER + ":ipj/test-job",
             "jobName": "test-job",
             "jobId": str(uuid.uuid4()),
             "jobStatus": "SUBMITTED",
-            "imageUrls": ["s3://" + bucket_name + "/" + key],
-            "outputBucket": "spacenet-parrised-devaccount",
+            "imageUrls": ["s3://" + BUCKET_NAME + "/" + key],
+            "outputBucket": "spacenet-" + ACCOUNT_USER + "-devaccount",
             "outputPrefix": "oversight",
             "imageProcessor": {"name": "charon-xview-endpoint", "type": "SM_ENDPOINT"},
             "imageProcessorTileSize": 1024,
@@ -40,6 +43,8 @@ if __name__ == "__main__":
         }
 
         sqs_client.send_message(
-            QueueUrl="https://sqs.us-east-1.amazonaws.com/010321660603/Oversight-ImageQueue",
+            QueueUrl="https://sqs.{0}.amazonaws.com/{1}/ImageRequestQueue".format(
+                REGION, ACCOUNT_NUMBER
+            ),
             MessageBody=json.dumps(message_body),
         )

@@ -1,4 +1,4 @@
-ARG BASE_CONTAINER=registry1.dso.mil/ironbank/opensource/python:v3.10.5
+ARG BASE_CONTAINER=registry1.dso.mil/ironbank/opensource/python:v3.10.9
 FROM ${BASE_CONTAINER} as cert-base 
 COPY /certs/tls-ca-bundle.pem /certs/tls-ca-bundle.pem
 
@@ -236,6 +236,11 @@ RUN pip3 install \
     --cert ${BUILD_CERT} \
     pip -U 
 
+RUN pip3 install \
+    --no-cache-dir \
+    --index-url ${PIP_INSTALL_LOCATION} \ 
+    --cert ${BUILD_CERT} \
+    scikit-image==0.19.3
 
 RUN pip3 install \    
     --no-cache-dir \
@@ -243,7 +248,6 @@ RUN pip3 install \
     --cert ${BUILD_CERT} \
     -r /home/requirements.txt
     # codeguru_profiler_agent
-
 
 RUN pip3 install \
     --no-cache-dir \

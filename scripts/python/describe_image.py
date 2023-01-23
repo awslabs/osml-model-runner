@@ -1,9 +1,11 @@
-import sys
 import re
+import sys
 from xml.etree import ElementTree
+
 from osgeo import gdal
 
 SUBDATASET_NAME_PATTERN = re.compile("SUBDATASET_(\d+)_NAME")
+
 
 def print_datasset_summary(ds: gdal.Dataset) -> None:
     print("****************************************************************")
@@ -18,10 +20,12 @@ def print_datasset_summary(ds: gdal.Dataset) -> None:
     num_bands = ds.RasterCount
     print(f"Num Bands:    {num_bands}")
     for i in range(ds.RasterCount):
-        band = ds.GetRasterBand(i+1)
-        print(f"  Band {i}: Extent {band.XSize} x {band.YSize} "
-              f"Blocking {band.GetBlockSize()} "
-              f"Type {gdal.GetDataTypeName(band.DataType)}")
+        band = ds.GetRasterBand(i + 1)
+        print(
+            f"  Band {i}: Extent {band.XSize} x {band.YSize} "
+            f"Blocking {band.GetBlockSize()} "
+            f"Type {gdal.GetDataTypeName(band.DataType)}"
+        )
 
     tre_names = []
     xml_tres = ds.GetMetadata("xml:TRE")
@@ -33,7 +37,7 @@ def print_datasset_summary(ds: gdal.Dataset) -> None:
 
 
 if __name__ == "__main__":
-    image_path = (sys.argv[1])
+    image_path = sys.argv[1]
     ds = gdal.Open(image_path)
 
     driver_name = ds.GetDriver().ShortName
