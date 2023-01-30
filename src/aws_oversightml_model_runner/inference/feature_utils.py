@@ -1,5 +1,5 @@
 import logging
-import uuid
+from secrets import token_hex
 from datetime import datetime
 from io import BufferedReader
 from json import dumps
@@ -168,7 +168,7 @@ def create_mock_feature_collection(payload: BufferedReader) -> FeatureCollection
     # Use GDAL to open the image. The binary payload from the HTTP request is used to create an in-memory
     # virtual file system for GDAL which is then opened to decode the image into a dataset which will give us
     # access to a NumPy array for the pixels.
-    temp_ds_name = "/vsimem/" + str(uuid.uuid4())
+    temp_ds_name = "/vsimem/" + token_hex(16)
     gdal.FileFromMemBuffer(temp_ds_name, payload.read())
     ds = gdal.Open(temp_ds_name)
     height, width = ds.RasterYSize, ds.RasterXSize
@@ -194,12 +194,12 @@ def create_mock_feature_collection(payload: BufferedReader) -> FeatureCollection
             {
                 "type": "Feature",
                 "geometry": {"coordinates": [0.0, 0.0], "type": "Point"},
-                "id": str(uuid.uuid4()),
+                "id": token_hex(16),
                 "properties": {
                     "bounds_imcoords": fixed_object_bbox,
                     "detection_score": 1.0,
                     "feature_types": {"sample_object": 1.0},
-                    "image_id": str(uuid.uuid4()),
+                    "image_id": token_hex(16),
                 },
             }
         ],

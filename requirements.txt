@@ -12,5 +12,4 @@ psutil==5.9.2
 scipy==1.9.1
 dacite==1.6.0
 argparse==1.4.0
-uuid==1.30
 dacite==1.6.0
