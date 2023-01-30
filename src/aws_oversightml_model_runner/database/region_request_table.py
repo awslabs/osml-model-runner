@@ -37,7 +37,7 @@ class RegionRequestItem(DDBItem):
     RegionRequestItem is a dataclass meant to represent a single item in the Region table
 
     The data schema is defined as follows:
-    region_id: str = primary key - formatted as region (pixel bounds) + "-" + uuid
+    region_id: str = primary key - formatted as region (pixel bounds) + "-" + unique_identifier
     image_id: str = secondary key - image_id for the job
     start_time: Optional[Decimal] = time in epoch seconds when the job started
     last_updated_time: Optional[Decimal] = time in epoch seconds when job is processing (periodically)
