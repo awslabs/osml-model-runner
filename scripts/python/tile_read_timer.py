@@ -1,6 +1,6 @@
 import argparse
 import time
-import uuid
+from secrets import token_hex
 from typing import List, Tuple
 
 from osgeo import gdal, gdalconst
@@ -114,7 +114,7 @@ if __name__ == "__main__":
         ],
     ]:
         print("TILE: ***********************************")
-        temp_ds_name = "/vsimem/" + str(uuid.uuid4())
+        temp_ds_name = "/vsimem/" + token_hex(16)
         start = time.time()
         gdal.Translate(temp_ds_name, ds, srcWin=src_win, **gdal_translate_kwargs)
         tiles_elapsed.append(time.time() - start)

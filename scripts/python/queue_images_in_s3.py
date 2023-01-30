@@ -3,7 +3,7 @@
 # TODO: Parameterize this script and make it a more robust dev test tool, everything is hard coded
 import json
 import os
-import uuid
+from secrets import token_hex
 
 import boto3
 
@@ -31,7 +31,7 @@ if __name__ == "__main__":
         message_body = {
             "jobArn": "arn:aws:oversightml:" + REGION + ":" + ACCOUNT_NUMBER + ":ipj/test-job",
             "jobName": "test-job",
-            "jobId": str(uuid.uuid4()),
+            "jobId": token_hex(16),
             "jobStatus": "SUBMITTED",
             "imageUrls": ["s3://" + BUCKET_NAME + "/" + key],
             "outputBucket": "spacenet-" + ACCOUNT_USER + "-devaccount",

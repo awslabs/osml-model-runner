@@ -1,6 +1,6 @@
 import logging
 import tempfile
-import uuid
+from secrets import token_hex
 from pathlib import Path
 from queue import Queue
 from typing import Any, Dict, List, Optional, Tuple
@@ -138,7 +138,7 @@ def process_tiles(
                 ):
                     # Create a temp file name for the NITF encoded region
                     region_image_filename = "{}-region-{}-{}-{}-{}.{}".format(
-                        str(uuid.uuid4()),
+                        token_hex(16),
                         tile_bounds[0][0],
                         tile_bounds[0][1],
                         tile_bounds[1][0],
