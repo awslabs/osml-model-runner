@@ -1,5 +1,5 @@
 import unittest
-import uuid
+from secrets import token_hex
 import xml.etree.ElementTree as ElementTree
 
 import geojson
@@ -45,7 +45,7 @@ class TestFeatureRefinery(unittest.TestCase):
             for x in range(0, features_per_row):
                 selected_features.append(
                     geojson.Feature(
-                        id=str(uuid.uuid4()),
+                        id=token_hex(16),
                         geometry=None,
                         properties={
                             "bounds_imcoords": [

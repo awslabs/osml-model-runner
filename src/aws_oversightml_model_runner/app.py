@@ -1,7 +1,7 @@
 import ast
 import json
 import logging
-import uuid
+from secrets import token_hex
 from datetime import datetime
 from decimal import Decimal
 from json import dumps
@@ -358,7 +358,7 @@ class ModelRunner:
             logger.info("Queueing region: {}".format(region))
 
             region_pixel_bounds = f"{region[0]}{region[1]}"
-            region_id = f"{region_pixel_bounds}-{str(uuid.uuid4())}"
+            region_id = f"{region_pixel_bounds}-{token_hex(16)}"
             region_request = RegionRequest(
                 image_request.get_shared_values(), region_bounds=region, region_id=region_id
             )
@@ -384,7 +384,7 @@ class ModelRunner:
         logger.info("Processing first region {}: {}".format(0, first_region))
 
         region_pixel_bounds = f"{first_region[0]}{first_region[1]}"
-        region_id = f"{region_pixel_bounds}-{str(uuid.uuid4())}"
+        region_id = f"{region_pixel_bounds}-{token_hex(16)}"
         first_region_request = RegionRequest(
             image_request.get_shared_values(),
             region_bounds=first_region,

@@ -2,7 +2,7 @@ import logging
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
-from uuid import uuid4
+from secrets import token_hex
 
 import geojson
 from _decimal import Decimal
@@ -107,7 +107,7 @@ class FeatureTable(DDBHelper):
                             result = self.put_ddb_item(
                                 FeatureItem(
                                     hash_key=image_id,
-                                    range_key=str(uuid4()),
+                                    range_key=token_hex(16),
                                     tile_id=tile_id,
                                     features=encoded_features,
                                     expire_time=expire_time_epoch_sec,
