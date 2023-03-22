@@ -1,0 +1,33 @@
+stages:
+  - build_dep
+
+gdal-base:
+  stage: build-deps
+  tags:
+    - dind
+  before_script:
+    - echo "Installing build pre-reqs"
+    - apk add unzip curl zip make openssl bash npm python3 g++ wget
+    # Login to iron bank per instructions here: https://discourse.gs.mil/t/how-do-i-use-platform-one-iron-bank-hosted-images-at-nga/5187/2
+    - docker login -u $REGISTERY1_USERNAME -p $REGISTERY1_PASSWORD registry1.dso.mil
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - mkdir -p certs/ && cp /certs/tls-ca-bundle.pem certs/tls-ca-bundle.pem
+    - echo "${CERT_IMAGE}"
+    - |
+      docker build --target cert-base \
+                    -f docker/Dockerfile.gdal_base \
+                    -t ${CERT_IMAGE} \
+                    .
+    - docker push $CERT_IMAGE
+    - |
+      docker build --target $GDAL_BASE \
+                    -f docker/Dockerfile.gdal_base \
+                    --build-arg CI=true \
+                    --build-arg PIP_INSTALL_LOCATION=$PIP_INSTALL_LOCATION \
+                    --build-arg BUILD_CERT=$BUILD_CERT \
+                    --build-arg BASE_CONTAINER=$CERT_IMAGE \
+                    --build-arg NEXUS_AUTH=$NEXUS3_USER:$NEXUS3_PASSWORD \
+                    -t $GDAL_BASE_IMAGE \
+                    .
+    - docker push $GDAL_BASE_IMAGE

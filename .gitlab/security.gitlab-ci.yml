@@ -1,0 +1,38 @@
+---
+# Security
+#
+# Jobs that will perform various security checks against the codebase and
+# container images.
+#
+
+variables:
+  DS_MAX_DEPTH: 6
+
+include:
+  # DSO SAST Scan
+  - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
+    ref: master
+    file: '/SAST.gitlab-ci.yml'
+
+  # DSO Dependency Scan
+  - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
+    ref: master
+    file: '/Dependency-Scanning.gitlab-ci.yml'
+
+  # DSO Container Image Scan
+  - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
+    ref: master
+    file: '/Container-Scanning.gitlab-ci.yml'
+
+# Container Image Scans
+container_scanning:
+  variables:
+    DOCKER_IMAGE: $MODEL_RUNNER_IMAGE
+
+# Override
+gemnasium-python-dependency_scanning:
+  variables:
+    SECURE_LOG_LEVEL: "debug"
+    PIP_INDEX_URL: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
+    PIP_TRUSTED_HOST: https://mirrors.gs.mil
+
