@@ -5,18 +5,12 @@ default:
 stages:
   - build
   - security_scans
-  - test 
-  - publish 
-  - transfer 
+  - test
+  - publish
+  - transfer
 
 include:
-  - template: Security/SAST.gitlab-ci.yml
-  - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
-    ref: master
-    file: '/Dependency-Scanning.gitlab-ci.yml'
-  - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
-    ref: grype
-    file: '/Container-Scanning.gitlab-ci.yml' 
+  - .gitlab/security.gitlab-ci.yml
   - project: 'maven-integration/public/cicd-examples'
     ref: main
     file: '.gitlab-ci.yml'
@@ -28,9 +22,14 @@ include:
 
 variables: 
   BUILD_CERT: /certs/tls-ca-bundle.pem
+  BASE_GIT_URL: https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.gs.mil/maven-integration/aws/aws-aip
   PIP_INSTALL_LOCATION: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
+  NEXUS3_USER: ${maven_integration_nexus_3_credential_username}
+  NEXUS3_PASSWORD: ${maven_integration_nexus_3_credential_password}
   MODEL_NAME: "aip-mr-runner"
   MODEL_TAG: "mainline"
+
+  MODEL_RUNNER_IMAGE: $CI_REGISTRY_IMAGE/aip-mr-runner:$CI_COMMIT_REF_SLUG
 
 create_runner:
   stage: build
@@ -38,7 +37,7 @@ create_runner:
     - dind
   before_script:
     # Login to iron bank per instructions here: https://discourse.gs.mil/t/how-do-i-use-platform-one-iron-bank-hosted-images-at-nga/5187/2
-    - docker login -u ${REGISTERY1_USERNAME} -p ${REGISTERY1_PASSWORD} registry1.dso.mil 
+    - docker login -u ${REGISTERY1_USERNAME} -p ${REGISTERY1_PASSWORD} registry1.dso.mil
     - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
   script:
     - mkdir -p certs/ && cp /certs/tls-ca-bundle.pem certs/tls-ca-bundle.pem
@@ -55,8 +54,8 @@ create_runner:
                     --build-arg BASE_CONTAINER=${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG} \
                     --build-arg CI=${CI} \
                     --build-arg NEXUS_AUTH=${NEXUS3_USER}:${NEXUS3_PASSWORD} \
-                    -t ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG} .
-    - docker push ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG}
+                    -t $MODEL_RUNNER_IMAGE .
+    - docker push $MODEL_RUNNER_IMAGE
 
 
 # TODO: Stage should be added back in when we figure out how we can use
@@ -105,70 +104,10 @@ fortify_build:
     paths:
       - security-scans/
 
-
-bandit-sast: 
-  stage: security_scans 
-
-
-semgrep-sast: 
-  stage: security_scans 
-
 # Add back in as program or security asks for sonarqube or owasp onboarding 
 # sonarqube_scanning: 
 #   stage: security_scans 
 
-# Serves to perform grype scans until inherieted pipeline resolves permanent false loop 
-grype_scanner:
-  stage: security_scans
-  before_script: 
-    - WORK_DIR="$PWD"
-    - cd /etc/pki/ca-trust/source/anchors
-    - awk 'BEGIN {c=0;} /BEGIN CERT/{c++} { print > "cert." c ".pem"}' < /certs/tls-ca-bundle.pem
-    - cd "$WORK_DIR"
-  image:
-    name: $CI_REGISTRY/dso-millennium-falcon/docker/grype:4-fips
-  variables:
-    DOCKER_CERT_PATH: /etc/pki/ca-trust/source/anchors
-    CONTAINER_SCANNING_DISABLED: "true"
-    CS_ANALYZER_IMAGE: $CI_REGISTRY/dso-millennium-falcon/docker/grype:4-fips
-    ADDITIONAL_CA_CERT_BUNDLE: /certs/tls-ca-bundle.pem
-    GIT_STRATEGY: none
-    DOCKER_IMAGE: ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG}
-    DOCKERFILE_PATH: docker/Dockerfile.mr_container
-  allow_failure: true
-  artifacts:
-    reports:
-      container_scanning: gl-container-scanning-report.json
-      dependency_scanning: gl-dependency-scanning-report.json
-    paths: [gl-container-scanning-report.json, gl-dependency-scanning-report.json]
-  dependencies: []
-  script:
-    - gtcs scan
-
-
-container_scanning:
-  stage: security_scans
-  variables:
-    DOCKER_IMAGE: ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG}
-    DOCKERFILE_PATH: docker/Dockerfile.mr_container
-
-
-gemnasium-python-dependency_scanning: 
-  stage: security_scans 
-  variables: 
-    SECURE_LOG_LEVEL: "debug"
-    PIP_INDEX_URL: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
-    PIP_TRUSTED_HOST: https://mirrors.gs.mil
-
-# Add back in as program or security asks for sonarqube or owasp onboarding 
-# owasp_depcheck_scan:
-  # stage: security_scans
-  # variables:
-  #   SUBFOLDER_TO_SCAN: ./
-  #   dependency_files: requirements.txt
-  # cache:
-  #   paths:
-  #     - ./
 
 pytest_functionality: 
   stage: test
@@ -177,32 +116,21 @@ pytest_functionality:
     - pip3 install --index-url $PIP_INSTALL_LOCATION --cert $BUILD_CERT -r test/requirements-test.txt -t .
     - python3 -m pytest --cov=aws_oversightml_model_runner test/
 
-Export Image:
+publish:
   stage: publish
-  image: ${CI_REGISTRY}/devsecops_public/gitlab-runner-images/docker:devops
-  services:
-    - name: ${CI_REGISTRY}/devsecops_public/gitlab-runner-images/docker:devops-dind
-      alias: docker
-      command: ["--insecure-registry", "gitlab-registry.gs.mil"]
-  script:
-    - docker info
-    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
-    - docker pull ${CI_REGISTRY_IMAGE}/${MODEL_NAME}:${MODEL_TAG}
-    - docker save ${CI_REGISTRY_IMAGE}/${MODEL_NAME}:${MODEL_TAG}  > ${ARTIFACT}
-    - docker logout ${CI_REGISTRY} 
-    - curl --user "${NEXUS3_USER}:${NEXUS3_PASSWORD}" --upload-file ./${ARTIFACT} ${NEXUS3_REPOS}/aip/${ARTIFACT}
   tags:
     - dind
-  timeout: 3h
-  variables:
-    MODEL_NAME: "aip-mr-runner"
-    MODEL_TAG: "mainline"
-    NEXUS3_REPOS: "https://nexus3.gs.mil/repository/Maven_artifacts"
-    NEXUS3_USER: ${maven_integration_nexus_3_credential_username}
-    NEXUS3_PASSWORD: ${maven_integration_nexus_3_credential_password}
-    ARTIFACT: "${MODEL_NAME}-${MODEL_TAG}.tar"
   only:
-    - mainline
+    - main
+  variables:
+    NEXUS3_REPOS: "https://nexus3.gs.mil/repository/Maven_artifacts"
+    ARTIFACT: "${MODEL_NAME}-${MODEL_TAG}-${CI_COMMIT_REF_SLUG}.tar.gz"
+  before_script:
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+  script:
+    - docker pull $MODEL_RUNNER_IMAGE
+    - docker save $MODEL_RUNNER_IMAGE | gzip > ${ARTIFACT}
+    - curl --user "${NEXUS3_USER}:${NEXUS3_PASSWORD}" --upload-file ./${ARTIFACT} ${NEXUS3_REPOS}/aip/${ARTIFACT}
 
 export_unavailable: 
   stage: publish 
