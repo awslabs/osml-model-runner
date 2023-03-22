@@ -120,6 +120,8 @@ publish:
   stage: publish
   tags:
     - dind
+  only:
+    - main
   variables:
     NEXUS3_REPOS: "https://nexus3.gs.mil/repository/Maven_artifacts"
     ARTIFACT: "${MODEL_NAME}-${MODEL_TAG}-${CI_COMMIT_REF_SLUG}.tar.gz"
