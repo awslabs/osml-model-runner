@@ -79,35 +79,6 @@ create_runner:
 #     - docker push ${CI_REGISTRY_IMAGE}/gdal-base:${CI_COMMIT_REF_SLUG}
 
 
-fortify_build:
-  stage: security_scans
-  image: gitlab-registry.gs.mil/chargeback/docker/fortify-sca-py38:latest
-  tags:
-    - standard
-  variables: 
-    CLASSPATH: "/usr/share/java/*.jar"
-    JOB_NAME: "python_scan"
-    APP_NAME: 'AIP-Model-Runner'    
-    HP_FORTIFY_SCAN_FILE_NAME: "fortifyResults-${CI_COMMIT_SHA}.fpr"
-    HP_FORTIFY_REPORT_FILE_NAME: "fortifyResults-${CI_COMMIT_SHA}.pdf"
-    SECURITY_SCANS_FOLDER: 'security-scans'
-    WORKSPACE: "."
-  script:
-    - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} -clean
-    - mkdir $WORKSPACE/${SECURITY_SCANS_FOLDER}
-    #- pip3 install -r ./requirements.txt --user
-    - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} "src/**/*.py"  -python-version 3 -python-path `python3 -c "import sys;sys.path.append(r'~/.local/');print(':'.join(sys.path))"` -Dcom.fortify.sca.follow.imports=false        
-    - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} -show-files
-    - /opt/Fortify/bin/sourceanalyzer -64 -verbose -Xms2G -Xmx10G -b ${JOB_NAME} -scan -f "$WORKSPACE/${SECURITY_SCANS_FOLDER}/${HP_FORTIFY_SCAN_FILE_NAME}"
-    - /opt/Fortify/bin/ReportGenerator -format pdf -f "$WORKSPACE/${SECURITY_SCANS_FOLDER}/${HP_FORTIFY_REPORT_FILE_NAME}" -source "$WORKSPACE/${SECURITY_SCANS_FOLDER}/${HP_FORTIFY_SCAN_FILE_NAME}" -showSuppressed -showHidden
-  artifacts:
-    paths:
-      - security-scans/
-
-# Add back in as program or security asks for sonarqube or owasp onboarding 
-# sonarqube_scanning: 
-#   stage: security_scans 
-
 
 pytest_functionality: 
   stage: test
