@@ -14,6 +14,11 @@ include:
     ref: master
     file: '/SAST.gitlab-ci.yml'
 
+  # DSO Fortify SCA 
+  - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
+    ref: master
+    file: '/fortify-scanning.yml'
+
   # DSO Dependency Scan
   - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
     ref: master
@@ -23,6 +28,14 @@ include:
   - project: 'DSO-Millennium-Falcon/gitlab-ci-templates/scanning-templates'
     ref: master
     file: '/Container-Scanning.gitlab-ci.yml'
+
+# Fortify
+fortify_scanning:
+  variables:
+    PYTHON_IMPORT: "import sys;sys.path.append(r'~/.local/');print(':'.join(sys.path))"
+    #NOTE to get this o work properly, the path with out code base to scan happens after -python-path. Not before.
+    # -python-path <PATH TO IMPORT PYTHON> <PATH_TO_OUR_CODE_BASE_TO_SCAN>
+    SCAN_ARGS: '-Dcom.fortify.sca.follow.imports=false -debug -python-version 3 -python-path `python3 -c "${PYTHON_IMPORT}"` src/**/*.py'
 
 # Container Image Scans
 container_scanning:
