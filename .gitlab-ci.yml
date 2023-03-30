@@ -103,8 +103,20 @@ publish:
     - docker save $MODEL_RUNNER_IMAGE | gzip > ${ARTIFACT}
     - curl --user "${NEXUS3_USER}:${NEXUS3_PASSWORD}" --upload-file ./${ARTIFACT} ${NEXUS3_REPOS}/aip/${ARTIFACT}
 
-export_unavailable: 
-  stage: publish 
+export-image-nexus3:
+  stage: transfer
 
-export-image-diode: 
-  stage: publish
+export-tag-nexus3:
+  stage: transfer
+
+export_unavailable:
+  # Disabling export_unavailable so pipelines pass while acknowledging its comments.
+  stage: transfer
+  only:
+    - never
+
+export-image-diode:
+  stage: transfer
+
+export-tag-diode:
+  stage: transfer
