@@ -115,7 +115,7 @@ RUN cd /proj \
     && for i in /build_proj/usr/bin/*; do strip -s $i 2>/dev/null || /bin/true; done
 
 # Build GDAL
-ARG GDAL_VERSION=3.5.1
+ARG GDAL_VERSION=3.5.2
 ARG GDAL_FILENAME=gdal.tar.gz
 RUN if "${CI}" eq "true"; then \
         curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/gdal-${GDAL_VERSION}.tar.gz \
