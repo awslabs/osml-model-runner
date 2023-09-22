@@ -1,4 +1,2 @@
-© 2023 Amazon Web Services, Inc. or its affiliates. All Rights Reserved.
-
-Amazon Proprietary & Confidential Information
-This AWS Content is subject to the terms of the Prime Contract No. [W911QX-18-C-0037 E208476080]
+(c) 2023 Amazon Web Services, Inc. All Rights Reserved.
+This AWS content is subject to the terms of C2E Task Order 5502/HM047623F0080.

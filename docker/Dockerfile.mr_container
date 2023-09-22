@@ -220,10 +220,9 @@ RUN dnf install -y --nodocs \
 
 
 WORKDIR /home
-COPY bin/ /home/bin
-COPY src/ /home/src
-COPY setup.py /home
-COPY requirements.txt /home/ 
+
+# copy our lcoal application source into the container
+COPY . osml-model-runner
 
 # Update C env vars so compiler can find gdal
 ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
@@ -236,19 +235,12 @@ RUN pip3 install \
     --cert ${BUILD_CERT} \
     pip -U 
 
-RUN pip3 install \
+# install the model runner application from source
+RUN python3 -m pip install \
     --no-cache-dir \
     --index-url ${PIP_INSTALL_LOCATION} \ 
     --cert ${BUILD_CERT} \
-    scikit-image==0.19.3 
-
-RUN pip3 install \    
-    --no-cache-dir \
-    --index-url ${PIP_INSTALL_LOCATION} \ 
-    --cert ${BUILD_CERT} \
-    -r /home/requirements.txt
-    # codeguru_profiler_agent
-
+    osml-model-runner/.
 
 RUN pip3 install \
     --no-cache-dir \
@@ -256,24 +248,50 @@ RUN pip3 install \
     --cert ${BUILD_CERT} \
     GDAL==$(gdal-config --version | awk -F'[.]' '{print $1"."$2"."$3}') --global-option=build_ext --global-option="-I/usr/include/gdal"
 
-RUN python3 setup.py install
-
 # Clean up old python3.6 install
 USER root
 RUN rm -rf /usr/lib/python3.6/site-packages/urllib3*
 
 USER 1000
 
-CMD ["python3", "bin/mr-entry-point.py"]
+CMD ["python3", "osml-model-runner/bin/oversightml-mr-entry-point.py"]
 
 FROM runner as unit-test
 
-COPY test/ /home/test
-WORKDIR /home 
+WORKDIR /home/osml-model-runner
 
 USER root 
-RUN pip3 install \
+
+# Pyton packages and environment variables mirror tox.ini settings 
+ENV AWS_DEFAULT_REGION=us-west-2
+ENV WORKERS=4
+ENV WORKERS_PER_CPU=1
+ENV JOB_TABLE=TEST-JOB-TABLE
+ENV ENDPOINT_TABLE=TEST-ENDPOINT-STATS-TABLE
+ENV FEATURE_TABLE=TEST-FEATURE-TABLE
+ENV REGION_REQUEST_TABLE=TEST-REGION-REQUEST-TABLE
+ENV IMAGE_QUEUE=TEST-IMAGE-QUEUE
+ENV REGION_QUEUE=TEST-REGION-QUEUE
+ENV IMAGE_STATUS_TOPIC=TEST-IMAGE-STATUS-TOPIC
+ENV SM_SELF_THROTTLING=true
+# MOTO/BOTO
+ENV AWS_ACCESS_KEY_ID=testing
+ENV AWS_SECRET_ACCESS_KEY=testing
+ENV AWS_SECURITY_TOKEN=testing
+ENV AWS_SESSION_TOKEN=testing
+
+RUN python3 -m pip install \
+    --no-cache-dir \
     --index-url ${PIP_INSTALL_LOCATION} \ 
     --cert ${BUILD_CERT} \
-    -r test/requirements-test.txt
-CMD ["python3", "-m", "pytest", "--cov=aws_oversightml_model_runner", "test/"]
+    pytest>=7.2.0 \
+    pytest-cov>=4.0.0 \
+    pytest-xdist>=3.2.0 \
+    pytest-asyncio>=0.20.3 \
+    mock>=5.0.0 \
+    moto>=4.1.0 \
+    defusedxml>=0.7.1
+
+
+CMD ["pytest", "--durations=10", "--cov-config", ".coveragerc", "--cov", "aws.osml.model_runner"] 
+# CMD ["python3", "-m", "pytest", "--cov=osml", "test/"]

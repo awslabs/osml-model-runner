@@ -1,3 +1,5 @@
+#  Copyright 2023 Amazon.com, Inc. or its affiliates.
+
 SAMPLE_REGION_REQUEST_DATA = {
     "tile_size": (10, 10),
     "tile_overlap": (1, 1),
@@ -6,15 +8,15 @@ SAMPLE_REGION_REQUEST_DATA = {
     "image_url": "test-image-url",
     "region_bounds": ((0, 0), (50, 50)),
     "model_name": "test-model-name",
-    "model_hosting_type": "SM_ENDPOINT",
+    "model_invoke_mode": "SM_ENDPOINT",
     "output_bucket": "unit-test",
     "output_prefix": "region-request",
     "execution_role": "arn:aws:iam::012345678910:role/OversightMLBetaInvokeRole",
 }
 
 SAMPLE_IMAGE_REQUEST_DATA = {
-    "imageURL": "s3://spacenet-parrised-devaccount/AOI_1_Rio/srcData/rasterData/3-Band/013022223103.tif",
-    "outputBucket": "spacenet-parrised-devaccount",
-    "outputPrefix": "oversight/AOI_1_Rio",
-    "modelName": "charon-xview-endpoint",
+    "imageURL": "s3://test-account/path/to/data/sample_file.tif",
+    "outputBucket": "output-bucket",
+    "outputPrefix": "oversight/sample",
+    "modelName": "test-model",
 }

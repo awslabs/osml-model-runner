@@ -1,0 +1,45 @@
+stages:
+  - build 
+  - release_image
+
+variables:
+  SERVICE: NITFChipper
+  SNS_EMAIL: duncan.m.botti.ctr@nga.mil
+  TEMPLATE_DIR: cdk/microservices/templates
+  OUTPUT_FILE: cdk.output.json
+  REGION: us-east-1
+  REPO_NAME: model-runner
+
+Build Image: 
+  stage: build
+  tags:
+    - dind
+  variables: 
+    IMAGE_TAG: ${CI_REGISTRY_IMAGE}/${REPO_NAME}:${CI_COMMIT_REF_SLUG}
+  before_script:
+    # Login to iron bank per instructions here: https://discourse.gs.mil/t/how-do-i-use-platform-one-iron-bank-hosted-images-at-nga/5187/2
+    - docker login -u ${REGISTRY1_USERNAME} -p ${REGISTRY1_PASSWORD} registry1.dso.mil
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
+    - docker login -u ${REGISTRY1_USERNAME} -p ${REGISTRY1_PASSWORD} registry1.dso.mil
+    - docker build --target runner -f docker/Dockerfile.mr_container -t ${IMAGE_TAG} .
+    - docker push ${IMAGE_TAG}
+
+Release Image:
+  stage: release_image
+  tags:
+    - shell
+    - test
+    - nudl
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
+    GIT_STRATEGY: none
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_JOB_TOKEN $CI_REGISTRY
+    - docker pull $CI_REGISTRY_IMAGE/${REPO_NAME}:${CI_COMMIT_REF_SLUG}
+    - AWS_ID="$(aws sts get-caller-identity --query Account | tr -d '"')"
+    - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $AWS_ID.dkr.ecr.us-east-1.amazonaws.com
+    - docker tag $CI_REGISTRY_IMAGE/${REPO_NAME}:${CI_COMMIT_REF_SLUG} $AWS_ID.dkr.ecr.us-east-1.amazonaws.com/${REPO_NAME}:latest
+    - docker push $AWS_ID.dkr.ecr.us-east-1.amazonaws.com/${REPO_NAME}:latest
+  rules:
+    - if: $CI_COMMIT_REF_NAME == "mainline"
