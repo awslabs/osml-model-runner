@@ -1,3 +1,5 @@
+#  Copyright 2023 Amazon.com, Inc. or its affiliates.
+
 # Environment Variable Configuration
 TEST_ENV_CONFIG = {
     # ModelRunner test config
@@ -58,6 +60,7 @@ TEST_S3_FULL_BUCKET_PATH = "s3://test-results-bucket/test/data/small.ntf"
 TEST_RESULTS_STREAM = "test-results-stream"
 
 TEST_IMAGE_ID = "test-image-id"
+TEST_IMAGE_EXTENSION = "NITF"
 TEST_JOB_ID = "test-job-id"
 TEST_REGION_ID = "test-region-id"
 

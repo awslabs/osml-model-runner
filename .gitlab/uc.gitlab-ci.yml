@@ -1,0 +1,137 @@
+default:
+  tags:
+    - dind
+
+stages:
+  - build
+  - security_scans
+  - test
+  - publish
+  - transfer
+
+include:
+  - .gitlab/security.gitlab-ci.yml
+  - project: 'maven-integration/public/cicd-examples'
+    ref: main
+    file: '.gitlab-ci.yml'
+  # Add back in as program or security asks for sonarqube or owasp onboarding 
+  # - project: 'DevOps/security-scanning/scanning-templates'
+  #   file: '/sonarqube-check.yml'
+  # - project: 'DevOps/security-scanning/scanning-templates'
+  #   file: '/owasp-depcheck.yml'
+
+variables: 
+  BUILD_CERT: /certs/tls-ca-bundle.pem
+  BASE_GIT_URL: https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.gs.mil/maven-integration/aws/aws-aip
+  PIP_INSTALL_LOCATION: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
+  NEXUS3_USER: ${maven_integration_nexus_3_credential_username}
+  NEXUS3_PASSWORD: ${maven_integration_nexus_3_credential_password}
+  MODEL_NAME: "aip-mr-runner"
+  MODEL_TAG: "mainline"
+  MODEL_RUNNER_IMAGE: $CI_REGISTRY_IMAGE/aip-mr-runner:$CI_COMMIT_REF_SLUG
+
+create_runner:
+  stage: build
+  tags:
+    - dind
+  before_script:
+    # Login to iron bank per instructions here: https://discourse.gs.mil/t/how-do-i-use-platform-one-iron-bank-hosted-images-at-nga/5187/2
+    - docker login -u ${REGISTERY1_USERNAME} -p ${REGISTERY1_PASSWORD} registry1.dso.mil
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
+    - mkdir -p certs/ && cp /certs/tls-ca-bundle.pem certs/tls-ca-bundle.pem
+    - | 
+      docker build --target cert-base \
+                    -f docker/Dockerfile.mr_container \
+                    -t ${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG} .
+    - docker push ${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG}
+    - |
+      docker build --target runner \
+                    -f docker/Dockerfile.mr_container \
+                    --build-arg PIP_INSTALL_LOCATION=$PIP_INSTALL_LOCATION \
+                    --build-arg BUILD_CERT=$BUILD_CERT \
+                    --build-arg BASE_CONTAINER=${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG} \
+                    --build-arg CI=${CI} \
+                    --build-arg NEXUS_AUTH=${NEXUS3_USER}:${NEXUS3_PASSWORD} \
+                    -t $MODEL_RUNNER_IMAGE .
+    - docker push $MODEL_RUNNER_IMAGE
+
+
+# TODO: Stage should be added back in when we figure out how we can use
+#  it to accelerate builds on downstream stages, currently stages always do a full rebuild 
+# create_gdal_base:
+#   # This stage exists for posterity and so we can audit our gdal base build easily, 
+#   #   allowing devs to quickly pull a complex changed gdal for debugging
+#   stage: build
+#   tags:
+#     - dind
+#   before_script:
+#     # Login to iron bank per instructions here: https://discourse.gs.mil/t/how-do-i-use-platform-one-iron-bank-hosted-images-at-nga/5187/2
+#     - docker login -u ${REGISTERY1_USERNAME} -p ${REGISTERY1_PASSWORD} registry1.dso.mil 
+#     - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+#   script:
+#     - mkdir -p certs/ && cp /certs/tls-ca-bundle.pem certs/tls-ca-bundle.pem
+#     - | 
+#       docker build --target gdal-base \
+#                     -f docker/Dockerfile.mr_container \
+#                     -t ${CI_REGISTRY_IMAGE}/gdal-base:${CI_COMMIT_REF_SLUG} .
+#     - docker push ${CI_REGISTRY_IMAGE}/gdal-base:${CI_COMMIT_REF_SLUG}
+
+
+
+pytest_functionality: 
+  stage: test
+  image: ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG}
+  variables: 
+    AWS_DEFAULT_REGION: "us-west-2"
+    WORKERS: "4"
+    WORKERS_PER_CPU: "1"
+    JOB_TABLE: "TEST-JOB-TABLE"
+    ENDPOINT_TABLE: "TEST-ENDPOINT-STATS-TABLE"
+    FEATURE_TABLE: "TEST-FEATURE-TABLE"
+    REGION_REQUEST_TABLE: "TEST-REGION-REQUEST-TABLE"
+    IMAGE_QUEUE: "TEST-IMAGE-QUEUE"
+    REGION_QUEUE: "TEST-REGION-QUEUE"
+    IMAGE_STATUS_TOPIC: "TEST-IMAGE-STATUS-TOPIC"
+    SM_SELF_THROTTLING: "true"
+    AWS_ACCESS_KEY_ID: "testing"
+    AWS_SECRET_ACCESS_KEY: "testing"
+    AWS_SECURITY_TOKEN: "testing"
+    AWS_SESSION_TOKEN: "testing"
+  script: 
+    - pip3 install --index-url $PIP_INSTALL_LOCATION --cert $BUILD_CERT -r test/requirements-test.txt -t .
+    - python3 -m pytest --durations=10 --cov-config .coveragerc --cov aws.osml.model_runner
+
+publish:
+  stage: publish
+  tags:
+    - dind
+  only:
+    - main
+  variables:
+    NEXUS3_REPOS: "https://nexus3.gs.mil/repository/Maven_artifacts"
+    ARTIFACT: "${MODEL_NAME}-${MODEL_TAG}-${CI_COMMIT_REF_SLUG}.tar.gz"
+  before_script:
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+  script:
+    - docker pull $MODEL_RUNNER_IMAGE
+    - docker save $MODEL_RUNNER_IMAGE | gzip > ${ARTIFACT}
+    - curl --user "${NEXUS3_USER}:${NEXUS3_PASSWORD}" --upload-file ./${ARTIFACT} ${NEXUS3_REPOS}/aip/${ARTIFACT}
+
+export-image-nexus3:
+  stage: transfer
+
+export-tag-nexus3:
+  stage: transfer
+
+export_unavailable:
+  # Disabling export_unavailable so pipelines pass while acknowledging its comments.
+  stage: transfer
+  only:
+    - never
+
+export-image-diode:
+  stage: transfer
+
+export-tag-diode:
+  stage: transfer
