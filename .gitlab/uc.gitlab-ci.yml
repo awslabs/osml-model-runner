@@ -10,7 +10,8 @@ stages:
   - transfer
 
 include:
-  - .gitlab/security.gitlab-ci.yml
+  - .gitlab/common/security.gitlab-ci.yml
+  - .gitlab/common/unit-tests.gitlab-ci.yml 
   - project: 'maven-integration/public/cicd-examples'
     ref: main
     file: '.gitlab-ci.yml'
@@ -26,11 +27,11 @@ variables:
   PIP_INSTALL_LOCATION: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
   NEXUS3_USER: ${maven_integration_nexus_3_credential_username}
   NEXUS3_PASSWORD: ${maven_integration_nexus_3_credential_password}
-  MODEL_NAME: "aip-mr-runner"
+  MODEL_NAME: "ie-model-runner"
   MODEL_TAG: "mainline"
-  MODEL_RUNNER_IMAGE: $CI_REGISTRY_IMAGE/aip-mr-runner:$CI_COMMIT_REF_SLUG
+  MODEL_RUNNER_IMAGE: $CI_REGISTRY_IMAGE/ie-model-runner:$CI_COMMIT_REF_SLUG
 
-create_runner:
+build_model_runner:
   stage: build
   tags:
     - dind
@@ -41,10 +42,10 @@ create_runner:
   script:
     - mkdir -p certs/ && cp /certs/tls-ca-bundle.pem certs/tls-ca-bundle.pem
     - | 
-      docker build --target cert-base \
-                    -f docker/Dockerfile.mr_container \
+      docker build -f docker/Dockerfile.rebake \
+                    --build-arg BUILD_CERT=$BUILD_CERT \
+                    --build-arg BASE_IMG=registry1.dso.mil/ironbank/opensource/python:v3.11.2 \
                     -t ${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG} .
-    - docker push ${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG}
     - |
       docker build --target runner \
                     -f docker/Dockerfile.mr_container \
@@ -56,51 +57,12 @@ create_runner:
                     -t $MODEL_RUNNER_IMAGE .
     - docker push $MODEL_RUNNER_IMAGE
 
-
-# TODO: Stage should be added back in when we figure out how we can use
-#  it to accelerate builds on downstream stages, currently stages always do a full rebuild 
-# create_gdal_base:
-#   # This stage exists for posterity and so we can audit our gdal base build easily, 
-#   #   allowing devs to quickly pull a complex changed gdal for debugging
-#   stage: build
-#   tags:
-#     - dind
-#   before_script:
-#     # Login to iron bank per instructions here: https://discourse.gs.mil/t/how-do-i-use-platform-one-iron-bank-hosted-images-at-nga/5187/2
-#     - docker login -u ${REGISTERY1_USERNAME} -p ${REGISTERY1_PASSWORD} registry1.dso.mil 
-#     - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
-#   script:
-#     - mkdir -p certs/ && cp /certs/tls-ca-bundle.pem certs/tls-ca-bundle.pem
-#     - | 
-#       docker build --target gdal-base \
-#                     -f docker/Dockerfile.mr_container \
-#                     -t ${CI_REGISTRY_IMAGE}/gdal-base:${CI_COMMIT_REF_SLUG} .
-#     - docker push ${CI_REGISTRY_IMAGE}/gdal-base:${CI_COMMIT_REF_SLUG}
-
-
-
+# inherited from unit test template, overriding the build and pip install certs 
+#   to leverage the NGA python mirrors
 pytest_functionality: 
-  stage: test
-  image: ${CI_REGISTRY_IMAGE}/aip-mr-runner:${CI_COMMIT_REF_SLUG}
   variables: 
-    AWS_DEFAULT_REGION: "us-west-2"
-    WORKERS: "4"
-    WORKERS_PER_CPU: "1"
-    JOB_TABLE: "TEST-JOB-TABLE"
-    ENDPOINT_TABLE: "TEST-ENDPOINT-STATS-TABLE"
-    FEATURE_TABLE: "TEST-FEATURE-TABLE"
-    REGION_REQUEST_TABLE: "TEST-REGION-REQUEST-TABLE"
-    IMAGE_QUEUE: "TEST-IMAGE-QUEUE"
-    REGION_QUEUE: "TEST-REGION-QUEUE"
-    IMAGE_STATUS_TOPIC: "TEST-IMAGE-STATUS-TOPIC"
-    SM_SELF_THROTTLING: "true"
-    AWS_ACCESS_KEY_ID: "testing"
-    AWS_SECRET_ACCESS_KEY: "testing"
-    AWS_SECURITY_TOKEN: "testing"
-    AWS_SESSION_TOKEN: "testing"
-  script: 
-    - pip3 install --index-url $PIP_INSTALL_LOCATION --cert $BUILD_CERT -r test/requirements-test.txt -t .
-    - python3 -m pytest --durations=10 --cov-config .coveragerc --cov aws.osml.model_runner
+    BUILD_CERT: /certs/tls-ca-bundle.pem
+    PIP_INSTALL_LOCATION: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
 
 publish:
   stage: publish
@@ -128,7 +90,7 @@ export_unavailable:
   # Disabling export_unavailable so pipelines pass while acknowledging its comments.
   stage: transfer
   only:
-    - never
+    - never #TODO: Add on merge to main 
 
 export-image-diode:
   stage: transfer

@@ -1,19 +1,17 @@
 include:
 - template: Security/SAST.gitlab-ci.yml
 - template: Security/Secret-Detection.gitlab-ci.yml
+- .gitlab/common/unit-tests.gitlab-ci.yml 
 
 stages:
   - test
   - sast_scans 
 
-run probe:
-  image: registry.gitlab.aws.dev/tsd/probe/standalone-scanner:latest
-  stage: sast_scans
-  script:
-  - /usr/bin/python3 /exec/app.py
-  artifacts:
-    paths:
-    - ${CI_PROJECT_DIR}/probe-out/*
+variables: 
+  MODEL_NAME: "ie-mr-runner"
+  MODEL_TAG: "mainline"
+  MODEL_RUNNER_IMAGE: $CI_REGISTRY_IMAGE/$MODEL_NAME:$CI_COMMIT_REF_SLUG
+
 
 secret_detection: 
   stage: sast_scans 
@@ -25,3 +23,93 @@ sast:
   artifacts:
     reports:
       sast: gl-sast-report.json
+
+
+build_model_runner: 
+  extends: .kaniko 
+  variables:
+    # User defined
+    BASE_IMG: ""
+    TARGET: "runner"
+    BUILD_DIR: "."
+    CONTEXT: "."
+    DOCKERFILE: "docker/Dockerfile.mr_container"
+    DESTINATION: $MODEL_RUNNER_IMAGE
+    DESTINATION_ECR: ""
+    TAR_IMAGE_NAME: ""
+
+.kaniko:
+  tags: [size:xlarge, arch:amd64]
+  retry: 2
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  variables:
+    # User defined
+    BASE_IMG: ""
+    TARGET: ""
+    BUILD_DIR: "."
+    CONTEXT: "."
+    DOCKERFILE: "docker/Dockerfile.mr_container"
+    DESTINATION: $MODEL_RUNNER_IMAGE
+    DESTINATION_ECR: ""
+    TAR_IMAGE_NAME: ""
+  script:
+    # Auth
+    - mkdir -p /kaniko/.docker
+    - GITLAB_AUTH=$(echo -n "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD" | base64 -w 0)
+    - |
+      cat << EOF > /kaniko/.docker/config.json
+      {
+        "auths": {
+          "${CI_REGISTRY}": {
+            "auth": "${GITLAB_AUTH}"
+          },
+          "${IRONBANK_REGISTRY}": {
+            "auth": "${IRONBANK_CREDENTIAL}"
+          }
+        }
+      }
+      EOF
+    - cat /kaniko/.docker/config.json
+    - cd "${BUILD_DIR}"
+    - md5=$(cat build/md5sum.txt) || md5=$CI_COMMIT_REF_SLUG
+    - >-
+      /kaniko/executor
+      $( [[ "$(printf '%s' "$TARGET")" != "" ]] && echo "--target ${TARGET}")
+      --context "${CONTEXT}"
+      --dockerfile "${DOCKERFILE}"
+      --label aws.project.build_date=$(date +"%Y-%m-%dT%H:%M:%S%:z")
+      --label aws.project.title="${CI_PROJECT_TITLE}"
+      --label aws.project.pipeline="${CI_PIPELINE_URL}"
+      --label aws.project.commit=${CI_COMMIT_SHA}
+      --label aws.project.commit_author="${CI_COMMIT_AUTHOR}"
+      --label aws.project.branch=${CI_COMMIT_BRANCH}
+      --label aws.project.url=${CI_PROJECT_URL}
+      $( [[ "$(printf '%s' "$TAR_IMAGE_NAME")" != "" ]] && echo "--tar-path ${TAR_IMAGE_NAME}.tar")
+      $( [[ "$(printf '%s' "$DESTINATION")" != "" ]] && echo "--destination ${DESTINATION}")
+      $( [[ "$(printf '%s' "$DESTINATION_ECR")" != "" ]] && echo "--destination ${DESTINATION_ECR}-${md5}")
+    - |
+      if [[ "$(printf '%s' "$TAR_IMAGE_NAME")" != "" ]]; then
+        echo "Compressing tarball - ${TAR_IMAGE_NAME}.tar"
+        gzip -9 < ${TAR_IMAGE_NAME}.tar > ${TAR_IMAGE_NAME}.tar.gz
+      fi
+    - REPORT_FILEPATH=report.txt
+    - echo "Build Report -- $(date) -- ${CI_COMMIT_SHORT_SHA}" >> ${REPORT_FILEPATH}
+    - 'echo "  Commit Full Hash: ${CI_COMMIT_SHA}" >> ${REPORT_FILEPATH}'
+    - 'echo "  Commit Author: ${CI_COMMIT_AUTHOR}" >> ${REPORT_FILEPATH}'
+    - 'echo "  Project Url: ${CI_PROJECT_URL}" >> ${REPORT_FILEPATH}'
+    - 'echo "  Branch: ${CI_COMMIT_BRANCH}" >> ${REPORT_FILEPATH}'
+    - 'echo "  Build System: ${CI_RUNNER_TAGS}" >> ${REPORT_FILEPATH}'
+    - 'echo "  Pipeline: ${CI_PIPELINE_URL}" >> ${REPORT_FILEPATH}'
+    - 'echo "  Job: ${CI_JOB_URL}" >> ${REPORT_FILEPATH}'
+    - |
+      if [[ "$(printf '%s' "$TAR_IMAGE_NAME")" != "" ]]; then
+        echo "Tar Info --"
+        echo "Image Size: $(du -sh ${TAR_IMAGE_NAME}.tar.gz)"
+        echo "sha256" >> ${REPORT_FILEPATH}
+        sha256sum >> ${REPORT_FILEPATH}
+        echo "md5" >> ${REPORT_FILEPATH}
+        md5sum >> ${REPORT_FILEPATH}
+      fi
+    - cat $REPORT_FILEPATH

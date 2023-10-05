@@ -1,0 +1,33 @@
+
+
+
+pytest_functionality: 
+  stage: test
+  image:
+    name: $MODEL_RUNNER_IMAGE
+    entrypoint: [""]
+  needs:
+    - build_model_runner
+  variables: 
+    # Pip install Variables 
+    BUILD_CERT: /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem 
+    PIP_INSTALL_LOCATION: https://pypi.org/simple/
+    # Application mock env variable s
+    AWS_DEFAULT_REGION: "us-west-2"
+    WORKERS: "4"
+    WORKERS_PER_CPU: "1"
+    JOB_TABLE: "TEST-JOB-TABLE"
+    ENDPOINT_TABLE: "TEST-ENDPOINT-STATS-TABLE"
+    FEATURE_TABLE: "TEST-FEATURE-TABLE"
+    REGION_REQUEST_TABLE: "TEST-REGION-REQUEST-TABLE"
+    IMAGE_QUEUE: "TEST-IMAGE-QUEUE"
+    REGION_QUEUE: "TEST-REGION-QUEUE"
+    IMAGE_STATUS_TOPIC: "TEST-IMAGE-STATUS-TOPIC"
+    SM_SELF_THROTTLING: "true"
+    AWS_ACCESS_KEY_ID: "testing"
+    AWS_SECRET_ACCESS_KEY: "testing"
+    AWS_SECURITY_TOKEN: "testing"
+    AWS_SESSION_TOKEN: "testing"
+  script: 
+    - pip3 install --index-url $PIP_INSTALL_LOCATION --cert $BUILD_CERT -r test/requirements-test.txt -t .
+    - python3 -m pytest --durations=10 --cov-config .coveragerc --cov aws.osml.model_runner
