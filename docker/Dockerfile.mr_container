@@ -1,7 +1,4 @@
-ARG BASE_CONTAINER=registry1.dso.mil/ironbank/opensource/python:v3.10.7
-FROM ${BASE_CONTAINER} as cert-base 
-COPY /certs/tls-ca-bundle.pem /certs/tls-ca-bundle.pem
-
+ARG BASE_CONTAINER=registry1.dso.mil/ironbank/opensource/python:v3.11.2
 FROM ${BASE_CONTAINER} as gdal-base
 
 # Setup build env for PROJ
@@ -35,7 +32,7 @@ RUN if test "${OPENJPEG_VERSION}" != ""; then ( \
     && cd openjpeg-${OPENJPEG_VERSION} \
     && cmake . -DBUILD_SHARED_LIBS=ON  -DBUILD_STATIC_LIBS=OFF -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_THIRDPARTY:BOOL=ON \
-    && make -j$(nproc) \
+    && make -j$(nproc) \ 
     && make install \
     && mkdir -p /build_thirdparty/usr/lib \
     && cp -P /usr/lib/libopenjp2*.so* /build_thirdparty/usr/lib \
@@ -293,5 +290,5 @@ RUN python3 -m pip install \
     defusedxml>=0.7.1
 
 
-CMD ["pytest", "--durations=10", "--cov-config", ".coveragerc", "--cov", "aws.osml.model_runner"] 
+ENTRYPOINT ["pytest", "--durations=10", "--cov-config", ".coveragerc", "--cov", "aws.osml.model_runner"] 
 # CMD ["python3", "-m", "pytest", "--cov=osml", "test/"]
