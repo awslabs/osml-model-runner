@@ -251,7 +251,7 @@ RUN rm -rf /usr/lib/python3.6/site-packages/urllib3*
 
 USER 1000
 
-CMD ["python3", "osml-model-runner/bin/oversightml-mr-entry-point.py"]
+ENTRYPOINT ["python3", "osml-model-runner/bin/oversightml-mr-entry-point.py"]
 
 FROM runner as unit-test
 
