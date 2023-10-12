@@ -69,6 +69,8 @@ ops_approval:
 
 ops_container_publish: 
   extends: .kaniko 
+  needs: 
+    - ops_approval
   variables:
     # Authenticate to the AWS account 
     AWS_CREDS_TARGET_ROLE: ${IE_OPS_ROLE}
@@ -77,7 +79,6 @@ ops_container_publish:
     BASE_IMG: ${MODEL_RUNNER_IMAGE}
     DOCKERFILE: "docker/Dockerfile.pass_through"
     DESTINATION_ECR_IMAGE: "227620265201.dkr.ecr.us-east-1.amazonaws.com/model-runner:latest" 
-    AWS_CREDS_TARGET_ROLE: arn:aws:iam::227620265201:role/GitLab
 
 ops_deploy:
   extends: .ecs_service_redeploy
@@ -86,6 +87,6 @@ ops_deploy:
   variables:
     # Authenticate to the AWS account 
     AWS_CREDS_TARGET_ROLE: ${IE_OPS_ROLE}
-    AWS_DEFAULT_REGION: ${IE_OPS_ROLE}
+    AWS_DEFAULT_REGION: ${IE_OPS_REGION}
     CLUSTER_NAME: ${IE_MR_OPS_CLUSTER}
     SERVICE_NAME: ${IE_MR_OPS_SERVICE}
