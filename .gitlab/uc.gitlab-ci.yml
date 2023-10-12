@@ -31,6 +31,8 @@ variables:
   MODEL_TAG: "mainline"
   MODEL_RUNNER_IMAGE: $CI_REGISTRY_IMAGE/ie-model-runner:$CI_COMMIT_REF_SLUG
 
+
+
 build_model_runner:
   stage: build
   tags:
