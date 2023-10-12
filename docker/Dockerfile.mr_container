@@ -290,5 +290,5 @@ RUN python3 -m pip install \
     defusedxml>=0.7.1
 
 
-ENTRYPOINT ["pytest", "--durations=10", "--cov-config", ".coveragerc", "--cov", "aws.osml.model_runner"] 
-# CMD ["python3", "-m", "pytest", "--cov=osml", "test/"]
+ENTRYPOINT ["pytest"]
+CMD ["--durations=10", "--cov-config", ".coveragerc", "--cov", "aws.osml.model_runner"] 

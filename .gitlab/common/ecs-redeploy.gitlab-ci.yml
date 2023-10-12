@@ -1,0 +1,17 @@
+# Enables you to deploy an ECS service in an account 
+
+
+.ecs_service_redeploy: 
+  image:
+    name: public.ecr.aws/aws-cli/aws-cli
+    entrypoint: ["/bin/sh", "-c"]
+  variables:
+    # Authenticate to the AWS account 
+    AWS_CREDS_TARGET_ROLE: ""
+    AWS_DEFAULT_REGION: ""
+    CLUSTER_NAME: ""
+    SERVICE_NAME: ""
+  script:
+    - aws ecs update-service --cluster ${CLUSTER_NAME} --service ${SERVICE_NAME} --force-new-deployment --region ${AWS_DEFAULT_REGION}
+    - aws ecs wait services-stable --cluster ${CLUSTER_NAME} --service ${SERVICE_NAME} --region ${AWS_DEFAULT_REGION}
+
