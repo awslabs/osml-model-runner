@@ -46,8 +46,6 @@ tst_deploy:
     AWS_DEFAULT_REGION: ${IE_TST_ROLE}
     CLUSTER_NAME: ${IE_MR_TST_CLUSTER}
     SERVICE_NAME: ${IE_MR_TST_SERVICE}
-  script: 
-    - echo script to override until cluster up
 
 tst_integration_tests:
   variables:
