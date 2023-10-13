@@ -43,7 +43,7 @@ tst_deploy:
   variables:
     # Authenticate to the AWS account 
     AWS_CREDS_TARGET_ROLE: ${IE_TST_ROLE}
-    AWS_DEFAULT_REGION: ${IE_TST_ROLE}
+    AWS_DEFAULT_REGION: ${IE_TST_REGION}
     CLUSTER_NAME: ${IE_MR_TST_CLUSTER}
     SERVICE_NAME: ${IE_MR_TST_SERVICE}
 
