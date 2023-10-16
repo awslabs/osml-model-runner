@@ -68,7 +68,7 @@ ARG RSYNC_REMOTE
 
 # Build PROJ
 USER root
-ARG PROJ_VERSION=8.2.1
+ARG PROJ_VERSION=9.3.0
 ARG PROJ_FILENAME=proj.tar.gz
 RUN if "${CI}" eq "true"; then \
         curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/PROJ-${PROJ_VERSION}.tar.gz \
@@ -82,8 +82,6 @@ RUN mkdir proj \
 	&& tar -C proj --strip-components=1 -xf /tmp/${PROJ_FILENAME}
 COPY ./scripts/bash/autogen.sh /proj/autogen.sh
 RUN cd /proj \
-    && chmod 777 ./autogen.sh \
-    && ./autogen.sh \
     && if test "${RSYNC_REMOTE}" != ""; then \
         echo "Downloading cache..."; \
         rsync -ra ${RSYNC_REMOTE}/proj/ $HOME/; \
@@ -93,7 +91,12 @@ RUN cd /proj \
         export PROJ_DB_CACHE_DIR="$HOME/.ccache"; \
         ccache -M 100M; \
     fi \
-    && ./configure --prefix=/usr --disable-static --enable-lto \
+    && cmake . \
+        -DBUILD_SHARED_LIBS=ON \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DENABLE_IPO=ON \
+        -DBUILD_TESTING=OFF \
     && make -j$(nproc) \
     && make install \
     && make install DESTDIR="/build_proj" \
@@ -112,7 +115,7 @@ RUN cd /proj \
     && for i in /build_proj/usr/bin/*; do strip -s $i 2>/dev/null || /bin/true; done
 
 # Build GDAL
-ARG GDAL_VERSION=3.5.2
+ARG GDAL_VERSION=3.7.2
 ARG GDAL_FILENAME=gdal.tar.gz
 RUN if "${CI}" eq "true"; then \
         curl -u ${NEXUS_AUTH} --remote-name ${NEXUS_ARTIFACT_PATH}/gdal-${GDAL_VERSION}.tar.gz \
@@ -131,16 +134,20 @@ RUN if test "${RSYNC_REMOTE}" != ""; then \
         ccache -M 1G; \
     fi \
     && mkdir gdal \
-	&& tar -C gdal --strip-components=1 -xf /tmp/${GDAL_FILENAME} \
+    && tar -C gdal --strip-components=1 -xf /tmp/${GDAL_FILENAME} \
     && cd gdal \
-    && ./configure --prefix=/usr --without-libtool \
-    --with-hide-internal-symbols \
-    --with-proj=/usr \
-    --with-libtiff=internal --with-rename-internal-libtiff-symbols \
-    --with-geotiff=internal --with-rename-internal-libgeotiff-symbols \
-    --enable-lto \
-    --with-fgdb=${FILEGDB_INSTALL} \
-    --with-openjpeg \
+    && mkdir build \
+    && cd build \ 
+    && cmake .. \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DPROJ_INCLUDE_DIR=/usr \
+        -DGDAL_USE_TIFF_INTERNAL=ON \
+        -DGDAL_USE_GEOTIFF_INTERNAL=ON \
+        -DGDAL_USE_OPENJPEG=ON \
+        # The GDAL flags below aren't immediately available for use in CMAKE. Leaving in if we need to dig in and reactivate. 
+        #-DFILE_GDB_INCLUDE_DIR=${FILEGDB_INSTALL}\
+        #-DGDAL_USE_FILEGDB=ON \
     && make -j$(nproc) \
     && make install DESTDIR="/build" \
     && if test "${RSYNC_REMOTE}" != ""; then \
