@@ -30,11 +30,12 @@ pytest_functionality:
     AWS_SESSION_TOKEN: "testing"
   script: 
     - pip3 install --index-url $PIP_INSTALL_LOCATION --cert $BUILD_CERT -r test/requirements-test.txt -t .
+    - export GDAL_VERSION=`gdal-config --version`
     - | # Have to force reinstall GDAL because of how it establishes python bindings using SWIG, known bug in GDAL.
       python3 -m pip install \
         --force-reinstall \
         --no-cache-dir \
-        --index-url ${PIP_INSTALL_LOCATION} \ 
+        --index-url ${PIP_INSTALL_LOCATION} \
         --cert ${BUILD_CERT} \
-        GDAL==$(gdal-config --version | awk -F'[.]' '{print $1"."$2"."$3}') --global-option=build_ext --global-option="-I/usr/include/gdal"
+        GDAL==$GDAL_VERSION
     - python3 -m pytest --durations=10 --cov-config .coveragerc --cov aws.osml.model_runner
