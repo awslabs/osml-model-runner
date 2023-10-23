@@ -54,7 +54,7 @@ build_model_runner:
                     -f docker/Dockerfile.mr_container \
                     --build-arg PIP_INSTALL_LOCATION=$PIP_INSTALL_LOCATION \
                     --build-arg BUILD_CERT=$BUILD_CERT \
-                    --build-arg BASE_CONTAINER=${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG} \
+                    --build-arg BASE_IMG=${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG} \
                     --build-arg CI=${CI} \
                     --build-arg NEXUS_AUTH=${NEXUS3_USER}:${NEXUS3_PASSWORD} \
                     -t $MODEL_RUNNER_IMAGE .
