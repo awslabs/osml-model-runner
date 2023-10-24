@@ -44,7 +44,7 @@ pytest_functionality:
       python3 -m pip install \
         --no-cache-dir \
         --index-url ${PIP_INSTALL_LOCATION} \
-        --cert ${BUILD_CERT} . \
+        --cert ${BUILD_CERT} ./. \
     - |
       python3 -m pip install \
       --index-url $PIP_INSTALL_LOCATION \
