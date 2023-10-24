@@ -44,11 +44,11 @@ pytest_functionality:
       python3 -m pip install \
         --no-cache-dir \
         --index-url ${PIP_INSTALL_LOCATION} \
-        --cert ${BUILD_CERT} ./. \
+        --cert ${BUILD_CERT} -e . \
     - |
       python3 -m pip install \
-      --index-url $PIP_INSTALL_LOCATION \
-      --cert $BUILD_CERT \
+      --index-url ${PIP_INSTALL_LOCATION} \
+      --cert ${BUILD_CERT} \
       -r test/requirements-test.txt
     - export GDAL_VERSION=`gdal-config --version`
     - | # Have to force reinstall GDAL because of how it establishes python bindings using SWIG, known bug in GDAL.
