@@ -42,8 +42,5 @@ pytest_functionality:
     - ls -a
     - python3 -m pip install --no-cache-dir --index-url ${PIP_INSTALL_LOCATION} --cert ${BUILD_CERT} .
     - python3 -m pip install --index-url ${PIP_INSTALL_LOCATION} --cert ${BUILD_CERT} -r test/requirements-test.txt
-    - ldconfig 
-    # - export GDAL_VERSION=`gdal-config --version`
-    # # Have to force reinstall GDAL because of how it establishes python bindings using SWIG, known bug in GDAL.
-    # - python3 -m pip install --force-reinstall --no-cache-dir --index-url ${PIP_INSTALL_LOCATION} --cert ${BUILD_CERT} GDAL==$GDAL_VERSION
+    - ldconfig # Resolve broken simlinks for gdal python header bindings after python installs. 
     - python3 -m pytest --durations=10 --cov-config .coveragerc --cov aws.osml.model_runner
