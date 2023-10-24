@@ -32,16 +32,13 @@ pytest_functionality:
     AWS_SECURITY_TOKEN: "testing"
     AWS_SESSION_TOKEN: "testing"
   script: 
-    - | 
-      dnf makecache --refresh \ 
-        && dnf update -y \
-        && dnf install -y --setopt=tsflags=nodocs --allowerasing $PACKAGES  \
-        # libturbojpeg.so is not used by GDAL. Only libjpeg.so*, I don't think this exists here though
-        && rm -f /usr/lib/libturbojpeg.so* \
-        # Only libwebp.so is used by GDAL
-        && rm -f /usr/lib/libwebpmux.so* /usr/lib/libwebpdemux.so* /usr/lib/libwebpdecoder.so* \
-        && dnf clean all \
-        && rm -rf /var/cache/dnf/ /var/tmp/* /tmp/* /var/tmp/.???* /tmp/.???* 
+    - dnf makecache --refresh 
+    - dnf update -y 
+    - dnf install -y --setopt=tsflags=nodocs --allowerasing ${PACKAGES} 
+    - rm -f /usr/lib/libturbojpeg.so* \
+    - rm -f /usr/lib/libwebpmux.so* /usr/lib/libwebpdemux.so* /usr/lib/libwebpdecoder.so* \
+    - dnf clean all \
+    - rm -rf /var/cache/dnf/ /var/tmp/* /tmp/* /var/tmp/.???* /tmp/.???* 
     - |
       python3 -m pip install \
         --no-cache-dir \
