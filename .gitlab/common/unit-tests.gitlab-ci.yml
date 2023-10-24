@@ -35,9 +35,9 @@ pytest_functionality:
     - dnf makecache --refresh 
     - dnf update -y 
     - dnf install -y --setopt=tsflags=nodocs --allowerasing ${PACKAGES} 
-    - rm -f /usr/lib/libturbojpeg.so* \
-    - rm -f /usr/lib/libwebpmux.so* /usr/lib/libwebpdemux.so* /usr/lib/libwebpdecoder.so* \
-    - dnf clean all \
+    - rm -f /usr/lib/libturbojpeg.so* 
+    - rm -f /usr/lib/libwebpmux.so* /usr/lib/libwebpdemux.so* /usr/lib/libwebpdecoder.so*
+    - dnf clean all
     - rm -rf /var/cache/dnf/ /var/tmp/* /tmp/* /var/tmp/.???* /tmp/.???* 
     - |
       python3 -m pip install \
