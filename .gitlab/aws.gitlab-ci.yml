@@ -7,3 +7,6 @@ include:
 - local: .gitlab/pipelines/kaniko-release.gitlab-ci.yml
   rules:
     - if: $CI_COMMIT_BRANCH == "mainline" 
+
+variables: 
+  GDAL_BASE_IMG: registry.gitlab.aws.dev/helix/aip/aip-ops-env/gdal-base:latest
