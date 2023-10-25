@@ -30,6 +30,7 @@ variables:
   MODEL_NAME: "ie-model-runner"
   MODEL_TAG: "mainline"
   MODEL_RUNNER_IMAGE: $CI_REGISTRY_IMAGE/ie-model-runner:$CI_COMMIT_REF_SLUG
+  GDAL_BASE_IMG: ${CI_REGISTRY}/maven-integration/aws/aws-aip/aipopsenv/gdal-exec-base:latest
 
 
 
@@ -46,14 +47,14 @@ build_model_runner:
     - | 
       docker build -f docker/Dockerfile.rebake \
                     --build-arg BUILD_CERT=$BUILD_CERT \
-                    --build-arg BASE_IMG=registry1.dso.mil/ironbank/opensource/python:v3.11.2 \
+                    --build-arg BASE_IMG=${GDAL_BASE_IMG} \
                     -t ${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG} .
     - |
       docker build --target runner \
                     -f docker/Dockerfile.mr_container \
                     --build-arg PIP_INSTALL_LOCATION=$PIP_INSTALL_LOCATION \
                     --build-arg BUILD_CERT=$BUILD_CERT \
-                    --build-arg BASE_CONTAINER=${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG} \
+                    --build-arg BASE_IMG=${CI_REGISTRY_IMAGE}/cert-base:${CI_COMMIT_REF_SLUG} \
                     --build-arg CI=${CI} \
                     --build-arg NEXUS_AUTH=${NEXUS3_USER}:${NEXUS3_PASSWORD} \
                     -t $MODEL_RUNNER_IMAGE .

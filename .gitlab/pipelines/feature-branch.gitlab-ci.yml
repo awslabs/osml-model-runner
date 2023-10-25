@@ -23,7 +23,5 @@ build_model_runner:
 # Technically redundant as inherited from the include but good for consistence and readability 
 pytest_functionality: 
   image: 
-    name: ${MODEL_RUNNER_IMAGE}
+    name: ${GDAL_BASE_IMG}
     entrypoint: [""]
-  needs: 
-    - build_model_runner

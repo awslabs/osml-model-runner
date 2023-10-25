@@ -5,13 +5,16 @@
 pytest_functionality: 
   stage: test
   image:
-    name: $MODEL_RUNNER_IMAGE
+    name: ${GDAL_BASE_IMG}
     entrypoint: [""]
   variables: 
     GIT_STRATEGY: clone  
-    # Pip install Variables 
+    # Build Variables
     BUILD_CERT: /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem 
     PIP_INSTALL_LOCATION: https://pypi.org/simple/
+    PACKAGES: "cmake wget gcc gcc-c++ libstdc++ sqlite-libs libcurl libtiff zlib libzstd libjpeg-turbo libpng openjpeg2 libwebp expat libpq"
+    CPLUS_INCLUDE_PATH: /usr/include/gdal
+    C_INCLUDE_PATH: /usr/include/gdal
     # Application mock env variables
     AWS_DEFAULT_REGION: "us-west-2"
     WORKERS: "4"
@@ -29,5 +32,15 @@ pytest_functionality:
     AWS_SECURITY_TOKEN: "testing"
     AWS_SESSION_TOKEN: "testing"
   script: 
-    - pip3 install --index-url $PIP_INSTALL_LOCATION --cert $BUILD_CERT -r test/requirements-test.txt -t .
+    - dnf makecache --refresh 
+    - dnf update -y 
+    - dnf install -y --setopt=tsflags=nodocs --allowerasing ${PACKAGES} 
+    - rm -f /usr/lib/libturbojpeg.so* 
+    - rm -f /usr/lib/libwebpmux.so* /usr/lib/libwebpdemux.so* /usr/lib/libwebpdecoder.so*
+    - dnf clean all
+    - rm -rf /var/cache/dnf/ /var/tmp/* /tmp/* /var/tmp/.???* /tmp/.???*
+    - ls -a
+    - python3 -m pip install --no-cache-dir --index-url ${PIP_INSTALL_LOCATION} --cert ${BUILD_CERT} .
+    - python3 -m pip install --index-url ${PIP_INSTALL_LOCATION} --cert ${BUILD_CERT} -r test/requirements-test.txt
+    - ldconfig # Resolve broken simlinks for gdal python header bindings after python installs. 
     - python3 -m pytest --durations=10 --cov-config .coveragerc --cov aws.osml.model_runner
