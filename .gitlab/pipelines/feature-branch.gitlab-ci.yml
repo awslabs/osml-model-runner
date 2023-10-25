@@ -20,7 +20,6 @@ build_model_runner:
     DOCKERFILE: "docker/Dockerfile.mr_container"
     DESTINATION: ${MODEL_RUNNER_IMAGE}
 
-# Technically redundant as inherited from the include but good for consistence and readability 
 pytest_functionality: 
   image: 
     name: ${GDAL_BASE_IMG}
