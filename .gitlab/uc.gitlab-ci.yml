@@ -63,6 +63,9 @@ build_model_runner:
 # inherited from unit test template, overriding the build and pip install certs 
 #   to leverage the NGA python mirrors
 pytest_functionality: 
+  image: 
+    name: ${GDAL_BASE_IMG}
+    entrypoint: [""]
   variables: 
     BUILD_CERT: /certs/tls-ca-bundle.pem
     PIP_INSTALL_LOCATION: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
