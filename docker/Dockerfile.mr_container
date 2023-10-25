@@ -1,3 +1,4 @@
+#TODO: Update BASE_IMG to be the DSO built base gitlabs 
 ARG BASE_IMG=registry.gitlab.aws.dev/helix/aip/aip-ops-env/gdal-base:latest
 FROM ${BASE_IMG} as runner
 # Only override if you're using a mirror with a cert pulled in using cert-base as a build parameter
