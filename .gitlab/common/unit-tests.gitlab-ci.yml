@@ -39,7 +39,6 @@ pytest_functionality:
     - rm -f /usr/lib/libwebpmux.so* /usr/lib/libwebpdemux.so* /usr/lib/libwebpdecoder.so*
     - dnf clean all
     - rm -rf /var/cache/dnf/ /var/tmp/* /tmp/* /var/tmp/.???* /tmp/.???*
-    - ls -a
     - python3 -m pip install --no-cache-dir --index-url ${PIP_INSTALL_LOCATION} --cert ${BUILD_CERT} .
     - python3 -m pip install --index-url ${PIP_INSTALL_LOCATION} --cert ${BUILD_CERT} -r test/requirements-test.txt
     - ldconfig # Resolve broken simlinks for gdal python header bindings after python installs. 
