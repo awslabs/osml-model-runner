@@ -11,10 +11,11 @@ stages:
 
 include:
   - .gitlab/common/security.gitlab-ci.yml
-  - .gitlab/common/unit-tests.gitlab-ci.yml 
-  - project: 'maven-integration/public/cicd-examples'
-    ref: main
-    file: '.gitlab-ci.yml'
+  - .gitlab/common/unit-tests.gitlab-ci.yml
+  # TODO: Add back in when program permissions are fixed.
+  # - project: 'maven-integration/public/cicd-examples'
+  #  ref: main
+  #  file: '.gitlab-ci.yml'
   # Add back in as program or security asks for sonarqube or owasp onboarding 
   # - project: 'DevOps/security-scanning/scanning-templates'
   #   file: '/sonarqube-check.yml'
@@ -86,20 +87,20 @@ publish:
     - docker save $MODEL_RUNNER_IMAGE | gzip > ${ARTIFACT}
     - curl --user "${NEXUS3_USER}:${NEXUS3_PASSWORD}" --upload-file ./${ARTIFACT} ${NEXUS3_REPOS}/aip/${ARTIFACT}
 
-export-image-nexus3:
-  stage: transfer
+#export-image-nexus3:
+# stage: transfer
 
-export-tag-nexus3:
-  stage: transfer
+#export-tag-nexus3:
+#  stage: transfer
 
-export_unavailable:
-  # Disabling export_unavailable so pipelines pass while acknowledging its comments.
-  stage: transfer
-  only:
-    - never #TODO: Add on merge to main 
+#export_unavailable:
+# # Disabling export_unavailable so pipelines pass while acknowledging its comments.
+#  stage: transfer
+#  only:
+#    - never #TODO: Add on merge to main 
 
-export-image-diode:
-  stage: transfer
+#export-image-diode:
+#  stage: transfer
 
-export-tag-diode:
-  stage: transfer
+#export-tag-diode:
+#stage: transfer
