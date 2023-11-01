@@ -41,11 +41,12 @@ fortify_scanning:
 container_scanning:
   variables:
     DOCKER_IMAGE: $MODEL_RUNNER_IMAGE
+    GIT_STRATEGY: fetch
 
 # Override
 gemnasium-python-dependency_scanning:
   variables:
     SECURE_LOG_LEVEL: "debug"
-    PIP_INDEX_URL: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
-    PIP_TRUSTED_HOST: https://mirrors.gs.mil
+    PIPENV_PYPI_MIRROR: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
+      #PIP_TRUSTED_HOST: https://mirrors.gs.mil
 
