@@ -1,0 +1,8 @@
+---
+# Always
+#
+
+include:
+  - local: .gitlab/green/always/unit.gitlab-ci.yml
+  - local: .gitlab/green/always/build.gitlab-ci.yml
+  - local: .gitlab/green/always/security.gitlab-ci.yml

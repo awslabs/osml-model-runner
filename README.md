@@ -83,7 +83,7 @@ python3 -m pytest test
 
 To build the test container stage and run it: 
 ```shell 
-docker build --target unit-test -f docker/Dockerfile.mr_container -t aip-mr-container-test:latest .
+docker build --target unit-test -f docker/Dockerfile -t aip-mr-container-test:latest .
 docker run --rm -it aip-mr-container-test:latest
 ```
 

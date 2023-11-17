@@ -1,0 +1,28 @@
+---
+# Green GitLab Pipeline Entrypoint
+#
+
+stages:
+  - build
+  - unit
+  - test
+  - publish
+
+variables: 
+  BUILD_CERT: /certs/tls-ca-bundle.pem
+  BASE_GIT_URL: https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.gs.mil/maven-integration/aws/aws-aip
+  PIP_INDEX_URL: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
+  NEXUS3_USER: ${maven_integration_nexus_3_credential_username}
+  NEXUS3_PASSWORD: ${maven_integration_nexus_3_credential_password}
+  MODEL_NAME: ie-model-runner
+  MODEL_RUNNER_IMAGE: $CI_REGISTRY_IMAGE/ie-model-runner:$CI_COMMIT_REF_SLUG
+  GDAL_BASE_IMG: ${CI_REGISTRY}/maven-integration/aws/aws-aip/gdal-base:latest
+
+include:
+  # always
+  - local: .gitlab/green/always/.gitlab-ci.yml
+
+  # branch: main
+  - local: .gitlab/green/main/.gitlab-ci.yml
+    rules:
+      - if: $CI_COMMIT_BRANCH == "main"

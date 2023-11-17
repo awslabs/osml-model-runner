@@ -1,0 +1,52 @@
+---
+# Security
+#
+# Jobs that will perform various security checks against the codebase.
+#
+
+stages:
+  - test
+
+include:
+  - project: 'wwps-proserve-dod/common/aws-gitlab-analyzers'
+    ref: main
+    file: '/.gitlab/sast-analyzer.gitlab-ci.yml'
+  - project: 'wwps-proserve-dod/common/aws-gitlab-analyzers'
+    ref: main
+    file: '/.gitlab/secret-detection-analyzer.gitlab-ci.yml'
+  - project: 'wwps-proserve-dod/common/fortify-sast'
+    ref: main
+    file: '/.gitlab/fortify-sast.gitlab-ci.yml'
+  - project: 'wwps-proserve-dod/common/bandit-sast'
+    ref: main
+    file: '/.gitlab/bandit-sast.gitlab-ci.yml'
+  - project: 'wwps-proserve-dod/common/checkov-sast'
+    ref: main
+    file: '/.gitlab/checkov-sast.gitlab-ci.yml'
+  - project: 'wwps-proserve-dod/common/grype-sca'
+    ref: main
+    file: '/.gitlab/grype-sca.gitlab-ci.yml'
+  - project: 'wwps-proserve-dod/common/semgrep-sast'
+    ref: main
+    file: '/.gitlab/semgrep-sast.gitlab-ci.yml'
+  - project: 'wwps-proserve-dod/common/aws-gitlab-analyzers'
+    ref: main
+    file: '/.gitlab/container-scanning-analyzer-hidden.gitlab-ci.yml'
+
+.scan_template: &scan
+  extends: .gl-container-scanning
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG
+
+variables:
+  CS_ANALYZER_IMAGE: registry.gitlab.com/security-products/container-scanning/grype:6-fips
+
+grype:ie-model-runner:
+  <<: *scan
+  needs: [build]
+  variables:
+    CS_IMAGE: $MODEL_RUNNER_IMAGE
+    GIT_STRATEGY: fetch

@@ -1,15 +1,12 @@
 #TODO: Update BASE_IMG to be the DSO built base gitlabs 
-ARG BASE_IMG=registry.gitlab.aws.dev/helix/aip/aip-ops-env/gdal-base:latest
+ARG BASE_IMG=registry.gitlab.aws.dev/helix/aip/gdal-base:latest
 FROM ${BASE_IMG} as runner
 # Only override if you're using a mirror with a cert pulled in using cert-base as a build parameter
-ARG BUILD_CERT=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem 
-ARG PIP_INSTALL_LOCATION=https://pypi.org/simple/
+ARG PIP_INDEX_URL=https://pypi.org/simple/
 ARG PACKAGES="cmake wget gcc gcc-c++ libstdc++ sqlite-libs libcurl libtiff zlib libzstd libjpeg-turbo libpng openjpeg2 libwebp expat libpq"
 
-
 USER root
-RUN dnf makecache --refresh \ 
-    && dnf update -y \
+RUN dnf update -y \
     && dnf install -y --setopt=tsflags=nodocs --allowerasing $PACKAGES  \
     # libturbojpeg.so is not used by GDAL. Only libjpeg.so*, I don't think this exists here though
     && rm -f /usr/lib/libturbojpeg.so* \
@@ -30,15 +27,15 @@ ENV C_INCLUDE_PATH=/usr/include/gdal
 # Upgrade pip 
 RUN pip3 install \    
     --no-cache-dir \
-    --index-url ${PIP_INSTALL_LOCATION} \ 
-    --cert ${BUILD_CERT} \
+    --index-url ${PIP_INDEX_URL} \ 
+    --trusted-host https://mirrors.gs.mil \
     pip -U 
 
 # install the model runner application from source
 RUN python3 -m pip install \
     --no-cache-dir \
-    --index-url ${PIP_INSTALL_LOCATION} \ 
-    --cert ${BUILD_CERT} \
+    --index-url ${PIP_INDEX_URL} \ 
+    --trusted-host https://mirrors.gs.mil \
     osml-model-runner/.
 
 # Resolve broken simlinks for gdal python header bindings after python installs. 
@@ -77,8 +74,8 @@ ENV AWS_SESSION_TOKEN=testing
 
 RUN python3 -m pip install \
     --no-cache-dir \
-    --index-url ${PIP_INSTALL_LOCATION} \ 
-    --cert ${BUILD_CERT} \
+    --index-url ${PIP_INDEX_URL} \ 
+    --trusted-host https://mirrors.gs.mil \
     -r /home/osml-model-runner/test/requirements-test.txt
 
 ENTRYPOINT ["pytest"]

@@ -1,3 +1,7 @@
+---
+# Hidden
+#
+
 .kaniko:
   tags: [size:xlarge, arch:amd64]
   retry: 2

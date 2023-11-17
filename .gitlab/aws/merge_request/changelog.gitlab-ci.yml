@@ -1,0 +1,24 @@
+---
+# CHANGELOG
+#
+# Job that will flag Merge Requests that have not updated the CHANGELOG.md file.
+#
+
+stages:
+  - lint
+
+changelog:
+  stage: lint
+  needs: []
+  allow_failure: true
+  before_script:
+    - apk add git
+  script:
+    - git fetch 2> /dev/null
+    - |
+      if [ ! `git diff origin/mainline --name-only | grep CHANGELOG` ]; then
+        echo "CHANGELOG.md has NOT been updated! Please add an entry for your changes."
+        exit 1
+      else
+        echo "CHANGELOG.md updates detected! 🙌"
+      fi

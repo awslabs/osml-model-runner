@@ -1,2 +1,0 @@
-ARG BASE_IMG=registry1.dso.mil/ironbank/opensource/python:v3.11.2
-FROM ${BASE_IMG}

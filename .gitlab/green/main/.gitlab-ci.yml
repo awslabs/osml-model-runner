@@ -1,0 +1,6 @@
+---
+# Branch (main)
+#
+
+include:
+  - local: .gitlab/green/main/publish.gitlab-ci.yml

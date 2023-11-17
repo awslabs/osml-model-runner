@@ -1,0 +1,30 @@
+---
+# Kaniko Release
+#
+
+stages:
+  - deploy
+
+push_image_tst:
+  extends: .kaniko
+  stage: deploy
+  variables:
+    # Authenticate to the AWS account 
+    AWS_CREDS_TARGET_ROLE: ${IE_TST_ROLE}
+    AWS_DEFAULT_REGION: ${IE_TST_REGION}
+    # User defined
+    BASE_IMG: $MODEL_RUNNER_IMAGE
+    DOCKERFILE: "docker/Dockerfile.ref"
+    DESTINATION_ECR_IMAGE: ${IE_TST_ACCOUNT}.dkr.ecr.${IE_TST_REGION}.amazonaws.com/model-runner:${CI_COMMIT_REF_SLUG}
+
+push_image_ops:
+  extends: .kaniko
+  stage: deploy
+  variables:
+    # Authenticate to the AWS account 
+    AWS_CREDS_TARGET_ROLE: ${IE_OPS_ROLE}
+    AWS_DEFAULT_REGION: ${IE_OPS_REGION}
+    # User defined
+    BASE_IMG: $MODEL_RUNNER_IMAGE
+    DOCKERFILE: "docker/Dockerfile.ref"
+    DESTINATION_ECR_IMAGE: ${IE_OPS_ACCOUNT}.dkr.ecr.${IE_OPS_REGION}.amazonaws.com/model-runner:${CI_COMMIT_REF_SLUG} 

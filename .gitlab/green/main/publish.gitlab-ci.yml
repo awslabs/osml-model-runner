@@ -1,0 +1,26 @@
+---
+# Publish
+#
+# Jobs that will publish the built container artifact to Nexus for consumption.
+#
+
+publish:
+  stage: publish
+  tags: [dind]
+  before_script:
+    - echo "Installing build pre-reqs"
+    - apk add curl git
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+    - version_tag=$(git describe --tags --abbrev=0 | tr . -)
+    - artifact=${MODEL_NAME}-${version_tag}.tar.gz
+  script:
+    - docker info
+    - docker pull $CI_REGISTRY_IMAGE/${MODEL_NAME}:${version_tag}
+    - docker image ls
+    - docker save $CI_REGISTRY_IMAGE/${MODEL_NAME}:${version_tag} | gzip > ${artifact}
+    - curl --user "${NEXUS3_USER}:${NEXUS3_PASSWORD}" --upload-file ./${artifact} ${NEXUS3_REPOS}/inference-engine/release/${artifact}
+  timeout: 3h
+  variables:
+    NEXUS3_REPOS: "https://nexus3.gs.mil/repository/Maven_artifacts"
+    NEXUS3_USER: ${maven_integration_nexus_3_credential_username}
+    NEXUS3_PASSWORD: ${maven_integration_nexus_3_credential_password}

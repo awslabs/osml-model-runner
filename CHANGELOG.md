@@ -1,0 +1,8 @@
+# Model Runner CHANGELOG 
+
+This file is used to represent changes made between each tagged version of the Model Runner image. This should be updated as part of each merge request to identify what has changed. If possible, include the story that links to the feature update.
+
+## v0.1.0
+
+- Initial release
+- osml-model-runner (`v1.1.0`)

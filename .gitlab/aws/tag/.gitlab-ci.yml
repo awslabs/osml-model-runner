@@ -1,0 +1,7 @@
+---
+# Tag
+#
+
+include:
+  - local: .gitlab/common/release.gitlab-ci.yml
+  - local: .gitlab/aws/tag/push-image.gitlab-ci.yml

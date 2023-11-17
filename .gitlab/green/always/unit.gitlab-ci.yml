@@ -1,0 +1,11 @@
+---
+# Unit
+#
+
+include:
+  - local: .gitlab/common/unit-tests.gitlab-ci.yml
+
+pytest_functionality:
+  variables: 
+    BUILD_CERT: /certs/tls-ca-bundle.pem
+    PIP_INDEX_URL: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
