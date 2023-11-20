@@ -1,0 +1,6 @@
+---
+# Branch (mainline)
+#
+
+include:
+  - local: .gitlab/aws/mainline/push.gitlab-ci.yml

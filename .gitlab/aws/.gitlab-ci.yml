@@ -15,6 +15,7 @@ stages:
   - unit
   - test
   - deploy
+  - push
 
 variables:
   GITLAB_ANALYZER_SEVERITY: high  # tuned for customer requirements
@@ -33,10 +34,10 @@ include:
     rules:
       - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
-  # # branch: mainline
-  # - local: .gitlab/aws/mainline/.gitlab-ci.yml
-  #   rules:
-  #     - if: $CI_COMMIT_BRANCH == "mainline"
+  # branch: mainline
+  - local: .gitlab/aws/mainline/.gitlab-ci.yml
+    rules:
+      - if: $CI_COMMIT_BRANCH == "mainline"
 
   # tag/release
   - local: .gitlab/aws/tag/.gitlab-ci.yml
