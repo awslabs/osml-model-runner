@@ -5,4 +5,4 @@ This file is used to represent changes made between each tagged version of the M
 ## v0.1.0
 
 - Initial release
-- osml-model-runner (`v1.1.0`)
+- osml-model-runner (`v1.0.0`)
