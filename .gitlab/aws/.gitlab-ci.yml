@@ -16,6 +16,7 @@ stages:
   - test
   - deploy
   - push
+  - release
 
 variables:
   GITLAB_ANALYZER_SEVERITY: high  # tuned for customer requirements
