@@ -21,6 +21,6 @@ publish:
     - curl --user "${NEXUS3_USER}:${NEXUS3_PASSWORD}" --upload-file ./${artifact} ${NEXUS3_REPOS}/inference-engine/release/${artifact}
   timeout: 3h
   variables:
-    NEXUS3_REPOS: "https://nexus3.gs.mil/repository/Maven_artifacts"
-    NEXUS3_USER: ${maven_integration_nexus_3_credential_username}
-    NEXUS3_PASSWORD: ${maven_integration_nexus_3_credential_password}
+    NEXUS3_REPOS: "https://nexus3.gs.mil/repository/maven-daas_artifacts"
+    NEXUS3_USER: ${maven_daas_nexus_3_credential_username}
+    NEXUS3_PASSWORD: ${maven_daas_nexus_3_credential_password}
