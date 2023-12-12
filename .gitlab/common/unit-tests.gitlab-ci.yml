@@ -17,7 +17,7 @@ pytest_functionality:
     CPLUS_INCLUDE_PATH: /usr/include/gdal
     C_INCLUDE_PATH: /usr/include/gdal
     # Application mock env variables
-    AWS_DEFAULT_REGION: "us-west-2"
+    AWS_REGION: "us-west-2"
     WORKERS: "4"
     WORKERS_PER_CPU: "1"
     JOB_TABLE: "TEST-JOB-TABLE"
@@ -33,6 +33,7 @@ pytest_functionality:
     AWS_SECURITY_TOKEN: "testing"
     AWS_SESSION_TOKEN: "testing"
   script: 
+    - export AWS_DEFAULT_REGION=$AWS_REGION
     - dnf makecache --refresh 
     - dnf update -y 
     - dnf install -y --setopt=tsflags=nodocs --allowerasing ${PACKAGES} 
