@@ -9,13 +9,10 @@ from typing import Dict, Optional
 
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.unit import Unit
-from shapely.affinity import translate
-from shapely.geometry import Polygon
 
 from aws.osml.model_runner.app_config import MetricLabels
-from aws.osml.model_runner.common import GeojsonDetectionField
 from aws.osml.model_runner.database import FeatureTable
-from aws.osml.model_runner.inference import Detector
+from aws.osml.model_runner.inference import SMDetector
 from aws.osml.model_runner.tile_worker import FeatureRefinery
 
 
@@ -23,7 +20,7 @@ class TileWorker(Thread):
     def __init__(
         self,
         in_queue: Queue,
-        feature_detector: Detector,
+        feature_detector: SMDetector,
         feature_refinery: Optional[FeatureRefinery],
         feature_table: FeatureTable,
         metrics: MetricsLogger,
@@ -51,7 +48,7 @@ class TileWorker(Thread):
                 break
 
             try:
-                logging.info("Invoking Feature Detector Endpoint")
+                logging.info("Invoking SM Endpoint")
                 with open(image_info["image_path"], mode="rb") as payload:
                     feature_collection = self.feature_detector.find_features(payload)
 
@@ -62,23 +59,14 @@ class TileWorker(Thread):
                 if isinstance(feature_collection, dict) and "features" in feature_collection:
                     logging.info("SM Model returned {} features".format(len(feature_collection["features"])))
                     for feature in feature_collection["features"]:
-                        # model returned a mask
-                        scaled_polygon = None
-                        if GeojsonDetectionField.GEOM in feature["properties"]:
-                            polygon = Polygon(feature["properties"][GeojsonDetectionField.GEOM])
-                            scaled_polygon = translate(polygon, xoff=ulx, yoff=uly)
-                            feature["properties"][GeojsonDetectionField.GEOM] = list(scaled_polygon.exterior.coords)
-                        # model returned a bounding box
-                        if GeojsonDetectionField.BOUNDS in feature["properties"]:
-                            tile_bbox = feature["properties"][GeojsonDetectionField.BOUNDS]
-                            scaled_bbox = translate(
-                                Polygon(FeatureRefinery.imcoords_bbox_to_polygon(tile_bbox)), xoff=ulx, yoff=uly
-                            )
-                            feature["properties"][GeojsonDetectionField.BOUNDS] = scaled_bbox.bounds
-                        elif scaled_polygon is not None:
-                            feature["properties"][GeojsonDetectionField.BOUNDS] = scaled_polygon.bounds
-                        else:
-                            logging.warning(f"There isn't a valid detection shape for feature: {feature}")
+                        tile_bbox = feature["properties"]["bounds_imcoords"]
+                        full_image_bbox = [
+                            tile_bbox[0] + ulx,
+                            tile_bbox[1] + uly,
+                            tile_bbox[2] + ulx,
+                            tile_bbox[3] + uly,
+                        ]
+                        feature["properties"]["bounds_imcoords"] = full_image_bbox
                         feature["properties"]["image_id"] = image_info["image_id"]
                         feature["properties"]["inferenceTime"] = datetime.now(tz=timezone.utc).isoformat()
                         FeatureRefinery.feature_property_transformation(feature)

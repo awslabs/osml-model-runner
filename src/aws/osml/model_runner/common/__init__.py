@@ -21,7 +21,6 @@ from .timer import Timer
 from .typing import (
     VALID_IMAGE_COMPRESSION,
     VALID_IMAGE_FORMATS,
-    GeojsonDetectionField,
     ImageCompression,
     ImageCoord,
     ImageDimensions,
