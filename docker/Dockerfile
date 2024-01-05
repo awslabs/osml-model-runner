@@ -1,10 +1,15 @@
 #TODO: Update BASE_IMG to be the DSO built base gitlabs 
 ARG BASE_IMG=registry.gitlab.aws.dev/helix/aip/gdal-base:latest
+#checkov:skip=CKV_DOCKER_7:This is using an already built non latest image that we maintain
 FROM ${BASE_IMG} as runner
 # Only override if you're using a mirror with a cert pulled in using cert-base as a build parameter
 ARG PIP_INDEX_URL=https://pypi.org/simple/
 ARG PACKAGES="cmake wget gcc gcc-c++ libstdc++ sqlite-libs libcurl libtiff zlib libzstd libjpeg-turbo libpng openjpeg2 libwebp expat libpq"
 
+# Justification: we switch to a non-root user before running the container in any capacity,
+# but a parsing error prevents semgrep from detecting that.
+# We pass this same check in checkov.
+# nosemgrep: generic.dockerfile.security.last-user-is-root.last-user-is-root
 USER root
 RUN dnf update -y \
     && dnf install -y --setopt=tsflags=nodocs --allowerasing $PACKAGES  \
@@ -44,6 +49,12 @@ RUN ldconfig
 USER root
 RUN rm -rf /usr/lib/python3.6/site-packages/urllib3*
 
+# Create directory that pip can install required packages
+# for unit tests to run. Needed for pipeline unit-test job.
+RUN mkdir -p /.local/lib
+RUN chown -R 1000:1000 /.local
+RUN chmod -R 744 /.local
+
 USER 1000
 
 ENTRYPOINT ["python3", "osml-model-runner/bin/oversightml-mr-entry-point.py"]
@@ -78,5 +89,11 @@ RUN python3 -m pip install \
     --trusted-host https://mirrors.gs.mil \
     -r /home/osml-model-runner/test/requirements-test.txt
 
+
+RUN chown -R 1000:1000 /home/osml-model-runner
+RUN chmod -R 744 /home/osml-model-runner
+
+USER 1000
 ENTRYPOINT ["pytest"]
 CMD ["--durations=10", "--cov-config", ".coveragerc", "--cov", "aws.osml.model_runner"] 
+#checkov:skip=CKV_DOCKER_2:HEALTHCHECK to be added later.

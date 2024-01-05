@@ -21,11 +21,13 @@ Annotations are expected in a common XML format:
 """
 
 import argparse
+import re
 import os
 from itertools import chain
 from math import degrees
 from typing import List
 
+from defusedxml import lxml as dlxml
 from lxml import etree
 
 from aws_oversightml_model_runner.gdal.gdal_dem_tile_factory import (
@@ -73,6 +75,14 @@ def coordinates_element(geodetic_coordinates: List[GeodeticWorldCoordinate]) -> 
 
 
 def text_element(element_name: str, text: str) -> etree.Element:
+    # Blacklist characters that have special significance in XML syntax
+    # and so could be used in an XML injection attack.
+    # Note that we only accept XML input from trusted sources (annotations
+    # of images given from USG-approved providers) but this provides an additional
+    # layer of security on top of that.
+    disallowed_pattern = re.compile(r"[<>'&\"]")
+    if disallowed_pattern.search(text):
+        raise ValueError(f"Disallowed character in text: {text}") 
     element = etree.Element(element_name)
     element.text = text
     return element
@@ -206,7 +216,7 @@ def create_kml_image_opticalaxis(ds, sensor_model, style_url: str = None) -> etr
 def create_kml_annotations(annotations_file_name, dem, sensor_model):
     print(f"Georeferencing annotations from {annotations_file_name}")
     with open(annotations_file_name, "rb") as annotations_file:
-        annotations = etree.parse(annotations_file).getroot()
+        annotations = dlxml.parse(annotations_file).getroot()
 
     annotations_folder = etree.Element("Folder")
     annotations_folder.append(text_element("name", "Annotations"))

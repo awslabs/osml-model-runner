@@ -5,3 +5,6 @@ ARG BUILD_CERT=""
 
 # Embed the regional Trusted CAs
 COPY ${BUILD_CERT} ${BUILD_CERT}
+#checkov:skip=CKV_DOCKER_7:The base image is set by the ARG and is non latest
+#checkov:skip=CKV_DOCKER_2:HEALTHCHECK is defined in base img
+#checkov:skip=CKV_DOCKER_3:USER is defined in base img

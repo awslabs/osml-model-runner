@@ -1,0 +1,35 @@
+---
+exclude_findings:
+  # The summarize imagery script is only run by adminstrators, who
+  # are trusted users of the system. Other users cannot run or pass input into
+  # this script. Admins determine the file paths to be passed into this 
+  # script when they execute it.
+  - category: 'Path Manipulation'
+    file: scripts/python/summarize_imagery.py
+    line: '111'
+    risk: High
+  - category: 'Path Manipulation'
+    file: ""
+    shortfile: summarize_imagery.py
+    line: '125'
+    risk: High
+  # The visualize sensor model script is only run by adminstrators, who
+  # are trusted users of the system. Other users cannot run or pass input into
+  # this script.
+  - category: 'Path Manipulation'
+    file: scripts/python/visualize_sensor_model.py
+    line: '218'
+    risk: High
+  - category: 'Path Manipulation'
+    file: scripts/python/visualize_sensor_model.py
+    line: '298'
+    risk: High
+  # The visualize sensor model script is only run by adminstrators, who
+  # are trusted users of the system. Other users cannot run or pass input into
+  # this script. We only run this script with XML input from trusted sources
+  # (annotations of images given from USG-approved providers) and perform
+  # XML character validation on top of that for an additional layer of security.
+  - category: 'XML Injection'
+    file: scripts/python/visualize_sensor_model.py
+    line: '87'
+    risk: High

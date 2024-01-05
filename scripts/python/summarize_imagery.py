@@ -3,7 +3,7 @@ import re
 import sys
 from typing import Iterator, TextIO
 from urllib.parse import urlparse
-from xml.etree import ElementTree
+from defusedxml import ElementTree
 
 import boto3
 from osgeo import gdal

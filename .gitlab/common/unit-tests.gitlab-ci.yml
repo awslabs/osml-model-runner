@@ -5,7 +5,7 @@
 pytest_functionality: 
   stage: unit
   image:
-    name: ${GDAL_BASE_IMG}
+    name: ${MODEL_RUNNER_IMAGE}
     entrypoint: [""]
   needs: []
   variables: 
@@ -34,14 +34,6 @@ pytest_functionality:
     AWS_SESSION_TOKEN: "testing"
   script: 
     - export AWS_DEFAULT_REGION=$AWS_REGION
-    - dnf makecache --refresh 
-    - dnf update -y 
-    - dnf install -y --setopt=tsflags=nodocs --allowerasing ${PACKAGES} 
-    - rm -f /usr/lib/libturbojpeg.so* 
-    - rm -f /usr/lib/libwebpmux.so* /usr/lib/libwebpdemux.so* /usr/lib/libwebpdecoder.so*
-    - dnf clean all
-    - rm -rf /var/cache/dnf/ /var/tmp/* /tmp/* /var/tmp/.???* /tmp/.???*
-    - python3 -m pip install --no-cache-dir --index-url ${PIP_INDEX_URL} --cert ${BUILD_CERT} .
-    - python3 -m pip install --index-url ${PIP_INDEX_URL} --cert ${BUILD_CERT} -r test/requirements-test.txt
-    - ldconfig # Resolve broken simlinks for gdal python header bindings after python installs. 
+    - python3 -m pip install  --user --no-cache-dir --index-url ${PIP_INDEX_URL} --cert ${BUILD_CERT} .
+    - python3 -m pip install --user --index-url ${PIP_INDEX_URL} --cert ${BUILD_CERT} -r test/requirements-test.txt
     - python3 -m pytest --durations=10 --cov-config .coveragerc --cov aws.osml.model_runner
