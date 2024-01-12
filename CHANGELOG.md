@@ -10,6 +10,7 @@ This file is used to represent changes made between each tagged version of the M
 - feature: HTTP model invocation option
 - feature: Expanded polygon feature support outside of pure bbox returns
 - bug: patched and suppresssed results of security scans as appropriate (IE-216)
+- bug: removed unnecessary (present in InferencePlatformCDK) scripts
 
 ## v0.1.0
 
