@@ -1,0 +1,19 @@
+---
+# Orange Wormhole Trigger
+#
+# Jobs that will trigger the container wormhole process
+#
+
+trigger:
+  stage: trigger
+  needs:
+    - publish
+  variables:
+    IMAGE_PATH: $CI_REGISTRY_IMAGE/model-runner
+    # Image Tag
+    TAG: $version_tag
+    # Domain to send image to: SC/TC/BOTH
+    DOMAIN: BOTH
+  trigger:
+    project: wormhole/container-movement-pipelines/container-up
+    branch: rc-1.0.0

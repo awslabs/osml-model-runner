@@ -1,13 +1,16 @@
-# Model Runner CHANGELOG 
+# Model Runner CHANGELOG
 
 This file is used to represent changes made between each tagged version of the Model Runner image. This should be updated as part of each merge request to identify what has changed. If possible, include the story that links to the feature update.
 
 [Reference for OSML Model Runner Release Guide](https://github.com/aws-solutions-library-samples/osml-model-runner/releases)
 
 ## v0.3.0
-- osml-model-runner(`v1.4.0`)
 
-## v0.2.0 
+- osml-model-runner(`v1.4.0`)
+- Add container wormhole trigger CI job
+
+## v0.2.0
+
 - osml-model-runner (`v1.1.0`)
 - bug: RSM camera model index array management
 - bug: OOM management for GDAL tiles

@@ -2,5 +2,11 @@
 # Branch (main)
 #
 
+stages:
+  - publish
+  - trigger
+
+
 include:
   - local: .gitlab/green/main/publish.gitlab-ci.yml
+  - local: .gitlab/green/main/wormhole.gitlab-ci.yml
