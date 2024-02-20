@@ -9,7 +9,7 @@ trigger:
   needs:
     - publish
   variables:
-    IMAGE_PATH: $CI_REGISTRY_IMAGE/model-runner
+    IMAGE_PATH: $CI_REGISTRY_IMAGE/ie-model-runner
     # Image Tag
     TAG: $version_tag
     # Domain to send image to: SC/TC/BOTH
