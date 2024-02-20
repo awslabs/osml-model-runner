@@ -8,7 +8,7 @@ import boto3
 import geojson
 from botocore.exceptions import ClientError
 from botocore.stub import ANY, Stubber
-from moto import mock_dynamodb
+from moto import mock_aws
 
 image_id = (
     "7db12549-3bcb-49c8-acba-25d46ef5cbf3:s3://spacenet-dataset/AOIs/AOI_1_Rio/srcData/mosaic_3band/013022223131.tif"  # noqa
@@ -57,10 +57,12 @@ TEST_FEATURE_2 = {
     },
 }
 
-TEST_MOCK_PUT_EXCEPTION = Mock(side_effect=ClientError({"Error": {"Code": 500, "Message": "ClientError"}}, "put_item"))
+TEST_MOCK_BATCH_WRITE_EXCEPTION = Mock(
+    side_effect=ClientError({"Error": {"Code": 500, "Message": "ClientError"}}, "batch_write_item")
+)
 
 
-@mock_dynamodb
+@mock_aws
 class TestFeatureTable(unittest.TestCase):
     def setUp(self):
         """
@@ -79,6 +81,7 @@ class TestFeatureTable(unittest.TestCase):
             BillingMode="PAY_PER_REQUEST",
         )
         self.feature_table = FeatureTable(os.environ["FEATURE_TABLE"], (2048, 2048), (50, 50))
+        self.feature_table.hash_salt = 1
 
     def tearDown(self):
         """
@@ -140,7 +143,7 @@ class TestFeatureTable(unittest.TestCase):
         from aws.osml.model_runner.database.exceptions import AddFeaturesException
 
         features = self.get_feature_list()
-        self.feature_table.table.put_item = TEST_MOCK_PUT_EXCEPTION
+        self.feature_table.batch_write_items = TEST_MOCK_BATCH_WRITE_EXCEPTION
         with self.assertRaises(AddFeaturesException):
             self.feature_table.add_features(features)
 

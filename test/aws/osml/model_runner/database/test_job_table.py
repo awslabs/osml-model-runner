@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import boto3
 from botocore.exceptions import ClientError
-from moto import mock_dynamodb
+from moto import mock_aws
 
 TEST_IMAGE_ID = "test-image-id"
 TEST_REGION_ID = "test-region-id"
@@ -17,7 +17,7 @@ TEST_MOCK_PUT_EXCEPTION = Mock(side_effect=ClientError({"Error": {"Code": 500, "
 TEST_MOCK_UPDATE_EXCEPTION = Mock(side_effect=ClientError({"Error": {"Code": 500, "Message": "ClientError"}}, "update_item"))
 
 
-@mock_dynamodb
+@mock_aws
 class TestJobTable(unittest.TestCase):
     def setUp(self):
         """
@@ -61,7 +61,7 @@ class TestJobTable(unittest.TestCase):
         Validate that when we complete a region successfully it updates the ddb item
         """
         self.job_table.start_image_request(self.job_item)
-        self.job_table.complete_region_request(TEST_IMAGE_ID)
+        self.job_table.complete_region_request(TEST_IMAGE_ID, False)
         resulting_job_item = self.job_table.get_image_request(TEST_IMAGE_ID)
         assert resulting_job_item.region_success == Decimal(1)
         assert resulting_job_item.region_error == Decimal(0)
@@ -118,7 +118,7 @@ class TestJobTable(unittest.TestCase):
         self.job_table.table.update_item = TEST_MOCK_UPDATE_EXCEPTION
         self.job_table.start_image_request(self.job_item)
         with self.assertRaises(CompleteRegionException):
-            self.job_table.complete_region_request(TEST_IMAGE_ID)
+            self.job_table.complete_region_request(TEST_IMAGE_ID, False)
 
     def test_end_image_failure(self):
         from aws.osml.model_runner.database.exceptions import EndImageException
