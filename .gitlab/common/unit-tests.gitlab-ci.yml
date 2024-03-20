@@ -7,7 +7,7 @@ pytest_functionality:
   image:
     name: ${MODEL_RUNNER_IMAGE}
     entrypoint: [""]
-  needs: []
+  needs: [build]
   variables: 
     GIT_STRATEGY: clone  
     # Build Variables

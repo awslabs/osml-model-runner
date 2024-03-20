@@ -7,7 +7,7 @@
 stages:
   - build
 
-rebake:ctm:
+rebake:mr:
   stage: build
   tags: [dind]
   before_script:

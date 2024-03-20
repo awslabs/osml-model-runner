@@ -7,7 +7,7 @@ stages:
 
 include:
   # hidden
-  - local: .gitlab/orange/main/.hidden.gitlab-ci.yml
+  - local: .gitlab/orange/.hidden.gitlab-ci.yml
 
   # build (rebake)
   - local: .gitlab/orange/main/rebake.gitlab-ci.yml

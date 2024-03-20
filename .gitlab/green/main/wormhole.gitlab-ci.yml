@@ -6,8 +6,6 @@
 
 trigger:
   stage: trigger
-  needs:
-    - publish
   variables:
     IMAGE_PATH: $CI_REGISTRY_IMAGE/ie-model-runner
     # Image Tag
