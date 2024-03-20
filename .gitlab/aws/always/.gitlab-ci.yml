@@ -6,3 +6,4 @@ include:
   - local: .gitlab/aws/always/build.gitlab-ci.yml
   - local: .gitlab/aws/always/security.gitlab-ci.yml
   - local: .gitlab/common/unit-tests.gitlab-ci.yml
+  - local: .gitlab/common/current-tag.gitlab-ci.yml

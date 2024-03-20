@@ -1,0 +1,41 @@
+---
+# Orange GitLab Pipeline Entrypoint
+#
+
+stages:
+  - identify_tag_version
+  - pre_deployment
+  - build
+  - unit
+  - test
+  - push
+  - trigger
+  - publish
+  - release
+
+# Choose pipeline depending on scenario
+include:
+  # hidden
+  - local: .gitlab/orange/.hidden.gitlab-ci.yml
+  - local: .gitlab/aws/.hidden.gitlab-ci.yml
+
+  # release
+  - local: .gitlab/common/release.gitlab-ci.yml
+
+  # tag version
+  - local: .gitlab/common/current-tag.gitlab-ci.yml
+
+  # green
+  - local: .gitlab/green/.gitlab-ci.yml
+    rules:
+      - if: ($GITLAB_CI_ENV == "green")
+
+  # branch: uc-main (pre_deployment)
+  - local: .gitlab/orange/uc-main/.gitlab-ci.yml
+    rules:
+      - if: ($CI_COMMIT_BRANCH == "uc-main")
+
+  # branch: main
+  - local: .gitlab/orange/main/.gitlab-ci.yml
+    rules:
+      - if: ($CI_COMMIT_BRANCH == "main")

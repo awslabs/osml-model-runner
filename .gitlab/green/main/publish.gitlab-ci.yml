@@ -11,13 +11,12 @@ publish:
     - echo "Installing build pre-reqs"
     - apk add curl git
     - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
-    - version_tag=$(git describe --tags --abbrev=0 | tr . -)
-    - artifact=${MODEL_NAME}-${version_tag}.tar.gz
+    - artifact=${NAME}-${CURRENT_TAG}.tar.gz
   script:
     - docker info
-    - docker pull $CI_REGISTRY_IMAGE/${MODEL_NAME}:${version_tag}
+    - docker pull $CI_REGISTRY_IMAGE/${MODEL_NAME}:${CURRENT_TAG}
     - docker image ls
-    - docker save $CI_REGISTRY_IMAGE/${MODEL_NAME}:${version_tag} | gzip > ${artifact}
+    - docker save $CI_REGISTRY_IMAGE/${MODEL_NAME}:${CURRENT_TAG} | gzip > ${artifact}
     - curl --user "${NEXUS3_USER}:${NEXUS3_PASSWORD}" --upload-file ./${artifact} ${NEXUS3_REPOS}/inference-engine/release/${artifact}
   timeout: 3h
   variables:

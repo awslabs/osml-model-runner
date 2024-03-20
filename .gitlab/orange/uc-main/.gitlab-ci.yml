@@ -1,0 +1,14 @@
+---
+# Branch (uc-main)
+#
+
+stages:
+  - pre_deployment
+
+include:
+
+  # wormhole branch merge
+  - local: .gitlab/orange/uc-main/wormhole-merge.gitlab-ci.yml
+
+  # wormhole container tagging
+  - local: .gitlab/orange/uc-main/container.gitlab-ci.yml

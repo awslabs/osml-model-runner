@@ -1,0 +1,51 @@
+---
+# Push to ecr
+#
+# Push gitlab images to tst and ops ECR repos
+#
+
+push_to_ecr_tst:
+  stage: push
+  needs:
+    - job: rebake:mr
+      artifacts: true
+    - job: identify_tag_version
+      artifacts: true
+  extends: .aws
+  tags: [dind]
+  variables:
+    TARGET: "tst"
+    ROLE_ARN: $ROLE_ARN_TST
+  script:
+    - export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    # Login to ECR
+    - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}
+    # Pull rebaked CTM image
+    - docker pull $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:${CURRENT_TAG}-rebake
+    # Tag gitlab registry image to ecr
+    - docker tag $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:${CURRENT_TAG}-rebake ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/ie-model-runner:${CURRENT_TAG}-rebake
+    # push newly tagged image to ecr
+    - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/ie-model-runner:${CURRENT_TAG}-rebake
+
+push_to_ecr_ops:
+  stage: push
+  needs:
+    - job: rebake:ctm
+      artifacts: true
+    - job: identify_tag_version
+      artifacts: true
+  extends: .aws
+  tags: [dind]
+  variables:
+    TARGET: "ops"
+    ROLE_ARN: $ROLE_ARN_OPS
+  script:
+    - export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    # Login to ECR
+    - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}
+    # Pull rebaked CTM image
+    - docker pull $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:${CURRENT_TAG}-rebake
+    # Tag gitlab registry image to ecr
+    - docker tag $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:${CURRENT_TAG}-rebake ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/ie-model-runner:${CURRENT_TAG}-rebake
+    # push newly tagged image to ecr
+    - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/ie-model-runner:${CURRENT_TAG}-rebake

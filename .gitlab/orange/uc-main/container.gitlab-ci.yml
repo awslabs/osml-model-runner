@@ -1,0 +1,33 @@
+---
+# Orange Container Wormhole Workflow
+#
+# Jobs that will trigger the re-tagging of UC CTM images in SC and TC
+#
+stages:
+  - pre_deployment
+
+check_update_registry:
+  stage: pre_deployment
+  tags: [dind]
+  before_script:
+    - docker login -u $GITLAB_ACCESS_TOKEN_NAME -p $GITLAB_ACCESS_TOKEN_VALUE $CI_REGISTRY
+  script:
+    - echo $CURRENT_TAG
+    - CONTAINER_EXISTS=$(docker manifest inspect ${CI_REGISTRY}/maven-daas/inference-engine/model-runner/ie-model-runner:${CURRENT_TAG} > /dev/null ; echo $?)
+    - echo $CONTAINER_EXISTS
+    - UC_CONTAINER_EXISTS=$(docker manifest inspect ${CI_REGISTRY}/maven-daas/inference-engine/model-runner/ie-model-runner:uc-${CURRENT_TAG} > /dev/null ; echo $?)
+    - |
+      if [ "$CONTAINER_EXISTS" == 0 ]; then
+        echo "$CURRENT_TAG Container exists! No action needed";
+      else
+        if [ "$UC_CONTAINER_EXISTS" == 0 ]; then
+          echo "uc-$CURRENT_TAG Container exists! Re-tagging for enclave"
+          docker pull $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:uc-${CURRENT_TAG}
+          docker tag $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:uc-${CURRENT_TAG} $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:${CURRENT_TAG}
+          docker images
+          docker push $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:${CURRENT_TAG}
+          echo "uc container re-tagged and pushed to registry";
+        else
+          echo "$CURRENT_TAG does not exist yet on this enclave, check that container wormhole was successful"
+        fi
+      fi

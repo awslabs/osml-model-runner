@@ -11,7 +11,7 @@ trigger:
   variables:
     IMAGE_PATH: $CI_REGISTRY_IMAGE/ie-model-runner
     # Image Tag
-    TAG: $version_tag
+    TAG: $CURRENT_TAG
     # Domain to send image to: SC/TC/BOTH
     DOMAIN: BOTH
   trigger:

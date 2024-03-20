@@ -1,0 +1,61 @@
+---
+# Hidden
+#
+
+.aws:
+  tags: [dind]
+  variables:
+    FORCE_COLOR: 1
+  id_tokens:
+    MY_OIDC_TOKEN:
+      aud: maven
+  image:
+    name: $CI_REGISTRY/maven-daas/inference-engine/inference-platform-cdk/cdkie:v0-1-8-rebake
+    entrypoint: [""]
+  before_script:
+    # # Authenticate with OIDC Provider
+    # - >
+    - |
+        mkdir -p ~/.aws
+        echo "${MY_OIDC_TOKEN}" > /tmp/web_identity_token
+        echo -e "[profile oidc]\nrole_arn=${ROLE_ARN}\nca_bundle=/certs/tls-ca-bundle.pem\nweb_identity_token_file=/tmp/web_identity_token" > ~/.aws/config
+    - >
+      export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s"
+      $(aws sts assume-role-with-web-identity
+      --role-arn ${ROLE_ARN}
+      --role-session-name "GitLabRunner-${CI_PROJECT_ID}-${CI_PIPELINE_ID}"
+      --web-identity-token ${MY_OIDC_TOKEN}
+      --duration-seconds 3600
+      --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]'
+      --output text))
+
+    # Fix Git Certificate Bundle
+    - |
+      if [[ $GITLAB_CI_ENV == "red" || $GITLAB_CI_ENV == "yellow" ]]; then
+        git config --system http.sslcainfo "/app/tls-ca-bundle.pem"
+      fi
+
+    # Login to GitLab Registry
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+
+    # Determine Target
+    - |
+      if [[ $GITLAB_CI_ENV == "green" ]]; then
+          target=UC_customer_${TARGET}
+      elif [[ $GITLAB_CI_ENV == "red" ]]; then
+          target=SC_customer_${TARGET}
+      elif [[ $GITLAB_CI_ENV == "yellow" ]]; then
+          target=TC_customer_${TARGET}
+      fi
+      echo "Target Configuration: $target"
+
+    # Set ECR endpoint
+    - |
+      if [[ $GITLAB_CI_ENV == "green" ]]; then
+          ecr_endpoint=amazonaws.com
+      elif [[ $GITLAB_CI_ENV == "red" ]]; then
+          ecr_endpoint=sc2s.sgov.gov
+      elif [[ $GITLAB_CI_ENV == "yellow" ]]; then
+          ecr_endpoint=c2s.ic.gov
+      fi
+      echo "ECR Endpoint: $ecr_endpoint"

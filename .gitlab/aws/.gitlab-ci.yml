@@ -10,6 +10,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG
 
 stages:
+  - identify_tag_version
   - lint
   - build
   - unit
@@ -17,6 +18,15 @@ stages:
   - deploy
   - push
   - release
+
+before_script:
+  - |
+    if [ -z "${CURRENT_TAG}" ]; then
+      export CURRENT_TAG_VERSION=$(grep -m1 '"version":' version.json | tr -d '[:space:]' | cut -d':' -f2 | tr -d ',"')
+      export CURRENT_TAG="v$(echo ${CURRENT_TAG_VERSION} | tr '.' '-')"
+      echo "CURRENT_TAG=$CURRENT_TAG" > vars.env
+    fi
+  - echo "Using CURRENT_TAG=$CURRENT_TAG"
 
 variables:
   GITLAB_ANALYZER_SEVERITY: high  # tuned for customer requirements

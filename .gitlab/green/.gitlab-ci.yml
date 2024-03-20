@@ -3,11 +3,14 @@
 #
 
 stages:
+  - identify_tag_version
   - build
   - unit
   - test
-  - publish
+  - push
   - trigger
+  - publish
+  - release
 
 variables: 
   BUILD_CERT: /certs/tls-ca-bundle.pem
@@ -23,7 +26,18 @@ include:
   # always
   - local: .gitlab/green/always/.gitlab-ci.yml
 
+  # tag version
+  - local: .gitlab/common/current-tag.gitlab-ci.yml
+
   # branch: main
   - local: .gitlab/green/main/.gitlab-ci.yml
     rules:
       - if: $CI_COMMIT_BRANCH == "main"
+  - local: .gitlab/orange/main/.gitlab-ci.yml
+    rules:
+      - if: $CI_COMMIT_BRANCH == "main"
+
+  # tag/release
+  - local: .gitlab/green/tag/.gitlab-ci.yml
+    rules:
+      - if: $CI_COMMIT_TAG

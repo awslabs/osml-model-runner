@@ -3,7 +3,7 @@
 `10/03/2022 1154 CST - RD`
 `10/03/2022 1211 CST - RD`
 
-# AIP Model Runner Container
+# IE Model Runner Container
 
 This package contains an application used to orchestrate the execution of ML models on large satellite images. The
 application monitors an input queue for processing requests, decomposes the image into a set of smaller regions and
@@ -12,14 +12,16 @@ application itself has been containerized and is designed to run on a distribute
 across instances to process images as quickly as possible.
 
 This application has been hardened and built on top of an IronBank container located:
-* https://repo1.dso.mil/dsop/opensource/python/python38/-/blob/development/Dockerfile
-* OS=RHEL 8
-* Python=Python 3.8 (python38@sha256:7ec293f50da6961131a7d42f40dc8078dd13fbbe0f4eb7a9b37b427c360f2797)
-* OPENJPEG_VERSION=2.3.1
-* PROJ=8.2.1
-* GDAL=3.4.2
 
-## Using Iron Bank Registry 
+* <https://repo1.dso.mil/dsop/opensource/python/python311/-/blob/development/Dockerfile>
+* OS=RHEL 8
+* Python=Python 3.11.5
+* OPENJPEG_VERSION=2.5.0
+* PROJ=9.3.0
+* GDAL=3.8.3
+
+## Using Iron Bank Registry
+
 1. Log into: `https://registry1.dso.mil/`
 2. Click on your `username` in the upper right.
 3. In drop down menu select `User Profile`
@@ -28,7 +30,6 @@ This application has been hardened and built on top of an IronBank container loc
     2. password: `CLI Secret`
 5. In the CLI:
     1. `docker login registry1.dso.mil -u {Username} -p {CLI Secret}`
-        
 
 ## Key Design Concepts
 
@@ -70,8 +71,7 @@ by multiple model runs.
 
 ## Development Environment
 
-
-To run the container in a test mode and work inside it. 
+To run the container in a test mode and work inside it.
 
 ```shell
 docker run -it -v `pwd`/:/home/ --entrypoint /bin/bash .
@@ -81,18 +81,21 @@ docker run -it -v `pwd`/:/home/ --entrypoint /bin/bash .
 python3 -m pytest test
 ```
 
-To build the test container stage and run it: 
-```shell 
-docker build --target unit-test -f docker/Dockerfile -t aip-mr-container-test:latest .
-docker run --rm -it aip-mr-container-test:latest
+To build the test container stage and run it:
+
+```shell
+docker build --target unit-test -f docker/Dockerfile -t ie-mr-container-test:latest .
+docker run --rm -it ie-mr-container-test:latest
 ```
 
 ## Linting/Formatting
 
 This package uses a number of tools to enforce formatting, linting, and general best practices:
-- [Black](https://github.com/ambv/black) and [isort](https://github.com/timothycrosley/isort) for formatting with a max line length of 100
-- [mypy](http://mypy-lang.org/) to enforce static type checking
-- [flake8](https://pypi.python.org/pypi/flake8) to check pep8 compliance and logical errors in code
+
+*[Black](https://github.com/ambv/black) and [isort](https://github.com/timothycrosley/isort) for formatting with a max line length of 100
+*[mypy](http://mypy-lang.org/) to enforce static type checking
+*[flake8](https://pypi.python.org/pypi/flake8) to check pep8 compliance and logical errors in code
 
 ## Common Errors in SDLC
-DISA Break/Inspect - we can't gaurantee pipelines work and sometimes it is worth to just restart if it appears pipeline broke due to connection problems, sometimes they break network traffic to inspect and inspect packets without providing clear guidance on how. 
+
+DISA Break/Inspect - we can't guarantee pipelines work and sometimes it is worth to just restart if it appears pipeline broke due to connection problems, sometimes they break network traffic to inspect and inspect packets without providing clear guidance on how.

@@ -1,0 +1,6 @@
+---
+# Tag
+#
+
+include:
+  - local: .gitlab/common/release.gitlab-ci.yml

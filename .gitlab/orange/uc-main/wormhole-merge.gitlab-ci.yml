@@ -1,0 +1,23 @@
+---
+# Orange Wormhole Merge
+#
+# Jobs that will trigger the merge of uc-main branch to main on SC and TC
+#
+
+stages:
+  - pre_deployment
+
+wormhole_merge:
+  stage: pre_deployment
+  script:
+    - rm -rf .git
+    - mkdir -p ${CI_PROJECT_NAME}
+    - git config --system http.sslcainfo "/etc/gitlab-runner/cacerts/pem/tls-ca-bundle.pem"
+    - git clone -b ${CI_COMMIT_REF_NAME} https://${GITLAB_ACCESS_TOKEN_NAME}:${GITLAB_ACCESS_TOKEN_VALUE}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git ${CI_PROJECT_NAME}
+    - cd ${CI_PROJECT_NAME}
+    - git config user.email "runner@nga.mil"
+    - git config user.name "runner"
+    - git checkout -b main
+    - git merge origin/${CI_COMMIT_BRANCH}
+    - git push origin main
+  tags: [dind]

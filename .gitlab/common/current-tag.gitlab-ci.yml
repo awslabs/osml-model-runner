@@ -1,0 +1,22 @@
+---
+# Current Tag
+#
+# Job that will identify the current tag based off the version.json file and save it as an environment variable
+
+stages:
+  - identify_tag_version
+
+identify_tag_version:
+  stage: identify_tag_version
+  artifacts:
+    reports:
+      dotenv: vars.env
+  script:
+  #  Check if CURRENT_TAG variable is empty, if so, use version from version.json
+  - |
+    if [ -z "${CURRENT_TAG}" ]; then
+      export CURRENT_TAG_VERSION=$(grep -m1 '"version":' version.json | tr -d '[:space:]' | cut -d':' -f2 | tr -d ',"')
+      export CURRENT_TAG="v$(echo ${CURRENT_TAG_VERSION} | tr '.' '-')"
+      echo "CURRENT_TAG=$CURRENT_TAG" > vars.env
+    fi
+  - echo "Using CURRENT_TAG=$CURRENT_TAG"

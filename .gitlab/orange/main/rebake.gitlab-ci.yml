@@ -1,0 +1,22 @@
+---
+# Rebake
+#
+# Rebuild containers with highside artifacts injected
+#
+
+stages:
+  - build
+
+rebake:ctm:
+  stage: build
+  tags: [dind]
+  before_script:
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+  script:
+    # Copy certificate from provided mount
+    - cp /certs/tls-ca-bundle.pem ./tls-ca-bundle.pem
+    # Rebake
+    - docker build --file ./docker/Dockerfile.rebake
+        --build-arg BASE_IMG=$CI_REGISTRY_IMAGE/ie-model-runner:$CURRENT_TAG
+        --tag $CI_REGISTRY_IMAGE/ie-model-runner:${CURRENT_TAG}-rebake .
+    - docker push $CI_REGISTRY_IMAGE/ie-model-runner:${CURRENT_TAG}-rebake
