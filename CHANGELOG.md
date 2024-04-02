@@ -4,6 +4,10 @@ This file is used to represent changes made between each tagged version of the M
 
 [Reference for OSML Model Runner Release Guide](https://github.com/aws-solutions-library-samples/osml-model-runner/releases)
 
+## v0.3.2
+
+- Fix CI rebake job
+
 ## v0.3.1
 
 - Add GitLab CI Pipeline automation
