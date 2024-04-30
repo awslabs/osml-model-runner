@@ -7,6 +7,7 @@ This file is used to represent changes made between each tagged version of the M
 ## v0.3.2
 
 - Fix CI rebake job
+- Update GitLab CI Pipeline to identify package version updates
 
 ## v0.3.1
 

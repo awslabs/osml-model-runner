@@ -32,6 +32,9 @@ include:
   - project: 'wwps-proserve-dod/common/aws-gitlab-analyzers'
     ref: main
     file: '/.gitlab/container-scanning-analyzer-hidden.gitlab-ci.yml'
+  - project: 'wwps-proserve-dod/common/aws-gitlab-package-notifications'
+    ref: main
+    file: '/.gitlab/package.gitlab-ci.yml'
 
 .scan_template: &scan
   extends: .gl-container-scanning
