@@ -9,7 +9,7 @@ ARG PACKAGES="cmake wget gcc gcc-c++ libstdc++ sqlite-libs libcurl libtiff zlib 
 # Justification: we switch to a non-root user before running the container in any capacity,
 # but a parsing error prevents semgrep from detecting that.
 # We pass this same check in checkov.
-# nosemgrep: generic.dockerfile.security.last-user-is-root.last-user-is-root
+# nosemgrep: dockerfile.security.last-user-is-root.last-user-is-root
 USER root
 RUN dnf update -y \
     && dnf install -y --setopt=tsflags=nodocs --allowerasing $PACKAGES  \

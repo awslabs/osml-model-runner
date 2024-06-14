@@ -8,6 +8,7 @@ This file is used to represent changes made between each tagged version of the M
 
 - Fix CI rebake job
 - Update GitLab CI Pipeline to identify package version updates
+- Sync Makefile with version number release
 
 ## v0.3.1
 
