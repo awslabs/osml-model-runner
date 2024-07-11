@@ -7,6 +7,7 @@ This file is used to represent changes made between each tagged version of the M
 ## v1.4.0
 
 - Updating CHANGELOG and release version to match OSML release version
+- Updating GitLab CI Pipeline to match release version
 
 ## v0.3.2
 
