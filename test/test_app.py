@@ -588,18 +588,18 @@ class TestModelRunner(TestCase):
         from aws.osml.model_runner.app_config import ServiceConfig
         from aws.osml.photogrammetry.digital_elevation_model import DigitalElevationModel
         from aws.osml.photogrammetry.srtm_dem_tile_set import SRTMTileSet
+        from aws.osml.photogrammetry.generic_dem_tile_set import GenericDEMTileSet
 
         assert ServiceConfig.elevation_data_location == TEST_ELEVATION_DATA_LOCATION
 
         elevation_model = ModelRunner.create_elevation_model()
         assert elevation_model
         assert isinstance(elevation_model, DigitalElevationModel)
-        assert isinstance(elevation_model.tile_set, SRTMTileSet)
+        assert isinstance(elevation_model.tile_set, GenericDEMTileSet)
+        # assert isinstance(elevation_model.tile_set, SRTMTileSet)
         assert isinstance(elevation_model.tile_factory, GDALDigitalElevationModelTileFactory)
 
-        assert elevation_model.tile_set.format_extension == ".tif"
-        assert elevation_model.tile_set.prefix == ""
-        assert elevation_model.tile_set.version == "1arc_v3"
+        assert elevation_model.tile_set.format_string == "%oh%od/%lh%ld.tif"
 
         assert elevation_model.tile_factory.tile_directory == TEST_ELEVATION_DATA_LOCATION
 

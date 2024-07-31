@@ -4,6 +4,9 @@ This file is used to represent changes made between each tagged version of the M
 
 [Reference for OSML Model Runner Release Guide](https://github.com/aws-solutions-library-samples/osml-model-runner/releases)
 
+## v1.4.1
+- update for create_elevation_model function to create DigitalElevationModel using GenericDEMTileSet
+
 ## v1.4.0
 
 - Updating CHANGELOG and release version to match OSML release version

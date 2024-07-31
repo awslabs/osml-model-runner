@@ -28,7 +28,7 @@ from aws.osml.gdal import (
     load_gdal_dataset,
     set_gdal_default_configuration,
 )
-from aws.osml.photogrammetry import DigitalElevationModel, ElevationModel, ImageCoordinate, SensorModel, SRTMTileSet
+from aws.osml.photogrammetry import DigitalElevationModel, ElevationModel, ImageCoordinate, SensorModel, SRTMTileSet, GenericDEMTileSet
 
 from .api import VALID_MODEL_HOSTING_OPTIONS, ImageRequest, InvalidImageRequestException, RegionRequest, SinkMode
 from .app_config import MetricLabels, ServiceConfig
@@ -115,11 +115,16 @@ class ModelRunner:
 
         :return: Optional[ElevationModel] = the elevation model or None if not configured
         """
+        
+        # GenericDEMTileSet is currently being used in place of SRTMTileSet
+        # This will likely be replaced with SRTMTileSet above once updates have been made to osml_imagery_toolkit
+        # to handle SRTM with formats and folder structure of .dt2. 
+        # Open task can be found here - https://taskei.amazon.dev/tasks/OSML-IE-73
         if ServiceConfig.elevation_data_location:
+            elevation_data_file_extension = ServiceConfig.elevation_data_extension
             return DigitalElevationModel(
-                SRTMTileSet(
-                    version=ServiceConfig.elevation_data_version,
-                    format_extension=ServiceConfig.elevation_data_extension,
+                GenericDEMTileSet(
+                    format_spec=f"%oh%od/%lh%ld{elevation_data_file_extension}"
                 ),
                 GDALDigitalElevationModelTileFactory(ServiceConfig.elevation_data_location),
             )
