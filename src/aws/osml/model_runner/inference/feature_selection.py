@@ -84,7 +84,7 @@ class FeatureSelector:
             if self.extents[3] is None or self.extents[3] < bounds_imcoords[3]:
                 self.extents[3] = bounds_imcoords[3]
             bounds_imcoords_rounded = [int(round(coord)) for coord in bounds_imcoords]
-            feature_hash_id = hash(str(bounds_imcoords_rounded) + category)
+            feature_hash_id = hash(str(bounds_imcoords_rounded) + category + str(score))
             self.feature_id_map[feature_hash_id] = feature
         unique_categories = list(set(categories))
         for idx, unique_category in enumerate(unique_categories):
@@ -129,7 +129,7 @@ class FeatureSelector:
         im_boxes = self._denormalize_boxes(boxes)
         for box, score, label in zip(im_boxes, scores, labels):
             category = self.labels_map.get(str(label))
-            feature_hash_id = hash(str(box) + category)
+            feature_hash_id = hash(str(box) + category + str(score))
             feature = self.feature_id_map.get(feature_hash_id)
             if feature:
                 if self.options.algorithm_type == FeatureDistillationAlgorithmType.SOFT_NMS and score != feature.get(
