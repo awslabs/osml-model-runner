@@ -73,9 +73,9 @@ class TestTileWorkerUtils(TestCase):
         assert len(chip_list) == 16
         assert chip_list[0] == ((5, 10), (300, 300))
         assert chip_list[1] == ((5, 266), (300, 300))
-        assert chip_list[3] == ((5, 778), (256, 300))
-        assert chip_list[12] == ((773, 10), (300, 256))
-        assert chip_list[15] == ((773, 778), (256, 256))
+        assert chip_list[3] == ((5, 734), (300, 300))
+        assert chip_list[12] == ((729, 10), (300, 300))
+        assert chip_list[15] == ((729, 734), (300, 300))
 
         chip_list = []
         for chip in generate_crops(((0, 0), (5000, 2500)), (2048, 2048), (0, 0)):
@@ -84,14 +84,39 @@ class TestTileWorkerUtils(TestCase):
         assert len(chip_list) == 6
         assert chip_list[0] == ((0, 0), (2048, 2048))
         assert chip_list[1] == ((0, 2048), (2048, 2048))
-        assert chip_list[2] == ((0, 4096), (904, 2048))
-        assert chip_list[3] == ((2048, 0), (2048, 452))
-        assert chip_list[4] == ((2048, 2048), (2048, 452))
-        assert chip_list[5] == ((2048, 4096), (904, 452))
+        assert chip_list[2] == ((0, 2952), (2048, 2048))
+        assert chip_list[3] == ((452, 0), (2048, 2048))
+        assert chip_list[4] == ((452, 2048), (2048, 2048))
+        assert chip_list[5] == ((452, 2952), (2048, 2048))
 
         chip_list = []
         for chip in generate_crops(((150, 150), (5000, 5000)), (2048, 2048), (1024, 1024)):
             chip_list.append(chip)
+        
+        assert len(chip_list) == 16
+        assert chip_list[0] == ((150,150), (2048, 2048))
+        assert chip_list[1] == ((150, 1174), (2048, 2048))
+        assert chip_list[2] == ((150, 2198), (2048, 2048))
+        assert chip_list[3] == ((150, 3102), (2048, 2048))
+        assert chip_list[4] == ((1174,150), (2048, 2048))
+        assert chip_list[5] == ((1174, 1174), (2048, 2048))
+        assert chip_list[6] == ((1174, 2198), (2048, 2048))
+        assert chip_list[7] == ((1174, 3102), (2048, 2048))
+        assert chip_list[8] == ((2198,150), (2048, 2048))
+        assert chip_list[9] == ((2198, 1174), (2048, 2048))
+        assert chip_list[10] == ((2198, 2198), (2048, 2048))
+        assert chip_list[11] == ((2198, 3102), (2048, 2048))
+        assert chip_list[12] == ((3102,150), (2048, 2048))
+        assert chip_list[13] == ((3102, 1174), (2048, 2048))
+        assert chip_list[14] == ((3102, 2198), (2048, 2048))
+        assert chip_list[15] == ((3102, 3102), (2048, 2048))
+        
+        chip_list = []
+        for chip in generate_crops(((150, 150), (1024, 1024)), (2048, 2048), (1024, 1024)):
+            chip_list.append(chip)  
+        
+        assert len(chip_list) == 1
+        assert chip_list[0] == ((150,150), (1024, 1024))
 
     def test_invalid_chip_generator(self):
         from aws.osml.model_runner.tile_worker.tile_worker_utils import generate_crops

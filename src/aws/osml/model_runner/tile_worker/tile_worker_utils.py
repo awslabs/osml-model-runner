@@ -274,20 +274,38 @@ def generate_crops(region: ImageRegion, chip_size: ImageDimensions, overlap: Ima
     # and how many are needed to cover the region
     stride_x = chip_size[0] - overlap[0]
     stride_y = chip_size[1] - overlap[1]
-    num_x = ceildiv(region[1][0], stride_x)
-    num_y = ceildiv(region[1][1], stride_y)
+    
+    sliding_window_x = max(0, region[1][0] - chip_size[0])
+    sliding_window_y = max(0, region[1][1] - chip_size[1])
+    
+    num_x = 1 + ceildiv(sliding_window_x, stride_x)
+    num_y = 1 + ceildiv(sliding_window_y, stride_y)
 
+    w = min(region[1][0], chip_size[0])
+    h = min(region[1][1], chip_size[1])
     crops = []
     for r in range(0, num_y):
         for c in range(0, num_x):
             # Calculate the bounds of the chip ensuring that the chip does not extend
             # beyond the edge of the requested region
-            ul_x = region[0][1] + c * stride_x
-            ul_y = region[0][0] + r * stride_y
-            w = min(chip_size[0], (region[0][1] + region[1][0]) - ul_x)
-            h = min(chip_size[1], (region[0][0] + region[1][1]) - ul_y)
-            if w > overlap[0] and h > overlap[1]:
-                crops.append(((ul_y, ul_x), (w, h)))
+            # Region Bounds are: UL corner (row, column) , dimensions (w, h)
+            
+            # If the tile offset plus tile width fits in the region width, use normal stride.
+            # Otherwise, move stride closer to top left corner to fit tile width.
+            if (c * stride_x) + chip_size[0] <= region[1][0]:
+                ul_x = region[0][1] + c * stride_x
+            else:
+                ul_x = region[0][1] + region[1][0] - w
+            
+            # If the tile offset plus height fits in the region height, use normal stride.
+            # Otherwise, move stride closer to top left corner to fit tile height.
+            if (r * stride_y + chip_size[1]) <= region[1][1]:
+                ul_y = region[0][0] + r * stride_y
+            else:
+                ul_y = region[0][0] + region[1][1] - h
+            
+            # Add each new tile to the crop
+            crops.append(((ul_y, ul_x), (w, h)))
 
     return crops
 
