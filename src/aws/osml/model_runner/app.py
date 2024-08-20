@@ -63,7 +63,7 @@ from .inference import FeatureSelector, calculate_processing_bounds, get_source_
 from .queue import RequestQueue
 from .sink import SinkFactory
 from .status import StatusMonitor
-from .tile_worker import generate_crops, process_tiles, setup_tile_workers
+from .tile_worker import generate_crops, process_tiles, setup_tile_workers, ceildiv
 
 # Set up metrics configuration
 build_embedded_metrics_config()
@@ -784,13 +784,14 @@ class ModelRunner:
 
     @staticmethod
     def identify_overlap(
-        feature: Feature, shape: Tuple[int, int], overlap: Tuple[int, int], origin: Tuple[int, int] = (0, 0)
+        feature: Feature, image_size: Tuple[int, int], shape: Tuple[int, int], overlap: Tuple[int, int], origin: Tuple[int, int] = (0, 0)
     ) -> Tuple[int, int, int, int]:
         """
         Generate a tuple that contains the min and max indexes of adjacent tiles or regions for a given feature. If
         the min and max values for both x and y are the same then this feature does not touch an overlap region.
 
         :param feature: the geojson Feature that must contain properties to identify its location in an image
+        :param image_size: the width, height of the image that is chipped by the "shape" tile size
         :param shape: the width, height of the area in pixels
         :param overlap: the x, y overlap between areas in pixels
         :param origin: the x, y coordinate of the area in relation to the full image
@@ -803,31 +804,41 @@ class ModelRunner:
         bbox = (bbox[0] - origin[0], bbox[1] - origin[1], bbox[2] - origin[0], bbox[3] - origin[1])
 
         stride_x = shape[0] - overlap[0]
-        stride_y = shape[0] - overlap[1]
+        stride_y = shape[1] - overlap[1]    
+        last_chip_x_start = max(0, image_size[0] - shape[0])
+        last_chip_y_start = max(0, image_size[1] - shape[1])
+    
+        last_x_index = ceildiv(last_chip_x_start, stride_x)
+        last_y_index = ceildiv(last_chip_y_start, stride_y)
+        
+        # Find max indexes
+        # If bbox max x/y is in the last row/column chip, we can set max index to be the last chip 
+        if bbox[2] > last_chip_x_start:
+            max_x_index = last_x_index
+        else: 
+            max_x_index = int(bbox[2] / stride_x)
 
-        max_x_index = int(bbox[2] / stride_x)
-        max_y_index = int(bbox[3] / stride_y)
-
-        min_x_index = int(bbox[0] / stride_x)
-        min_y_index = int(bbox[1] / stride_y)
-        min_x_offset = int(bbox[0]) % stride_x
-        min_y_offset = int(bbox[1]) % stride_y
-
-        if min_x_offset < overlap[0] and min_x_index > 0:
-            min_x_index -= 1
-        if min_y_offset < overlap[1] and min_y_index > 0:
-            min_y_index -= 1
+        if bbox[3] > last_chip_y_start:
+            max_y_index = last_y_index
+        else: 
+            max_y_index = int(bbox[3] / stride_y)
+        
+        # Find min indexes
+        # If min x/y of bbox is in first shape, use index 0. otherwise, check stride count.
+        min_x_index = max(0, int(bbox[0]) - shape[0]) / stride_x
+        min_y_index = max(0, int(bbox[1]) - shape[1]) / stride_y
 
         return min_x_index, max_x_index, min_y_index, max_y_index
 
     @staticmethod
     def group_features_by_overlap(
-        features: List[Feature], shape: Tuple[int, int], overlap: Tuple[int, int], origin: Tuple[int, int] = (0, 0)
+        features: List[Feature], image_size: Tuple[int, int], shape: Tuple[int, int], overlap: Tuple[int, int], origin: Tuple[int, int] = (0, 0)
     ) -> Dict[Tuple[int, int, int, int], List[Feature]]:
         """
         Group all the feature items by tile id
 
         :param features: List[FeatureItem] = the list of feature items
+        :param image_size: the width, height of the image that is chipped by the "shape" tile size
         :param shape: the width, height of the area in pixels
         :param overlap: the x, y overlap between areas in pixels
         :param origin: the x, y coordinate of the area in relation to the full image
@@ -836,7 +847,7 @@ class ModelRunner:
         """
         grouped_features: Dict[Tuple[int, int, int, int], List[Feature]] = {}
         for feature in features:
-            overlap_key = ModelRunner.identify_overlap(feature, shape, overlap, origin)
+            overlap_key = ModelRunner.identify_overlap(feature, image_size, shape, overlap, origin)
             grouped_features.setdefault(overlap_key, []).append(feature)
         return grouped_features
 
@@ -884,25 +895,45 @@ class ModelRunner:
             feature_distillation_option = FeatureDistillationDeserializer().deserialize(feature_distillation_option_dict)
             feature_selector = FeatureSelector(feature_distillation_option)
 
+            image_size = [
+                image_request_item.width,
+                image_request_item.height
+            ]
             region_size = ast.literal_eval(ServiceConfig.region_size)
             tile_size = ast.literal_eval(image_request_item.tile_size)
             overlap = ast.literal_eval(image_request_item.tile_overlap)
+            
+            region_stride = (region_size[0] - overlap[0], region_size[1] - overlap[1])
+            last_region_x_start = max(0, image_size[0] - tile_size[0])
+            last_region_y_start = max(0, image_size[1] - tile_size[1])
+            last_region_x_index = ceildiv(last_region_x_start, region_stride[0])
+            last_region_y_index = ceildiv(last_region_y_start, region_stride[1])
 
             logger.debug("FeatureSelection: Starting overlap-aware deduplication of features.")
             total_skipped = 0
             deduped_features = []
-            features_grouped_by_region = ModelRunner.group_features_by_overlap(features, region_size, overlap)
+                                    
+            features_grouped_by_region = ModelRunner.group_features_by_overlap(features, image_size, region_size, overlap)
             for region_key, region_features in features_grouped_by_region.items():
-                region_stride = (region_size[0] - overlap[0], region_size[1] - overlap[1])
-                region_origin = (region_stride[0] * region_key[0], region_stride[1] * region_key[1])
-
+                # Calculate region origin
+                if region_key[0] == last_region_x_index:
+                    x_origin = last_region_x_start
+                else:
+                    x_origin = region_stride[0] * region_key[0]
+                if region_key[1] == last_region_y_index:
+                    y_origin = last_region_y_start
+                else:
+                    y_origin = region_stride[1] * region_key[1]
+                region_origin = (x_origin, y_origin)
+                
+                # if region_size is >= image_size, do we need to adjust region size for group_by_tile logic?
                 if region_key[0] != region_key[1] or region_key[2] != region_key[3]:
                     # The Group contains contributions from multiple regions, run selection on the entire group
                     deduped_features.extend(feature_selector.select_features(region_features))
                 else:
                     # Not an overlap between regions group these features using tile size to identify overlaps
                     features_grouped_by_tile = ModelRunner.group_features_by_overlap(
-                        region_features, tile_size, overlap, region_origin
+                        region_features, region_size, tile_size, overlap, region_origin
                     )
 
                     for tile_key, tile_features in features_grouped_by_tile.items():

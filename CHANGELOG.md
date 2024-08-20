@@ -4,6 +4,9 @@ This file is used to represent changes made between each tagged version of the M
 
 [Reference for OSML Model Runner Release Guide](https://github.com/aws-solutions-library-samples/osml-model-runner/releases)
 
+## v1.5.1
+- Overlap between regions and tiles is now properly accounted for for feature deduplication/nms given the tiling logic changes in 1.5.0.
+
 ## v1.5.0
 - Update tile sizes to always be equal to tile_size in the request. Tiles at the edges of regions will now have larger overlaps. Selecting regions now follows that logic as well.
 
