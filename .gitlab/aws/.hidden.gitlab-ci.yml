@@ -79,3 +79,25 @@
         sha256sum >> ${REPORT_FILEPATH}
       fi
     - cat $REPORT_FILEPATH
+
+.aws_ecr_push_command:
+  timeout: 2h
+  image: public.ecr.aws/docker/library/alpine:3.19.1
+  variables:
+    # Authenticate to the AWS account
+    AWS_CREDS_TARGET_ROLE: ""
+    AWS_DEFAULT_REGION: ""
+  script:
+    - apk add aws-cli git skopeo
+    - export $(cat vars.env | xargs)
+    - export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    - skopeo copy docker://${MODEL_RUNNER_IMAGE} docker://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/ie-model-runner:${CURRENT_TAG} --dest-creds AWS:$(aws ecr get-login-password --output text) --src-creds gitlab-ci-token:${CI_JOB_TOKEN}
+    - skopeo copy docker://${CI_REGISTRY_IMAGE}/ie-model-runner:stable docker://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/ie-model-runner:stable --dest-creds AWS:$(aws ecr get-login-password --output text) --src-creds gitlab-ci-token:${CI_JOB_TOKEN}
+
+
+.skopeo:
+  timeout: 2h
+  image: public.ecr.aws/docker/library/alpine:3.19.1
+  before_script:
+    - apk add aws-cli git skopeo
+    - export $(cat vars.env | xargs)

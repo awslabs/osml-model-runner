@@ -4,17 +4,23 @@ This file is used to represent changes made between each tagged version of the M
 
 [Reference for OSML Model Runner Release Guide](https://github.com/aws-solutions-library-samples/osml-model-runner/releases)
 
+## v1.4.2
+
+- revert from v1.5.1 -> v1.4.2
+- fix key error caused by giving identical strings to hash function in feature_selection.py
+- ci: Add stable release CI Pipeline
+
 ## v1.5.1
+
 - Overlap between regions and tiles is now properly accounted for for feature deduplication/nms given the tiling logic changes in 1.5.0.
 - Update osml-imagery-toolkit 1.3.1->1.3.2 fix for SICD metadata
 
 ## v1.5.0
+
 - Update tile sizes to always be equal to tile_size in the request. Tiles at the edges of regions will now have larger overlaps. Selecting regions now follows that logic as well.
 
-## v1.4.2
-- fix key error caused by giving identical strings to hash function in feature_selection.py
-
 ## v1.4.1
+
 - update for create_elevation_model function to create DigitalElevationModel using GenericDEMTileSet
 
 ## v1.4.0

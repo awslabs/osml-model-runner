@@ -1,0 +1,13 @@
+### GitLab Tag Version Stable Job
+#
+
+tag_stable:
+  stage: build
+  script:
+    - echo "Tagging and pushing container image as stable"
+    - docker tag ${CI_REGISTRY_IMAGE}/ie-model-runner:${CURRENT_TAG} ${CI_REGISTRY_IMAGE}/ie-model-runner:stable
+    - docker push ${CI_REGISTRY_IMAGE}/ie-model-runner:stable
+  needs:
+    - job: identify_tag_version
+      artifacts: true
+    - job: build
