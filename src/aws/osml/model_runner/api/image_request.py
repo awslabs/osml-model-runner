@@ -1,4 +1,4 @@
-#  Copyright 2023 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
 import logging
 from json import dumps, loads
@@ -52,7 +52,6 @@ class ImageRequest(object):
         ]
 
         self.job_id: str = ""
-        self.job_arn: str = ""
         self.image_id: str = ""
         self.image_url: str = ""
         self.image_read_role: str = ""
@@ -101,7 +100,6 @@ class ImageRequest(object):
         if "imageProcessorTileCompression" in image_request:
             properties["tile_compression"] = image_request["imageProcessorTileCompression"]
 
-        properties["job_arn"] = image_request["jobArn"]
         properties["job_id"] = image_request["jobId"]
 
         properties["image_url"] = image_request["imageUrls"][0]
@@ -153,13 +151,13 @@ class ImageRequest(object):
             logger.error("Invalid shared properties in ImageRequest")
             return False
 
-        if not self.job_arn or not self.job_id or not self.outputs:
-            logger.error("Missing job arn, job id, or outputs properties in ImageRequest")
+        if not self.job_id or not self.outputs:
+            logger.error("Missing job id or outputs properties in ImageRequest")
             return False
 
         num_feature_detection_options = len(self.get_feature_distillation_option())
         if num_feature_detection_options > 1:
-            logger.error("{} feature distillation options in ImageRequest".format(num_feature_detection_options))
+            logger.error(f"{num_feature_detection_options} feature distillation options in ImageRequest")
             return False
 
         return True

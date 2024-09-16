@@ -1,11 +1,13 @@
-#  Copyright 2023 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
 import logging
 import os
+import tempfile
 from typing import List, Optional
 
 import boto3
 import geojson
+from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 from geojson import Feature, FeatureCollection
 
@@ -55,17 +57,27 @@ class S3Sink(Sink):
             # want to base our key off of the original image file name so split by '/' and use
             # the last element
             object_key = os.path.join(self.prefix, image_id.split("/")[-1] + ".geojson")
-            # Add the aggregated features to a feature collection and encode the full set of features
-            # as a GeoJSON output.
-            self.s3_client.put_object(
-                Body=str(geojson.dumps(features_collection)),
-                Bucket=self.bucket,
-                Key=object_key,
-                ACL="bucket-owner-full-control",
-            )
-            logger.info(
-                "Wrote aggregate feature collection for Image '{}' to s3://{}/{}".format(image_id, self.bucket, object_key)
-            )
+
+            # Create a temporary file to store aggregated features as a GeoJSON data
+            with tempfile.NamedTemporaryFile(delete=True) as temp_file:
+                with open(temp_file.name, "w") as f:
+                    f.write(geojson.dumps(features_collection))
+
+                # Use upload_file to upload the file to S3
+                self.s3_client.upload_file(
+                    Filename=temp_file.name,
+                    Bucket=self.bucket,
+                    Key=object_key,
+                    Config=TransferConfig(
+                        multipart_threshold=64 * 1024**2,  # 64 MB
+                        max_concurrency=10,
+                        multipart_chunksize=128 * 1024**2,  # 128 MB
+                        use_threads=True,
+                    ),
+                    ExtraArgs={"ACL": "bucket-owner-full-control"},
+                )
+
+            logger.info(f"Wrote aggregate feature collection for Image '{image_id}' to s3://{self.bucket}/{object_key}")
             return True
         else:
             return False
@@ -81,10 +93,10 @@ class S3Sink(Sink):
             return True
         except ClientError as err:
             if err.response["Error"]["Code"] == "404":  # Does not exist
-                logging.error("This S3 Bucket({}) does not exist".format(self.bucket))
+                logging.error(f"This S3 Bucket({self.bucket}) does not exist")
             elif err.response["Error"]["Code"] == "403":  # Forbidden access
-                logging.error("Do not have permission to read/write this S3 Bucket({})".format(self.bucket))
-            logging.error("Cannot read/write S3 Bucket ({})".format(self.bucket))
+                logging.error(f"Do not have permission to read/write this S3 Bucket({self.bucket})")
+            logging.error(f"Cannot read/write S3 Bucket ({self.bucket})")
             return False
 
     @staticmethod

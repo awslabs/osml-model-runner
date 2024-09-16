@@ -1,4 +1,4 @@
-#  Copyright 2023 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
 import unittest
 from math import degrees
@@ -162,14 +162,26 @@ class TestFeatureUtils(unittest.TestCase):
         from aws.osml.model_runner.inference.feature_utils import get_source_property
 
         ds, sensor_model = self.get_dataset_and_camera()
-        source_property = get_source_property("UNSUPPORTED", ds)
-        assert source_property is None
+        source_property = get_source_property("./test/data/GeogToWGS84GeoKey5.tif", "UNSUPPORTED", ds)
+        assert source_property == {
+                "sourceMetadata": [
+                    {
+                        "location": "./test/data/GeogToWGS84GeoKey5.tif",
+                    }
+                ]
+            }
 
     def test_get_source_property_exception(self):
         from aws.osml.model_runner.inference.feature_utils import get_source_property
 
-        source_property = get_source_property("NITF", dataset=None)
-        assert source_property is None
+        source_property = get_source_property("./test/data/GeogToWGS84GeoKey5.tif", "NITF", dataset=None)
+        assert source_property == {
+                "sourceMetadata": [
+                    {
+                        "location": "./test/data/GeogToWGS84GeoKey5.tif",
+                    }
+                ]
+            }
 
     @staticmethod
     def build_gdal_sensor_model():

@@ -1,9 +1,7 @@
-#  Copyright 2023 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
 from unittest import TestCase, main
 from unittest.mock import Mock, patch
-
-import pytest
 
 
 class TestTileWorkerUtils(TestCase):
@@ -63,73 +61,42 @@ class TestTileWorkerUtils(TestCase):
             # with self.assertRaises(ValueError):
             setup_tile_workers(mock_region_request, mock_sensor_model, mock_elevation_model)
 
-    def test_chip_generator(self):
-        from aws.osml.model_runner.tile_worker.tile_worker_utils import generate_crops
+    def test_process_tiles(
+        self,
+    ):
+        from aws.osml.gdal.gdal_utils import load_gdal_dataset
+        from aws.osml.model_runner.api import RegionRequest
+        from aws.osml.model_runner.tile_worker import VariableTileTilingStrategy
+        from aws.osml.model_runner.tile_worker.tile_worker_utils import process_tiles, setup_tile_workers
 
-        chip_list = []
-        for chip in generate_crops(((5, 10), (1024, 1024)), (300, 300), (44, 44)):
-            chip_list.append(chip)
+        mock_region_request = RegionRequest(
+            {
+                "tile_size": (10, 10),
+                "tile_overlap": (0, 0),
+                "tile_format": "NITF",
+                "image_id": "1",
+                "image_url": "/mock/path",
+                "region_bounds": ((0, 0), (50, 50)),
+                "model_invoke_mode": "SM_ENDPOINT",
+                "image_extension": "fake",
+            }
+        )
 
-        assert len(chip_list) == 16
-        assert chip_list[0] == ((5, 10), (300, 300))
-        assert chip_list[1] == ((5, 266), (300, 300))
-        assert chip_list[3] == ((5, 734), (300, 300))
-        assert chip_list[12] == ((729, 10), (300, 300))
-        assert chip_list[15] == ((729, 734), (300, 300))
+        ds, sensor_model = load_gdal_dataset("./test/data/small.ntf")
+        mock_elevation_model = None
+        work_queue, tile_worker_list = setup_tile_workers(mock_region_request, sensor_model, mock_elevation_model)
 
-        chip_list = []
-        for chip in generate_crops(((0, 0), (5000, 2500)), (2048, 2048), (0, 0)):
-            chip_list.append(chip)
+        completed_tiles, failed_tiles = process_tiles(
+            tiling_strategy=VariableTileTilingStrategy(),
+            region_request=mock_region_request,
+            tile_queue=work_queue,
+            tile_workers=tile_worker_list,
+            raster_dataset=ds,
+            sensor_model=sensor_model,
+        )
 
-        assert len(chip_list) == 6
-        assert chip_list[0] == ((0, 0), (2048, 2048))
-        assert chip_list[1] == ((0, 2048), (2048, 2048))
-        assert chip_list[2] == ((0, 2952), (2048, 2048))
-        assert chip_list[3] == ((452, 0), (2048, 2048))
-        assert chip_list[4] == ((452, 2048), (2048, 2048))
-        assert chip_list[5] == ((452, 2952), (2048, 2048))
-
-        chip_list = []
-        for chip in generate_crops(((150, 150), (5000, 5000)), (2048, 2048), (1024, 1024)):
-            chip_list.append(chip)
-        
-        assert len(chip_list) == 16
-        assert chip_list[0] == ((150,150), (2048, 2048))
-        assert chip_list[1] == ((150, 1174), (2048, 2048))
-        assert chip_list[2] == ((150, 2198), (2048, 2048))
-        assert chip_list[3] == ((150, 3102), (2048, 2048))
-        assert chip_list[4] == ((1174,150), (2048, 2048))
-        assert chip_list[5] == ((1174, 1174), (2048, 2048))
-        assert chip_list[6] == ((1174, 2198), (2048, 2048))
-        assert chip_list[7] == ((1174, 3102), (2048, 2048))
-        assert chip_list[8] == ((2198,150), (2048, 2048))
-        assert chip_list[9] == ((2198, 1174), (2048, 2048))
-        assert chip_list[10] == ((2198, 2198), (2048, 2048))
-        assert chip_list[11] == ((2198, 3102), (2048, 2048))
-        assert chip_list[12] == ((3102,150), (2048, 2048))
-        assert chip_list[13] == ((3102, 1174), (2048, 2048))
-        assert chip_list[14] == ((3102, 2198), (2048, 2048))
-        assert chip_list[15] == ((3102, 3102), (2048, 2048))
-        
-        chip_list = []
-        for chip in generate_crops(((150, 150), (1024, 1024)), (2048, 2048), (1024, 1024)):
-            chip_list.append(chip)  
-        
-        assert len(chip_list) == 1
-        assert chip_list[0] == ((150,150), (1024, 1024))
-
-    def test_invalid_chip_generator(self):
-        from aws.osml.model_runner.tile_worker.tile_worker_utils import generate_crops
-
-        with pytest.raises(ValueError):
-            chip_list = []
-            for chip in generate_crops(((5, 10), (1024, 1024)), (300, 300), (301, 0)):
-                chip_list.append(chip)
-
-        with pytest.raises(ValueError):
-            chip_list = []
-            for chip in generate_crops(((5, 10), (1024, 1024)), (300, 300), (0, 301)):
-                chip_list.append(chip)
+        assert completed_tiles == 25
+        assert failed_tiles == 0
 
     def test_next_greater_multiple(self):
         assert 16 == self.next_greater_multiple(1, 16)

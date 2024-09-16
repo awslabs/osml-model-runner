@@ -19,6 +19,7 @@ TEST_ACCOUNT_ID = "123456789123"
 TEST_IMAGE_ID = "test-image-id"
 TEST_IMAGE_EXTENSION = "NITF"
 TEST_JOB_ID = "test-job-id"
+TEST_RANDOM_KEY = "test-random-key"
 TEST_ELEVATION_DATA_LOCATION = "s3://TEST-BUCKET/ELEVATION-DATA-LOCATION"
 TEST_MODEL_ENDPOINT = "NOOP_BOUNDS_MODEL_NAME"
 TEST_MODEL_NAME = "FakeCVModel"
@@ -113,15 +114,11 @@ class TestModelRunner(TestCase):
         # This is the expected results for the source property derived from the small test image
         self.test_feature_source_property = [
             {
-                "fileType": "NITF",
-                "info": {
-                    "imageCategory": "VIS",
-                    "metadata": {
-                        "sourceId": "Checks an uncompressed 1024x1024 8 bit mono image with GEOcentric data. Airfield",
-                        "sourceDt": "1996-12-17T10:26:30",
-                        "classification": "UNCLASSIFIED",
-                    },
-                },
+                "location": TEST_IMAGE_FILE,
+                "format": "NITF",
+                "category": "VIS",
+                "sourceId": "Checks an uncompressed 1024x1024 8 bit mono image with GEOcentric data. Airfield",
+                "sourceDT": "1996-12-17T10:26:30Z",
             }
         ]
 
@@ -142,7 +139,6 @@ class TestModelRunner(TestCase):
         # Build fake image request to work with
         self.image_request = ImageRequest.from_external_message(
             {
-                "jobArn": f"arn:aws:oversightml:{os.environ['AWS_DEFAULT_REGION']}:{TEST_ACCOUNT_ID}:job/{TEST_IMAGE_ID}",
                 "jobName": TEST_IMAGE_ID,
                 "jobId": TEST_IMAGE_ID,
                 "imageUrls": [TEST_IMAGE_FILE],
@@ -337,7 +333,7 @@ class TestModelRunner(TestCase):
         assert results_features[0]["properties"]["modelMetadata"] == self.test_custom_feature_properties.get("modelMetadata")
 
         # Check we got the correct source data for the small.ntf file
-        assert results_features[0]["properties"]["source"] == self.test_feature_source_property
+        assert results_features[0]["properties"]["sourceMetadata"] == self.test_feature_source_property
 
         # Check that we calculated the max in progress regions
         # Test instance type is set to m5.12xl with 48 vcpus. Default
@@ -352,7 +348,6 @@ class TestModelRunner(TestCase):
         self.model_runner.region_request_table = Mock(RegionRequestTable, autospec=True)
         self.image_request = ImageRequest.from_external_message(
             {
-                "jobArn": f"arn:aws:oversightml:{os.environ['AWS_DEFAULT_REGION']}:{TEST_ACCOUNT_ID}:job/{TEST_IMAGE_ID}",
                 "jobName": TEST_IMAGE_ID,
                 "jobId": TEST_IMAGE_ID,
                 "imageUrls": [TEST_IMAGE_FILE],
@@ -397,13 +392,40 @@ class TestModelRunner(TestCase):
         assert results_features[0]["properties"]["modelMetadata"] == self.test_custom_feature_properties.get("modelMetadata")
 
         # Check we got the correct source data for the small.ntf file
-        assert results_features[0]["properties"]["source"] == self.test_feature_source_property
+        assert results_features[0]["properties"]["sourceMetadata"] == self.test_feature_source_property
 
         # Check that we calculated the max in progress regions
         # Test instance type is set to m5.12xl with 48 vcpus. Default
         # scale factor is set to 10 and workers per cpu is 1 so:
         # floor((10 * 1 * 48) / 1) = 480
         assert 480 == self.model_runner.endpoint_utils.calculate_max_regions(endpoint_name=TEST_MODEL_ENDPOINT)
+
+    def test_process_additional_attributes_image_request(self):
+        from aws.osml.model_runner.api.image_request import ImageRequest
+        from aws.osml.model_runner.database.region_request_table import RegionRequestTable
+
+        self.model_runner.region_request_table = Mock(RegionRequestTable, autospec=True)
+        self.image_request = ImageRequest.from_external_message(
+            {
+                "jobName": TEST_IMAGE_ID,
+                "jobId": TEST_IMAGE_ID,
+                "imageUrls": [TEST_IMAGE_FILE],
+                "outputs": [
+                    {"type": "S3", "bucket": TEST_RESULTS_BUCKET, "prefix": f"{TEST_IMAGE_ID}/"},
+                    {"type": "Kinesis", "stream": TEST_RESULTS_STREAM, "batchSize": 1000},
+                ],
+                "featureProperties": [self.test_custom_feature_properties],
+                "imageProcessor": {"name": "NOOP_GEOM_MODEL_NAME", "type": "SM_ENDPOINT"},
+                "imageProcessorTileSize": 2048,
+                "imageProcessorTileOverlap": 50,
+                "imageProcessorTileFormat": "NITF",
+                "imageProcessorTileCompression": "JPEG",
+                "testRandomKey": TEST_RANDOM_KEY,
+            }
+        )
+        self.model_runner.process_image_request(self.image_request)
+        image_request_item = self.job_table.get_image_request(self.image_request.image_id)
+        assert image_request_item.region_success == 1
 
     # Remember that with multiple patch decorators the order of the mocks in the parameter list is
     # reversed (i.e. the first mock parameter is the last decorator defined). Also note that the
@@ -587,8 +609,7 @@ class TestModelRunner(TestCase):
         from aws.osml.model_runner.app import ModelRunner
         from aws.osml.model_runner.app_config import ServiceConfig
         from aws.osml.photogrammetry.digital_elevation_model import DigitalElevationModel
-        from aws.osml.photogrammetry.srtm_dem_tile_set import SRTMTileSet
-        from aws.osml.photogrammetry.generic_dem_tile_set import GenericDEMTileSet
+        from aws.osml.photogrammetry import GenericDEMTileSet #, SRTMTileSet
 
         assert ServiceConfig.elevation_data_location == TEST_ELEVATION_DATA_LOCATION
 
@@ -596,10 +617,16 @@ class TestModelRunner(TestCase):
         assert elevation_model
         assert isinstance(elevation_model, DigitalElevationModel)
         assert isinstance(elevation_model.tile_set, GenericDEMTileSet)
+
+        # TODO: switch to this tileSet when we fully absorb OSML v2
         # assert isinstance(elevation_model.tile_set, SRTMTileSet)
+        
         assert isinstance(elevation_model.tile_factory, GDALDigitalElevationModelTileFactory)
 
-        assert elevation_model.tile_set.format_string == "%oh%od/%lh%ld.tif"
+        # TODO: Activate when we flip to using an SRTMTileSet 
+        # assert elevation_model.tile_set.format_extension == ".tif"
+        # assert elevation_model.tile_set.prefix == ""
+        # assert elevation_model.tile_set.version == "1arc_v3"
 
         assert elevation_model.tile_factory.tile_directory == TEST_ELEVATION_DATA_LOCATION
 

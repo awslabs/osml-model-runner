@@ -1,4 +1,4 @@
-#  Copyright 2023 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
 import logging
 import time
@@ -42,6 +42,8 @@ class RegionRequestItem(DDBItem):
     message: Optional[str] = None
     region_status: Optional[str] = None
     total_tiles: Optional[Decimal] = None
+    failed_tiles: Optional[Decimal] = None
+    completed_tiles: Optional[Decimal] = None
     region_retry_count: Optional[Decimal] = None
     region_pixel_bounds: Optional[str] = None
 
@@ -147,6 +149,6 @@ class RegionRequestTable(DDBHelper):
                 RegionRequestItem,
                 self.get_ddb_item(RegionRequestItem(region_id=region_id, image_id=image_id)),
             )
-        except Exception as e:
-            logger.warning(GetRegionRequestItemException("Failed to get RegionRequestItem! {0}".format(e)))
+        except Exception as err:
+            logger.warning(GetRegionRequestItemException(f"Failed to get RegionRequestItem! {err}"))
             return None

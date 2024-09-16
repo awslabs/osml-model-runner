@@ -1,4 +1,4 @@
-#  Copyright 2023 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
 import logging
 
@@ -28,7 +28,6 @@ class StatusMonitor:
         # Check that the image request has valid properties
         if (
             image_request_item.job_id is not None
-            and image_request_item.job_arn is not None
             and image_request_item.image_id is not None
             and image_request_item.processing_time is not None
         ):
@@ -45,7 +44,6 @@ class StatusMonitor:
                 sns_message_attributes = ImageRequestStatusMessage(
                     image_status=status,
                     job_id=image_request_item.job_id,
-                    job_arn=image_request_item.job_arn,
                     image_id=image_request_item.image_id,
                     processing_duration=image_request_item.processing_time,
                 )
@@ -56,11 +54,9 @@ class StatusMonitor:
                     sns_message_attributes.asdict_str_values(),
                 )
             except Exception as err:
-                raise StatusMonitorException(
-                    "StatusMonitor failed: {} {}: {}".format(status, image_request_item.job_id, err)
-                )
+                raise StatusMonitorException(f"StatusMonitor failed: {status} {image_request_item.job_id}: {err}")
         else:
-            raise StatusMonitorException("StatusMonitor failed: {} {}".format(status, image_request_item.job_id))
+            raise StatusMonitorException(f"StatusMonitor failed: {status} {image_request_item.job_id}")
 
     @staticmethod
     def get_image_request_status(image_request_item: JobItem) -> ImageRequestStatus:

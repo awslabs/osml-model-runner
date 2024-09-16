@@ -1,4 +1,4 @@
-#  Copyright 2023 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
 import logging
 import tempfile
@@ -12,17 +12,19 @@ from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
 from osgeo import gdal
 
+from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
 from aws.osml.gdal import GDALConfigEnv
 from aws.osml.image_processing.gdal_tile_factory import GDALTileFactory
-from aws.osml.model_runner.api import RegionRequest
-from aws.osml.model_runner.app_config import MetricLabels, ServiceConfig
-from aws.osml.model_runner.common import ImageDimensions, ImageRegion, Timer, get_credentials_for_assumed_role
-from aws.osml.model_runner.database import FeatureTable
-from aws.osml.model_runner.tile_worker import FeatureRefinery, TileWorker
 from aws.osml.photogrammetry import ElevationModel, SensorModel
 
+from ..api import RegionRequest
+from ..app_config import MetricLabels, ServiceConfig
+from ..common import Timer, get_credentials_for_assumed_role
+from ..database import FeatureTable
 from ..inference.endpoint_factory import FeatureDetectorFactory
 from .exceptions import ProcessTilesException, SetupTileWorkersException
+from .tile_worker import TileWorker
+from .tiling_strategy import TilingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -66,23 +68,24 @@ def setup_tile_workers(
                 assumed_credentials=model_invocation_credentials,
             ).build()
 
-            feature_refinery = None
+            geolocator = None
             if sensor_model is not None:
-                feature_refinery = FeatureRefinery(sensor_model, elevation_model=elevation_model)
+                geolocator = Geolocator(ImagedFeaturePropertyAccessor(), sensor_model, elevation_model=elevation_model)
 
-            worker = TileWorker(tile_queue, feature_detector, feature_refinery, feature_table)
+            worker = TileWorker(tile_queue, feature_detector, geolocator, feature_table)
             worker.start()
             tile_workers.append(worker)
 
-        logger.info("Setup pool of {} tile workers".format(len(tile_workers)))
+        logger.info(f"Setup pool of {len(tile_workers)} tile workers")
 
         return tile_queue, tile_workers
     except Exception as err:
-        logger.exception("Failed to setup tile workers!: {}".format(err))
+        logger.exception(f"Failed to setup tile workers!: {err}")
         raise SetupTileWorkersException("Failed to setup tile workers!") from err
 
 
 def process_tiles(
+    tiling_strategy: TilingStrategy,
     region_request: RegionRequest,
     tile_queue: Queue,
     tile_workers: List[TileWorker],
@@ -92,6 +95,7 @@ def process_tiles(
     """
     Loads a GDAL dataset into memory and processes it with a pool of tile workers.
 
+    :param tiling_strategy: the approach used to decompose the region into tiles for the ML model
     :param region_request: RegionRequest = the region request to update.
     :param tile_queue: Queue = keeps the image in the queue for processing
     :param tile_workers: List[Tileworker] = the list of tile workers
@@ -100,6 +104,11 @@ def process_tiles(
 
     :return: Tuple[int, int] = number of tiles processed, number of tiles with an error
     """
+
+    tile_array = tiling_strategy.compute_tiles(
+        region_request.region_bounds, region_request.tile_size, region_request.tile_overlap
+    )
+    total_tile_count = len(tile_array)
     try:
         # This will update the GDAL configuration options to use the security credentials for
         # this request. Any GDAL managed AWS calls (i.e. incrementally fetching pixels from a
@@ -123,23 +132,14 @@ def process_tiles(
             # Calculate a set of ML engine sized regions that we need to process for this image
             # and set up a temporary directory to store the temporary files. The entire directory
             # will be deleted at the end of this image's processing
-            total_tile_count = 0
             with tempfile.TemporaryDirectory() as tmp:
                 # Ignoring mypy error - if region_bounds was None the call to validate the
                 # image region request at the start of this function would have failed
-                for tile_bounds in generate_crops(
-                    region_request.region_bounds,  # type: ignore[arg-type]
-                    region_request.tile_size,
-                    region_request.tile_overlap,
-                ):
+                for tile_bounds in tile_array:
                     # Create a temp file name for the encoded region
-                    region_image_filename = "{}-region-{}-{}-{}-{}.{}".format(
-                        token_hex(16),
-                        tile_bounds[0][0],
-                        tile_bounds[0][1],
-                        tile_bounds[1][0],
-                        tile_bounds[1][1],
-                        region_request.tile_format,
+                    region_image_filename = (
+                        f"{token_hex(16)}-region-{tile_bounds[0][0]}-{tile_bounds[0][1]}-"
+                        f"{tile_bounds[1][0]}-{tile_bounds[1][1]}.{region_request.tile_format}"
                     )
 
                     # Set a path for the tmp image
@@ -158,8 +158,6 @@ def process_tiles(
                         "image_id": region_request.image_id,
                         "job_id": region_request.job_id,
                     }
-                    # Increment our tile count tracking
-                    total_tile_count += 1
 
                     # Place the image info onto our processing queue
                     tile_queue.put(image_info)
@@ -178,12 +176,13 @@ def process_tiles(
                     tile_error_count += worker.feature_detector.error_count
 
         logger.info(
-            "Model Runner Stats Processed {} image tiles for region {}. {} tile errors.".format(
-                total_tile_count, region_request.region_bounds, tile_error_count
+            (
+                f"Model Runner Stats Processed {total_tile_count} image tiles for "
+                f"region {region_request.region_bounds}. {tile_error_count} tile errors."
             )
         )
     except Exception as err:
-        logger.exception("File processing tiles: {}", err)
+        logger.exception(f"File processing tiles: {err}")
         raise ProcessTilesException("Failed to process tiles!") from err
 
     return total_tile_count, tile_error_count
@@ -212,7 +211,7 @@ def _create_tile(gdal_tile_factory, tile_bounds, tmp_image_path, metrics: Metric
     # Use GDAL to create an encoded tile of the image region
     absolute_tile_path = tmp_image_path.absolute()
     with Timer(
-        task_str="Creating image tile: {}".format(absolute_tile_path),
+        task_str=f"Creating image tile: {absolute_tile_path}",
         metric_name=MetricLabels.DURATION,
         logger=logger,
         metrics_logger=metrics,
@@ -253,70 +252,3 @@ def sizeof_fmt(num: float, suffix: str = "B") -> str:
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, "Yi", suffix)
-
-
-def generate_crops(region: ImageRegion, chip_size: ImageDimensions, overlap: ImageDimensions) -> List[ImageRegion]:
-    """
-    Yields a list of overlapping chip bounding boxes for the given region. Chips will start
-    in the upper left corner of the region (i.e. region[0][0], region[0][1]) and will be spaced
-    such that they have the specified horizontal and vertical overlap.
-
-    :param region: ImageDimensions = a tuple for the bounding box of the region ((ul_r, ul_c), (width, height))
-    :param chip_size: ImageDimensions = a tuple for the chip dimensions (width, height)
-    :param overlap: ImageDimensions = a tuple for the overlap (width, height)
-
-    :return: List[ImageRegion] = an iterable list of tuples for the chip bounding boxes [((ul_r, ul_c), (w, h)), ...]
-    """
-    if overlap[0] >= chip_size[0] or overlap[1] >= chip_size[1]:
-        raise ValueError("Overlap must be less than chip size! chip_size = " + str(chip_size) + " overlap = " + str(overlap))
-
-    # Calculate the spacing for the chips taking into account the horizontal and vertical overlap
-    # and how many are needed to cover the region
-    stride_x = chip_size[0] - overlap[0]
-    stride_y = chip_size[1] - overlap[1]
-    
-    sliding_window_x = max(0, region[1][0] - chip_size[0])
-    sliding_window_y = max(0, region[1][1] - chip_size[1])
-    
-    num_x = 1 + ceildiv(sliding_window_x, stride_x)
-    num_y = 1 + ceildiv(sliding_window_y, stride_y)
-
-    w = min(region[1][0], chip_size[0])
-    h = min(region[1][1], chip_size[1])
-    crops = []
-    for r in range(0, num_y):
-        for c in range(0, num_x):
-            # Calculate the bounds of the chip ensuring that the chip does not extend
-            # beyond the edge of the requested region
-            # Region Bounds are: UL corner (row, column) , dimensions (w, h)
-            
-            # If the tile offset plus tile width fits in the region width, use normal stride.
-            # Otherwise, move stride closer to top left corner to fit tile width.
-            if (c * stride_x) + chip_size[0] <= region[1][0]:
-                ul_x = region[0][1] + c * stride_x
-            else:
-                ul_x = region[0][1] + region[1][0] - w
-            
-            # If the tile offset plus height fits in the region height, use normal stride.
-            # Otherwise, move stride closer to top left corner to fit tile height.
-            if (r * stride_y + chip_size[1]) <= region[1][1]:
-                ul_y = region[0][0] + r * stride_y
-            else:
-                ul_y = region[0][0] + region[1][1] - h
-            
-            # Add each new tile to the crop
-            crops.append(((ul_y, ul_x), (w, h)))
-
-    return crops
-
-
-def ceildiv(a: int, b: int) -> int:
-    """
-    Integer ceiling division
-
-    :param a: int = numerator
-    :param b: int = denominator
-
-    :return: ceil(a/b)
-    """
-    return -(-a // b)
