@@ -4,6 +4,10 @@ This file is used to represent changes made between each tagged version of the M
 
 [Reference for OSML Model Runner Release Guide](https://github.com/aws-solutions-library-samples/osml-model-runner/releases)
 
+## v2.0.1
+
+- Fix stable tag job in UC
+
 ## v2.0.0
 
 - Upgrade to OSML v2 beta solution to get two core features:
