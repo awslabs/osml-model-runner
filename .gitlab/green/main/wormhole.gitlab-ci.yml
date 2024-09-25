@@ -4,12 +4,24 @@
 # Jobs that will trigger the container wormhole process
 #
 
-trigger:
+trigger-semver:
   stage: trigger
   variables:
     IMAGE_PATH: $CI_REGISTRY_IMAGE/ie-model-runner
     # Image Tag
     TAG: $CURRENT_TAG
+    # Domain to send image to: SC/TC/BOTH
+    DOMAIN: BOTH
+  trigger:
+    project: wormhole/container-movement-pipelines/container-up
+    branch: rc-1.0.0
+
+trigger-stable:
+  stage: trigger
+  variables:
+    IMAGE_PATH: $CI_REGISTRY_IMAGE/ie-model-runner
+    # Image Tag
+    TAG: stable
     # Domain to send image to: SC/TC/BOTH
     DOMAIN: BOTH
   trigger:
