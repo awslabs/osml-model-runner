@@ -95,3 +95,4 @@ push_to_ecr_ops_stable:
     - docker tag $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:stable-rebake ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/ie-model-runner:stable-rebake
     # push newly tagged image to ecr
     - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/ie-model-runner:stable-rebake
+  when: manual

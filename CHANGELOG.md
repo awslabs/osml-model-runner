@@ -7,6 +7,7 @@ This file is used to represent changes made between each tagged version of the M
 ## v2.0.3
 
 - ci: Include stable tag in container wormhole
+- ci: Require manual job execution to push stable image to OPS
 
 ## v2.0.2
 
