@@ -4,6 +4,10 @@ This file is used to represent changes made between each tagged version of the M
 
 [Reference for OSML Model Runner Release Guide](https://github.com/aws-solutions-library-samples/osml-model-runner/releases)
 
+## v2.0.4
+
+- Add tracking of duplicate detections via logging.warning 
+
 ## v2.0.3
 
 - ci: Include stable tag in container wormhole
