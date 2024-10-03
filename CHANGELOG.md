@@ -8,6 +8,7 @@ This file is used to represent changes made between each tagged version of the M
 
 - ci: Include stable tag in container wormhole
 - ci: Require manual job execution to push stable image to OPS
+- Fix hash collision by performing a check if hash already in dict
 
 ## v2.0.2
 

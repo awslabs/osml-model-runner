@@ -154,7 +154,53 @@ class TestFeatureSelection(TestCase):
         ]
         assert len(feature_selector_1.select_features(original_features)) == 1
         assert len(feature_selector_2.select_features(original_features)) == 2
+    
+    def test_feature_selection_return_no_duplicates(self):
+        from aws.osml.model_runner.common import FeatureDistillationNMS
+        from aws.osml.model_runner.inference import FeatureSelector
 
+        feature_selection_options = FeatureDistillationNMS()
+        feature_selector = FeatureSelector(options=feature_selection_options)
+
+        original_features = [
+            Feature(
+                id="feature_a",
+                geometry=Point((0, 0)),
+                properties={
+                    "bounds_imcoords": [50, 50, 100, 100],
+                    "featureClasses": [{"iri": "ground_motor_passenger_vehicle", "score": 0.45}],
+                },
+            ),
+            Feature(
+                id="feature_b",
+                geometry=Point((0, 0)),
+                properties={
+                    "bounds_imcoords": [45, 45, 101, 101],
+                    "featureClasses": [{"iri": "boat", "score": 0.57}],
+                },
+            ),
+            Feature(
+                id="feature_c",
+                geometry=Point((0, 0)),
+                properties={
+                    "bounds_imcoords": [250, 250, 300, 275],
+                    "featureClasses": [{"iri": "ground_motor_passenger_vehicle", "score": 0.80}],
+                },
+            ),
+            Feature(
+                id="feature_dup",
+                geometry=Point((0, 0)),
+                properties={
+                    "bounds_imcoords": [50, 50, 100, 100],
+                    "featureClasses": [{"iri": "ground_motor_passenger_vehicle", "score": 0.45}],
+                },
+            ),
+        ]
+        boxes, scores, labels_indexes = feature_selector._get_lists_from_features(original_features)
+        assert len(boxes) == 3
+        assert len(scores) == 3
+        assert len(labels_indexes) == 3
+ 
     def test_feature_selection_nms_overlaps_multiple_categories(self):
         from aws.osml.model_runner.common import FeatureDistillationNMS
         from aws.osml.model_runner.inference import FeatureSelector

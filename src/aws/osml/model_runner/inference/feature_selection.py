@@ -83,22 +83,24 @@ class FeatureSelector:
             # [min_x, min_y, max_x, max_y]
             bounds_imcoords = get_feature_image_bounds(feature)
             category, score = self._get_category_and_score_from_feature(feature)
-            boxes.append(bounds_imcoords)
-            categories.append(category)
-            scores.append(score)
-            if self.extents[0] is None or self.extents[0] > bounds_imcoords[0]:
-                self.extents[0] = bounds_imcoords[0]
-            if self.extents[1] is None or self.extents[1] > bounds_imcoords[1]:
-                self.extents[1] = bounds_imcoords[1]
-            if self.extents[2] is None or self.extents[2] < bounds_imcoords[2]:
-                self.extents[2] = bounds_imcoords[2]
-            if self.extents[3] is None or self.extents[3] < bounds_imcoords[3]:
-                self.extents[3] = bounds_imcoords[3]
             bounds_imcoords_rounded = [int(round(coord)) for coord in bounds_imcoords]
             feature_hash_id = hash(str(bounds_imcoords_rounded) + category + str(score))
-            if feature_hash_id in self.feature_id_map:
-                raise Exception(f"Duplicate Feature hash_id for: {feature_hash_id}, {str(bounds_imcoords_rounded)}, {category}, {str(score)}")
-            self.feature_id_map[feature_hash_id] = feature
+            
+            # Check for hash collisions. Don't add same hash to dict if already added
+            if feature_hash_id not in self.feature_id_map:
+                boxes.append(bounds_imcoords)
+                categories.append(category)
+                scores.append(score)
+                if self.extents[0] is None or self.extents[0] > bounds_imcoords[0]:
+                    self.extents[0] = bounds_imcoords[0]
+                if self.extents[1] is None or self.extents[1] > bounds_imcoords[1]:
+                    self.extents[1] = bounds_imcoords[1]
+                if self.extents[2] is None or self.extents[2] < bounds_imcoords[2]:
+                    self.extents[2] = bounds_imcoords[2]
+                if self.extents[3] is None or self.extents[3] < bounds_imcoords[3]:
+                    self.extents[3] = bounds_imcoords[3]
+                self.feature_id_map[feature_hash_id] = feature
+        
         unique_categories = list(set(categories))
         for idx, unique_category in enumerate(unique_categories):
             self.labels_map[str(idx)] = unique_category
