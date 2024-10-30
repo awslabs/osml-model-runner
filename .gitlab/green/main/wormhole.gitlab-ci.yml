@@ -14,7 +14,6 @@ trigger-semver:
     DOMAIN: BOTH
   trigger:
     project: wormhole/container-movement-pipelines/container-up
-    branch: rc-1.0.0
 
 trigger-stable:
   stage: trigger
@@ -26,4 +25,3 @@ trigger-stable:
     DOMAIN: BOTH
   trigger:
     project: wormhole/container-movement-pipelines/container-up
-    branch: rc-1.0.0
