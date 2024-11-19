@@ -7,7 +7,7 @@
 trigger-semver:
   stage: trigger
   variables:
-    IMAGE_PATH: $CI_REGISTRY_IMAGE/ie-model-runner
+    IMAGE_PATH: $CI_REGISTRY_IMAGE/$MICROSERVICE
     # Image Tag
     TAG: $CURRENT_TAG
     # Domain to send image to: SC/TC/BOTH
@@ -18,7 +18,7 @@ trigger-semver:
 trigger-stable:
   stage: trigger
   variables:
-    IMAGE_PATH: $CI_REGISTRY_IMAGE/ie-model-runner
+    IMAGE_PATH: $CI_REGISTRY_IMAGE/$MICROSERVICE
     # Image Tag
     TAG: stable
     # Domain to send image to: SC/TC/BOTH

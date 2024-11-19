@@ -5,7 +5,7 @@
 pytest_functionality: 
   stage: unit
   image:
-    name: ${MODEL_RUNNER_IMAGE}
+    name: ${MICROSERVICE_IMAGE}
     entrypoint: [""]
   needs: [build]
   variables: 

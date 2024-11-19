@@ -51,5 +51,5 @@ grype:ie-model-runner:
   <<: *scan
   needs: [build]
   variables:
-    CS_IMAGE: $MODEL_RUNNER_IMAGE
+    CS_IMAGE: $MICROSERVICE_IMAGE
     GIT_STRATEGY: fetch

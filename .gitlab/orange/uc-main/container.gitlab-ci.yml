@@ -13,18 +13,18 @@ check_update_registry_semver:
     - docker login -u $GITLAB_ACCESS_TOKEN_NAME -p $GITLAB_ACCESS_TOKEN_VALUE $CI_REGISTRY
   script:
     - echo $CURRENT_TAG
-    - CONTAINER_EXISTS=$(docker manifest inspect ${CI_REGISTRY}/maven-daas/inference-engine/model-runner/ie-model-runner:${CURRENT_TAG} > /dev/null ; echo $?)
+    - CONTAINER_EXISTS=$(docker manifest inspect ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CURRENT_TAG} > /dev/null ; echo $?)
     - echo $CONTAINER_EXISTS
-    - UC_CONTAINER_EXISTS=$(docker manifest inspect ${CI_REGISTRY}/maven-daas/inference-engine/model-runner/ie-model-runner:uc-${CURRENT_TAG} > /dev/null ; echo $?)
+    - UC_CONTAINER_EXISTS=$(docker manifest inspect ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:uc-${CURRENT_TAG} > /dev/null ; echo $?)
     - |
       if [ "$CONTAINER_EXISTS" == 0 ]; then
         echo "$CURRENT_TAG Container exists! No action needed";
       else
         if [ "$UC_CONTAINER_EXISTS" == 0 ]; then
           echo "uc-$CURRENT_TAG Container exists! Re-tagging for enclave"
-          docker pull $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:uc-${CURRENT_TAG}
-          docker tag $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:uc-${CURRENT_TAG} $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:${CURRENT_TAG}
-          docker push $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:${CURRENT_TAG}
+          docker pull ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:uc-${CURRENT_TAG}
+          docker tag ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:uc-${CURRENT_TAG} ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CURRENT_TAG}
+          docker push ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CURRENT_TAG}
           echo "uc container re-tagged and pushed to registry";
         else
           echo "$CURRENT_TAG does not exist yet on this enclave, check that container wormhole was successful"
@@ -38,23 +38,23 @@ check_update_registry_stable:
     - docker login -u $GITLAB_ACCESS_TOKEN_NAME -p $GITLAB_ACCESS_TOKEN_VALUE $CI_REGISTRY
   script:
     - echo "checking for stable image tag"
-    - CONTAINER_EXISTS=$(docker manifest inspect ${CI_REGISTRY}/maven-daas/inference-engine/model-runner/ie-model-runner:stable > /dev/null ; echo $?)
+    - CONTAINER_EXISTS=$(docker manifest inspect ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable > /dev/null ; echo $?)
     - echo $CONTAINER_EXISTS
-    - UC_CONTAINER_EXISTS=$(docker manifest inspect ${CI_REGISTRY}/maven-daas/inference-engine/model-runner/ie-model-runner:uc-stable > /dev/null ; echo $?)
+    - UC_CONTAINER_EXISTS=$(docker manifest inspect ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:uc-stable > /dev/null ; echo $?)
     - |
       if [ "$CONTAINER_EXISTS" == 0 ]; then
         echo "stable container exists, but may be old version. Updating stable tag with current uc registry image"
-        docker pull $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:uc-stable
-        docker tag $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:uc-stable $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:stable
+        docker pull ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:uc-stable
+        docker tag ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:uc-stable ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable
         docker images
-        docker push $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:stable
+        docker push ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable
         echo "uc container re-tagged and pushed to registry";
       else
         if [ "$UC_CONTAINER_EXISTS" == 0 ]; then
           echo "uc-stable container exists! Re-tagging for enclave"
-          docker pull $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:uc-stable
-          docker tag $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:uc-stable $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:stable
-          docker push $CI_REGISTRY/maven-daas/inference-engine/model-runner/ie-model-runner:stable
+          docker pull ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:uc-stable
+          docker tag ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:uc-stable ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable
+          docker push ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable
           echo "uc container re-tagged and pushed to registry";
         else
           echo "uc-stable tag does not exist yet on this enclave, check that container wormhole was successful"

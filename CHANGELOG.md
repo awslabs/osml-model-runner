@@ -6,7 +6,8 @@ This file is used to represent changes made between each tagged version of the M
 
 ## v2.0.4
 
-- Add tracking of duplicate detections via logging.warning 
+- Add tracking of duplicate detections via logging.warning
+- ci: Add review account deployment
 
 ## v2.0.3
 
@@ -27,7 +28,7 @@ This file is used to represent changes made between each tagged version of the M
 - Upgrade to OSML v2 beta solution to get two core features:
     - fixed tile size
     - better (~40%) increased write performance
-- fork from OSML to ensure we keep a referencial S3 file location
+- fork from OSML to ensure we keep a referential S3 file location
 
 ## v1.4.2
 

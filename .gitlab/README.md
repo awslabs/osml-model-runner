@@ -41,7 +41,7 @@ build_foo_bar:
 
 This would result in a job that run both scripts:
 
-```
+```yaml
 foo
 bar
 ```
@@ -58,7 +58,19 @@ build_foo_bar:
 
 This would result in the `script` section being replaced and would result in the following output:
 
-```
+```yaml
 foo
 baz
 ```
+
+## Review Account Deployments
+
+When a merge request is created for this microservice, a separate deployment will be kicked off within inference-platform-cdk. This will take any changes made within the microservice and use that code to build and test the specific microservice.
+
+The process will "checkout" a review deployment account and trigger a deployment to that account within IPCDK. The CI pipeline will then check periodically that the IPCDK pipeline completed successfully. There are two ways to pass this section of the MR pipeline, one is for the IPCDK pipeline to complete successfully, and the other is to execute the manual approval job within the CI pipeline jobs.
+
+There is also a chance that the IPCDK pipeline takes longer to complete than the allowed timeout settings on the gitlab runners. If that is the case, then please monitor the IPCDK pipeline and once complete, re-run the  `wait-for-infrastructure-pipeline` job.
+
+Once the deploy stage is completed, the last job is to relinquish the review deployment account so it can be used by the next microservice MR. The review account pipeline will also destroy the existing stacks in the review account to return to a clean slate for the next MR.
+
+If you encounter any errors during the review account deployment pipeline, it may be necessary to check the review account's console for any lingering resources from previous deployments (S3 buckets, policies, CF stacks, etc.). These can be manually deleted in the console to resolve the deployment pipeline errors.

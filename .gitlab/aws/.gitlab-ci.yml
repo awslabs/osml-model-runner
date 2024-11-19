@@ -12,6 +12,7 @@ workflow:
 stages:
   - identify_tag_version
   - lint
+  - prepare
   - build
   - unit
   - test
@@ -31,7 +32,8 @@ before_script:
 variables:
   GITLAB_ANALYZER_SEVERITY: high  # tuned for customer requirements
   GDAL_BASE_IMG: ${CI_REGISTRY}/helix/aip/gdal-base:latest
-  MODEL_RUNNER_IMAGE: ${CI_REGISTRY_IMAGE}/ie-model-runner:${CI_COMMIT_REF_SLUG}
+  MICROSERVICE: ie-model-runner
+  MICROSERVICE_IMAGE: ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CI_COMMIT_REF_SLUG}
 
 include:
   # hidden
@@ -41,12 +43,12 @@ include:
   - local: .gitlab/aws/always/.gitlab-ci.yml
 
   # merge requests
-  - local: .gitlab/aws/merge_request/.gitlab-ci.yml
+  - local: .gitlab/aws/merge_request/*.gitlab-ci.yml
     rules:
       - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
   # branch: mainline
-  - local: .gitlab/aws/mainline/.gitlab-ci.yml
+  - local: .gitlab/aws/mainline/*.gitlab-ci.yml
     rules:
       - if: $CI_COMMIT_BRANCH == "mainline"
 

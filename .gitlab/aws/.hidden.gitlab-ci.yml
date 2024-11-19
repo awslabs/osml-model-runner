@@ -1,7 +1,14 @@
 ---
 # Hidden
 #
+# Items that are hidden by default and must be extended upon to be used. These
+# jobs are normally used in multiple places, so extending them promotes
+# reusability.
+#
 
+######################
+# Docker
+######################
 .kaniko:
   tags: [size:xlarge, arch:amd64]
   retry: 2
@@ -91,9 +98,8 @@
     - apk add aws-cli git skopeo
     - export $(cat vars.env | xargs)
     - export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-    - skopeo copy docker://${MODEL_RUNNER_IMAGE} docker://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/ie-model-runner:${CURRENT_TAG} --dest-creds AWS:$(aws ecr get-login-password --output text) --src-creds gitlab-ci-token:${CI_JOB_TOKEN}
-    - skopeo copy docker://${CI_REGISTRY_IMAGE}/ie-model-runner:stable docker://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/ie-model-runner:stable --dest-creds AWS:$(aws ecr get-login-password --output text) --src-creds gitlab-ci-token:${CI_JOB_TOKEN}
-
+    - skopeo copy docker://${MICROSERVICE_IMAGE} docker://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${MICROSERVICE}:${CURRENT_TAG} --dest-creds AWS:$(aws ecr get-login-password --output text) --src-creds gitlab-ci-token:${CI_JOB_TOKEN}
+    - skopeo copy docker://${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable docker://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${MICROSERVICE}:stable --dest-creds AWS:$(aws ecr get-login-password --output text) --src-creds gitlab-ci-token:${CI_JOB_TOKEN}
 
 .skopeo:
   timeout: 2h
@@ -101,3 +107,96 @@
   before_script:
     - apk add aws-cli git skopeo
     - export $(cat vars.env | xargs)
+######################
+
+######################
+# Targets
+######################
+.gl_api: &gl_api
+    - apk add curl jq
+    - |
+      _gl_api() {
+        method="$1"
+        endpoint="$2"
+        response=$(curl --request "$method" --header "PRIVATE-TOKEN: ${CI_ENV_TOKEN}" \
+          "${CI_API_V4_URL}/$endpoint")
+        echo "$response"
+      }
+
+.target:select:
+  stage: prepare
+  dependencies: []
+  before_script:
+    - *gl_api
+    - |
+      find_open_environment() {
+        for e in "$@"; do
+          response=$(_gl_api GET /groups/${SUBGROUP_ID}/merge_requests?labels=$e)
+          count=$(echo "$response" | jq length)
+          if [ "$count" == "0" ]; then
+            echo "$e"
+            return
+          fi
+        done
+      }
+  script:
+    - >
+      current_label=$(_gl_api GET projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID} | jq -r ".labels | map(select(. | test(\"^review\"))) | first | select(. != null)") 
+    - |  
+      if [ -n "$current_label" ]; then
+        target_env=$current_label
+        echo "The current merge request already has the label $current_label assigned."
+      else
+        target_env=$(find_open_environment review1 review2 review3 review4 review5 review6 review7 review8 review9 review10)
+        if [ -n "$target_env" ]; then
+          _gl_api PUT projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}?add_labels=$target_env
+          echo "Added label $target_env to the current merge request."
+        else
+          echo "Error: No open review environment found."
+          exit 1
+        fi
+      fi
+    - |
+      if [ -n "$target_env" ]; then
+        target="${target_env}"
+        echo -e "\e[94m-----------------------------------------------"
+        echo -e "\e[94m Selected Target = $target"
+        echo -e "\e[94m-----------------------------------------------"
+        echo "TARGET=${target}" >> target.env
+      fi
+  artifacts:
+    reports:
+      dotenv: target.env
+
+.target:load:
+  stage: prepare
+  variables:
+    TARGET: ""
+  script:
+    - apk add git yq
+    - git clone https://gitlab-ci-token:$CI_JOB_TOKEN@$CI_SERVER_HOST/$CONFIG_REPO config
+    - |
+      # Read the account ID and region from the review-accounts.yaml file
+      account_id=$(yq e ".${TARGET}.account_id" config/deployment/review-accounts/review-accounts.yaml | tr -d '"')
+      region=$(yq e ".${TARGET}.region" config/deployment/review-accounts/review-accounts.yaml | tr -d '"')
+
+      echo -e "\e[94m-----------------------------------------------"
+      echo -e "\e[94m Target Environment = $TARGET"
+      echo -e "\e[94m Target AWS Account = $account_id"
+      echo -e "\e[94m Target AWS Region = $region"
+      echo -e "\e[94m-----------------------------------------------"
+
+      echo "TARGET=${TARGET}" >> aws.env
+      echo "REVIEW_ACCOUNT_REGION=${region}" >> aws.env
+      echo "REVIEW_ACCOUNT_ID=${account_id}" >> aws.env
+  artifacts:
+    reports:
+      dotenv: aws.env
+
+.target:unselect:
+  stage: deploy
+  before_script:
+    - *gl_api
+  script:
+    - _gl_api PUT projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}?remove_labels=review1,review2,review3,review4,review5,review6,review7,review8,review9,review10
+######################

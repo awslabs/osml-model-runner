@@ -40,7 +40,7 @@ fortify_scanning:
 # Container Image Scans
 container_scanning:
   variables:
-    DOCKER_IMAGE: $MODEL_RUNNER_IMAGE
+    DOCKER_IMAGE: $MICROSERVICE_IMAGE
     GIT_STRATEGY: fetch
 
 # Override

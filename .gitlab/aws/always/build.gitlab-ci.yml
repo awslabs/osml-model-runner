@@ -5,9 +5,6 @@
 stages:
   - build
 
-variables: 
-  MODEL_RUNNER_IMAGE: ${CI_REGISTRY_IMAGE}/ie-model-runner:${CI_COMMIT_REF_SLUG}
-
 build: 
   extends: .kaniko
   stage: build
@@ -16,4 +13,4 @@ build:
     # User defined
     TARGET: "runner"
     DOCKERFILE: "docker/Dockerfile"
-    DESTINATION: ${MODEL_RUNNER_IMAGE}
+    DESTINATION: ${MICROSERVICE_IMAGE}

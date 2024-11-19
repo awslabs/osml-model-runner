@@ -1,8 +1,0 @@
----
-# Merge Requests
-#
-# Jobs that will only happen on merge requests.
-#
-
-include:
-  - local: .gitlab/aws/merge_request/changelog.gitlab-ci.yml

@@ -10,9 +10,9 @@ tag_stable:
     - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
   script:
     - echo "Tagging and pushing container image as stable"
-    - docker pull ${CI_REGISTRY}/maven-daas/inference-engine/model-runner/ie-model-runner:${CURRENT_TAG}
-    - docker tag ${CI_REGISTRY}/maven-daas/inference-engine/model-runner/ie-model-runner:${CURRENT_TAG} ${CI_REGISTRY}/maven-daas/inference-engine/model-runner/ie-model-runner:stable
-    - docker push ${CI_REGISTRY}/maven-daas/inference-engine/model-runner/ie-model-runner:stable
+    - docker pull ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CURRENT_TAG}
+    - docker tag ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CURRENT_TAG} ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable
+    - docker push ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable
   needs:
     - job: identify_tag_version
       artifacts: true

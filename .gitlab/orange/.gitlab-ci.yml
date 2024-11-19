@@ -13,6 +13,10 @@ stages:
   - publish
   - release
 
+variables: 
+  MICROSERVICE: ie-model-runner
+  MICROSERVICE_IMAGE: ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CI_COMMIT_REF_SLUG}
+
 # Choose pipeline depending on scenario
 include:
   # hidden
@@ -31,11 +35,11 @@ include:
       - if: ($GITLAB_CI_ENV == "green")
 
   # branch: uc-main (pre_deployment)
-  - local: .gitlab/orange/uc-main/.gitlab-ci.yml
+  - local: .gitlab/orange/uc-main/*.gitlab-ci.yml
     rules:
       - if: ($CI_COMMIT_BRANCH == "uc-main")
 
   # branch: main
-  - local: .gitlab/orange/main/.gitlab-ci.yml
+  - local: .gitlab/orange/main/*.gitlab-ci.yml
     rules:
       - if: ($CI_COMMIT_BRANCH == "main")

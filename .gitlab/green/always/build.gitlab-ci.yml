@@ -19,5 +19,5 @@ build:
                     --build-arg BASE_IMG=${GDAL_BASE_IMG} \
                     --build-arg CI=${CI} \
                     --build-arg NEXUS_AUTH=${NEXUS3_USER}:${NEXUS3_PASSWORD} \
-                    --tag $MODEL_RUNNER_IMAGE .
-    - docker push $MODEL_RUNNER_IMAGE
+                    --tag $MICROSERVICE_IMAGE .
+    - docker push $MICROSERVICE_IMAGE
