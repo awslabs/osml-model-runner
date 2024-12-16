@@ -1,61 +1,87 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
+import functools
+import json
 import logging
+import math
 from datetime import datetime
-from io import BufferedReader
-from json import dumps
-from math import radians
-from secrets import token_hex
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from math import degrees, radians
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import shapely
-from geojson import Feature, FeatureCollection, LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon, loads
+from geojson import Feature, LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon
 from osgeo import gdal
 from shapely.geometry.base import BaseGeometry
 
-from aws.osml.model_runner.common import ImageDimensions
-from aws.osml.photogrammetry import GeodeticWorldCoordinate, SensorModel
+from aws.osml.model_runner.common import GeojsonDetectionField, ImageDimensions
+from aws.osml.photogrammetry import GeodeticWorldCoordinate, ImageCoordinate, SensorModel
+
+from .exceptions import InvalidFeaturePropertiesException
+
+logger = logging.getLogger(__name__)
 
 
-def features_to_image_shapes(sensor_model: SensorModel, features: List[Feature]) -> List[BaseGeometry]:
+def features_to_image_shapes(
+    sensor_model: SensorModel, features: List[Feature], skip: Optional[bool] = True
+) -> List[BaseGeometry]:
     """
     Convert geojson objects/shapes to shapely shapes
 
     :param sensor_model: SensorModel = the model to use for the transform
     :param features: List[geojson.Features] = the features to convert
+    :param skip: bool =  Raise an exception when a feature can't be transformed to a shape, defaults True.
 
     :return: List[BaseGeometry] = a list of shapely shapes
+
+    :raises: ValueError = Indicates one or more features could not be transformed to shapes
     """
+    # Set the list of shapes to return
     shapes: List[BaseGeometry] = []
-    if not features:
-        return shapes
-    for feature in features:
-        if "geometry" not in feature:
-            raise ValueError("Feature does not contain a valid geometry")
 
-        feature_geometry = feature["geometry"]
-
-        image_coords = convert_nested_coordinate_lists(feature_geometry["coordinates"], sensor_model.world_to_image)
-
-        feature_geometry["coordinates"] = image_coords
-
-        if isinstance(feature_geometry, Point):
-            shapes.append(shapely.geometry.Point(image_coords))
-        elif isinstance(feature_geometry, LineString):
-            shapes.append(shapely.geometry.LineString(image_coords))
-        elif isinstance(feature_geometry, Polygon):
-            shapes.append(shapely.geometry.shape(feature_geometry))
-        elif isinstance(feature_geometry, MultiPoint):
-            shapes.append(shapely.geometry.MultiPoint(image_coords))
-        elif isinstance(feature_geometry, MultiLineString):
-            shapes.append(shapely.geometry.MultiLineString(image_coords))
-        elif isinstance(feature_geometry, MultiPolygon):
-            shapes.append(shapely.geometry.shape(feature_geometry))
+    # Validate feature input
+    if features is None:
+        error = "Input features are None."
+        if skip is True:
+            logger.warning(error)
+            return shapes
         else:
-            # Unlikely to get here as we're handling all valid geojson types but if the spec
-            # ever changes or if a consumer passes in a custom dictionary that isn't valid
-            # we want to handle it gracefully
-            raise ValueError("Unable to convert feature due to unrecognized or invalid geometry")
+            raise ValueError(error)
+
+    for feature in features:
+        try:
+            # Ensure there is a geometry and coordinates set for the feature
+            if "geometry" not in feature or "coordinates" not in feature["geometry"]:
+                raise ValueError(f"Invalid feature, missing 'geometry' or 'coordinates': {feature}")
+
+            # Extract the base geometry of the GeoJSON feature
+            feature_geometry = feature["geometry"]
+
+            # Project the coordinates from world coordinates to image coordinates
+            image_coords = convert_nested_coordinate_lists(feature_geometry["coordinates"], sensor_model.world_to_image)
+            feature_geometry["coordinates"] = image_coords
+
+            # Covert to a Shapely instance and append to the returned shapes
+            if isinstance(feature_geometry, Point):
+                shapes.append(shapely.geometry.Point(image_coords))
+            elif isinstance(feature_geometry, LineString):
+                shapes.append(shapely.geometry.LineString(image_coords))
+            elif isinstance(feature_geometry, Polygon):
+                shapes.append(shapely.geometry.shape(feature_geometry))
+            elif isinstance(feature_geometry, MultiPoint):
+                shapes.append(shapely.geometry.MultiPoint(image_coords))
+            elif isinstance(feature_geometry, MultiLineString):
+                shapes.append(shapely.geometry.MultiLineString(image_coords))
+            elif isinstance(feature_geometry, MultiPolygon):
+                shapes.append(shapely.geometry.shape(feature_geometry))
+            else:
+                error = f"Invalid geometry in: {feature_geometry}"
+                raise ValueError(error)
+        except ValueError as err:
+            error = f"Failed to transform {feature} with error: {err}"
+            if skip is True:
+                logger.warning(error)
+            else:
+                raise err
 
     return shapes
 
@@ -87,71 +113,6 @@ def convert_nested_coordinate_lists(coordinates_or_lists: List, conversion_funct
         for coordinate_list in coordinates_or_lists:
             output_list.append(convert_nested_coordinate_lists(coordinate_list, conversion_function))
         return output_list
-
-
-def create_mock_feature_collection(payload: BufferedReader, geom=False) -> FeatureCollection:
-    """
-    This function allows us to emulate what we would expect a model to return to MR, a geojson formatted
-    FeatureCollection. This allows us to bypass using a real model if the NOOP_MODEL_NAME is given as the
-    model name in the image request. This is the same logic used by our current default dummy model to select
-    detection points in our pipeline.
-
-    :param payload: BufferedReader = object that holds the data that will be  sent to the feature generator
-    :param geom: Bool = whether or not to return the geom_imcoords field in the geojson
-    :return: FeatureCollection = feature collection containing the center point of a tile given as a detection point
-    """
-    logging.debug("Creating a fake feature collection to use for testing ModelRunner!")
-
-    # Use GDAL to open the image. The binary payload from the HTTP request is used to create an in-memory
-    # virtual file system for GDAL which is then opened to decode the image into a dataset which will give us
-    # access to a NumPy array for the pixels.
-    temp_ds_name = "/vsimem/" + token_hex(16)
-    gdal.FileFromMemBuffer(temp_ds_name, payload.read())
-    ds = gdal.Open(temp_ds_name)
-    height, width = ds.RasterYSize, ds.RasterXSize
-    logging.debug(f"Processing image of size: {width}x{height}")
-
-    # Create a single detection bbox that is at the center of and sized proportionally to the image
-
-    center_xy = width / 2, height / 2
-    fixed_object_size_xy = width * 0.1, height * 0.1
-    fixed_object_bbox = [
-        center_xy[0] - fixed_object_size_xy[0],
-        center_xy[1] - fixed_object_size_xy[1],
-        center_xy[0] + fixed_object_size_xy[0],
-        center_xy[1] + fixed_object_size_xy[1],
-    ]
-
-    fixed_object_polygon = [
-        (center_xy[0] - fixed_object_size_xy[0], center_xy[1] - fixed_object_size_xy[1]),
-        (center_xy[0] - fixed_object_size_xy[0], center_xy[1] + fixed_object_size_xy[1]),
-        (center_xy[0] + fixed_object_size_xy[0], center_xy[1] + fixed_object_size_xy[1]),
-        (center_xy[0] + fixed_object_size_xy[0], center_xy[1] - fixed_object_size_xy[1]),
-    ]
-
-    # Convert that bbox detection into a sample GeoJSON formatted detection. Note that the world coordinates
-    # are not normally provided by the model container, so they're defaulted to 0,0 here since GeoJSON features
-    # require a geometry.
-    json_results = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "geometry": {"coordinates": [0.0, 0.0], "type": "Point"},
-                "id": token_hex(16),
-                "properties": {
-                    "detection_score": 1.0,
-                    "feature_types": {"sample_object": 1.0},
-                    "image_id": token_hex(16),
-                },
-            }
-        ],
-    }
-    if geom is True:
-        json_results["features"][0]["properties"]["geom_imcoords"] = fixed_object_polygon
-    else:
-        json_results["features"][0]["properties"]["bounds_imcoords"] = fixed_object_bbox
-    return loads(dumps(json_results))
 
 
 def calculate_processing_bounds(
@@ -186,10 +147,9 @@ def calculate_processing_bounds(
                 world_coordinates_3d.append(coord)
             else:
                 world_coordinates_3d.append(coord + (0.0,))
-        roi_area = features_to_image_shapes(
-            sensor_model,
-            [Feature(geometry=Polygon([tuple(world_coordinates_3d)]))],
-        )[0]
+        roi_area = features_to_image_shapes(sensor_model, [Feature(geometry=Polygon([tuple(world_coordinates_3d)]))], False)[
+            0
+        ]
 
         if roi_area.intersects(full_image_area):
             area_to_process = roi_area.intersection(full_image_area)
@@ -209,7 +169,7 @@ def calculate_processing_bounds(
     return processing_bounds
 
 
-def get_source_property(image_location: str, image_extension: str, dataset: gdal.Dataset) -> Dict:
+def get_source_property(image_location: str, image_extension: str, dataset: gdal.Dataset) -> Optional[Dict]:
     """
     Get the source property from NITF image
 
@@ -219,14 +179,6 @@ def get_source_property(image_location: str, image_extension: str, dataset: gdal
 
     :return: the source dictionary property to attach to features
     """
-    # Build a source property for features
-    source_property = {
-        "sourceMetadata": [
-            {
-                "location": image_location,
-            }
-        ]
-    }
     # Currently we only support deriving source metadata from NITF images
     if image_extension == "NITF":
         try:
@@ -254,9 +206,100 @@ def get_source_property(image_location: str, image_extension: str, dataset: gdal
                 ]
             }
 
+            return source_property
         except Exception as err:
             logging.warning(f"Source metadata not available for {image_extension} image extension! {err}")
+            return None
     else:
         logging.warning(f"Source metadata not available for {image_extension} image extension!")
-    
-    return source_property
+        return None
+
+
+def get_extents(ds: gdal.Dataset, sm: SensorModel) -> Dict[str, Any]:
+    """
+    Returns the geographic extents of the given GDAL dataset.
+
+    :param ds: GDAL dataset.
+    :param sm: OSML Sensor Model imputed for dataset
+    :return: Dictionary with keys 'north', 'south', 'east', 'west' representing the extents.
+    """
+    # Compute WGS-84 world coordinates for each image corners to impute the extents for visualizations
+    image_corners = [[0, 0], [ds.RasterXSize, 0], [ds.RasterXSize, ds.RasterYSize], [0, ds.RasterYSize]]
+    geo_image_corners = [sm.image_to_world(ImageCoordinate(corner)) for corner in image_corners]
+    locations = [(degrees(p.latitude), degrees(p.longitude)) for p in geo_image_corners]
+    feature_bounds = functools.reduce(
+        lambda prev, f: [
+            min(f[0], prev[0]),
+            min(f[1], prev[1]),
+            max(f[0], prev[2]),
+            max(f[1], prev[3]),
+        ],
+        locations,
+        [math.inf, math.inf, -math.inf, -math.inf],
+    )
+
+    return {
+        "north": feature_bounds[2],
+        "south": feature_bounds[0],
+        "east": feature_bounds[3],
+        "west": feature_bounds[1],
+    }
+
+
+def add_properties_to_features(job_id: str, feature_properties: str, features: List[Feature]) -> List[Feature]:
+    """
+    Add arbitrary and controlled property dictionaries to geojson feature properties
+    :param job_id: str = unique identifier for the job
+    :param feature_properties: str = additional feature properties or metadata from the image processing
+    :param features: List[geojson.Feature] = the list of features to update
+
+    :return: List[geojson.Feature] = updated list of features
+    """
+    try:
+        feature_properties: List[dict] = json.loads(feature_properties)
+        for feature in features:
+            # Update the features with their inference metadata
+            feature["properties"].update(get_inference_metadata_property(job_id, feature["properties"]["inferenceTime"]))
+
+            # For the custom provided feature properties, update
+            for feature_property in feature_properties:
+                feature["properties"].update(feature_property)
+
+            # Remove unneeded feature properties if they are present
+            if feature.get("properties", {}).get("inferenceTime"):
+                del feature["properties"]["inferenceTime"]
+            if feature.get("properties", {}).get(GeojsonDetectionField.BOUNDS):
+                del feature["properties"][GeojsonDetectionField.BOUNDS]
+            if feature.get("properties", {}).get(GeojsonDetectionField.GEOM):
+                del feature["properties"][GeojsonDetectionField.GEOM]
+            if feature.get("properties", {}).get("detection_score"):
+                del feature["properties"]["detection_score"]
+            if feature.get("properties", {}).get("feature_types"):
+                del feature["properties"]["feature_types"]
+            if feature.get("properties", {}).get("image_id"):
+                del feature["properties"]["image_id"]
+            if feature.get("properties", {}).get("adjusted_feature_types"):
+                del feature["properties"]["adjusted_feature_types"]
+
+    except Exception as err:
+        logging.exception(err)
+        raise InvalidFeaturePropertiesException("Could not apply custom properties to features!")
+    return features
+
+
+def get_inference_metadata_property(job_id: str, inference_time: str) -> Dict[str, Any]:
+    """
+    Create an inference dictionary property to append to geojson features
+
+    :param job_id: str = unique identifier for the job
+    :param inference_time: str = the time the inference was made in epoch millisec
+
+    :return: Dict[str, Any] = an inference metadata dictionary property to attach to features
+    """
+    inference_metadata_property = {
+        "inferenceMetadata": {
+            "jobId": job_id,
+            "inferenceDT": inference_time,
+        }
+    }
+    return inference_metadata_property

@@ -14,6 +14,7 @@ from aws.osml.model_runner.common import (
 )
 from aws.osml.model_runner.inference.exceptions import FeatureDistillationException
 
+
 logger = logging.getLogger(__name__)
 
 class FeatureSelector:
@@ -84,11 +85,26 @@ class FeatureSelector:
         for feature in feature_list:
             # [min_x, min_y, max_x, max_y]
             bounds_imcoords = get_feature_image_bounds(feature)
+
+            # This is a workaround for assumptions made by the NMS library and normalization code in this class.
+            # All of that code assumes that features have bounding boxes with a non-zero area. That assumption
+            # does not hold for features reported as a single point geometry or others that might simply be
+            # erroneously reported with a zero width or height bbox. No matter the cause, we would like those
+            # features to pass through our feature selection processing without triggering errors. Here we
+            # add 0.1 of a pixel to the width or height of any bbox if it is currently zero. This does not change
+            # the actual reported geometry of the feature in any way it just ensures the assumption of a non-zero
+            # area is true.
+            bounds_imcoords = (
+                bounds_imcoords[0],
+                bounds_imcoords[1],
+                bounds_imcoords[2] + 0.1 if bounds_imcoords[0] == bounds_imcoords[2] else bounds_imcoords[2],
+                bounds_imcoords[3] + 0.1 if bounds_imcoords[1] == bounds_imcoords[3] else bounds_imcoords[3],
+            )
+
             category, score = self._get_category_and_score_from_feature(feature)
             bounds_imcoords_rounded = [int(round(coord)) for coord in bounds_imcoords]
-            feature_hash_id = hash(str(bounds_imcoords_rounded) + category + str(score))
+            feature_hash_id = hash(str(bounds_imcoords_rounded) + category)
             
-            # Check for hash collisions. Don't add same hash to dict if already added
             if feature_hash_id not in self.feature_id_map:
                 boxes.append(bounds_imcoords)
                 categories.append(category)
@@ -103,8 +119,7 @@ class FeatureSelector:
                     self.extents[3] = bounds_imcoords[3]
                 self.feature_id_map[feature_hash_id] = feature
             else:
-                logger.warning(f"Duplicate Feature hash_id for: {feature_hash_id}, {str(bounds_imcoords_rounded)}, {category}, {str(score)}")
-
+                logger.warning(f"Duplicate Feature hash_id for: {feature_hash_id}, {str(bounds_imcoords_rounded)}, {category}.")
         unique_categories = list(set(categories))
         for idx, unique_category in enumerate(unique_categories):
             self.labels_map[str(idx)] = unique_category
@@ -169,7 +184,7 @@ class FeatureSelector:
         im_boxes = self._denormalize_boxes(boxes)
         for box, score, label in zip(im_boxes, scores, labels):
             category = self.labels_map.get(str(label))
-            feature_hash_id = hash(str(box) + category + str(score))
+            feature_hash_id = hash(str(box) + category)
             feature = self.feature_id_map.get(feature_hash_id)
             if feature:
                 if self.options.algorithm_type == FeatureDistillationAlgorithmType.SOFT_NMS:

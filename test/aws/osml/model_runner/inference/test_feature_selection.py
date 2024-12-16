@@ -1,5 +1,5 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
-
+import unittest
 from unittest import TestCase
 
 import geojson
@@ -8,6 +8,9 @@ from geojson import Feature, Point
 
 class TestFeatureSelection(TestCase):
     def test_feature_selection_empty_list(self):
+        """
+        Test that the feature selector returns an empty list when provided with an empty list of features.
+        """
         from aws.osml.model_runner.common import FeatureDistillationNMS
         from aws.osml.model_runner.inference import FeatureSelector
 
@@ -18,6 +21,9 @@ class TestFeatureSelection(TestCase):
         assert len(features) == 0
 
     def test_feature_selection_none_list(self):
+        """
+        Test that the feature selector returns an empty list when provided with None as input.
+        """
         from aws.osml.model_runner.common import FeatureDistillationNMS
         from aws.osml.model_runner.inference import FeatureSelector
 
@@ -28,6 +34,9 @@ class TestFeatureSelection(TestCase):
         assert len(features) == 0
 
     def test_feature_selection_nms_no_overlap(self):
+        """
+        Test that the feature selector correctly processes a set of non-overlapping features using NMS.
+        """
         from aws.osml.model_runner.common import FeatureDistillationNMS
         from aws.osml.model_runner.inference import FeatureSelector
 
@@ -42,16 +51,15 @@ class TestFeatureSelection(TestCase):
         assert len(sample_features) == len(processed_features)
 
     def test_feature_selection_nms_overlaps(self):
+        """
+        Test that the feature selector deduplicates overlapping features using NMS.
+        """
         from aws.osml.model_runner.common import FeatureDistillationNMS
         from aws.osml.model_runner.inference import FeatureSelector
 
         feature_selection_option = FeatureDistillationNMS()
         feature_selector = FeatureSelector(options=feature_selection_option)
 
-        # The actual geojson isn't used by nms. The only thing we care about for determining
-        # duplicates is the bounds_imcoords property so these shapes are all just simple
-        # points
-        # feature_a and feature_b have IoU ~0.80
         original_features = [
             Feature(
                 id="feature_a",
@@ -73,11 +81,14 @@ class TestFeatureSelection(TestCase):
         assert len(processed_features) == 2
 
     def test_feature_selection_no_selection(self):
+        """
+        Test that when no specific feature selection algorithm is provided, the selector
+        returns the input features unchanged.
+        """
         from aws.osml.model_runner.inference import FeatureSelector
 
         feature_selector = FeatureSelector()
 
-        # feature_a and feature_b have IoU ~0.80
         original_features = [
             Feature(
                 id="feature_a",
@@ -99,6 +110,9 @@ class TestFeatureSelection(TestCase):
         assert processed_features == original_features
 
     def test_feature_selection_unknown_algorithm(self):
+        """
+        Test that an exception is raised if an unknown feature selection algorithm is provided.
+        """
         from aws.osml.model_runner.common import FeatureDistillationNMS, MRPostProcessingAlgorithmType
         from aws.osml.model_runner.inference import FeatureSelector
         from aws.osml.model_runner.inference.exceptions import FeatureDistillationException
@@ -109,7 +123,6 @@ class TestFeatureSelection(TestCase):
         feature_selection_option = FeatureDistillationNMS(algorithm_type=FakeFeatureSelectionAlgorithm.MAGIC)
         feature_selector = FeatureSelector(options=feature_selection_option)
 
-        # feature_a and feature_b have IoU ~0.80
         original_features = [
             Feature(
                 id="feature_a",
@@ -131,6 +144,9 @@ class TestFeatureSelection(TestCase):
             feature_selector.select_features(original_features)
 
     def test_feature_selection_nms_overlaps_custom_threshold(self):
+        """
+        Test that NMS feature selection behaves correctly with custom IoU thresholds.
+        """
         from aws.osml.model_runner.common import FeatureDistillationNMS
         from aws.osml.model_runner.inference import FeatureSelector
 
@@ -139,7 +155,6 @@ class TestFeatureSelection(TestCase):
         feature_selection_option_2 = FeatureDistillationNMS(iou_threshold=0.7)
         feature_selector_2 = FeatureSelector(options=feature_selection_option_2)
 
-        # These features have an IoU of ~0.47
         original_features = [
             Feature(
                 id="feature_a",
@@ -154,8 +169,13 @@ class TestFeatureSelection(TestCase):
         ]
         assert len(feature_selector_1.select_features(original_features)) == 1
         assert len(feature_selector_2.select_features(original_features)) == 2
-    
+
     def test_feature_selection_return_no_duplicates(self):
+        """
+        Test that feature selection does not add a duplicate detection to the map.
+        
+        When multiple detections have the same key, the second detection overwrites the first. 
+        """
         from aws.osml.model_runner.common import FeatureDistillationNMS
         from aws.osml.model_runner.inference import FeatureSelector
 
@@ -200,15 +220,17 @@ class TestFeatureSelection(TestCase):
         assert len(boxes) == 3
         assert len(scores) == 3
         assert len(labels_indexes) == 3
- 
+
     def test_feature_selection_nms_overlaps_multiple_categories(self):
+        """
+        Test that NMS does not deduplicate features if they belong to different categories.
+        """
         from aws.osml.model_runner.common import FeatureDistillationNMS
         from aws.osml.model_runner.inference import FeatureSelector
 
         feature_selection_options = FeatureDistillationNMS()
         feature_selector = FeatureSelector(options=feature_selection_options)
 
-        # feature_a and feature_b have IoU ~0.80 but different labels
         original_features = [
             Feature(
                 id="feature_a",
@@ -238,14 +260,39 @@ class TestFeatureSelection(TestCase):
         processed_features = feature_selector.select_features(original_features)
         assert len(processed_features) == 3
 
+    def test_feature_selection_nms_point_feature(self):
+        """
+        Test that NMS handles point features correctly.
+        """
+        from aws.osml.model_runner.common import FeatureDistillationNMS
+        from aws.osml.model_runner.inference import FeatureSelector
+
+        feature_selection_option = FeatureDistillationNMS()
+        feature_selector = FeatureSelector(options=feature_selection_option)
+
+        test_feature = [
+            Feature(
+                geometry=Point((85.000111, 32.983222, 0.0)),
+                id="point-feature",
+                properties={
+                    "bounds_imcoords": [409.6, 409.6, 409.6, 409.6],
+                    "featureClasses": [{"iri": "boat", "score": 0.85}],
+                },
+            )
+        ]
+        processed_features = feature_selector.select_features(test_feature)
+        assert len(processed_features) == 1
+
     def test_feature_selection_soft_nms_overlaps(self):
+        """
+        Test that Soft NMS deduplicates overlapping features and adjusts scores.
+        """
         from aws.osml.model_runner.common import FeatureDistillationSoftNMS
         from aws.osml.model_runner.inference import FeatureSelector
 
         feature_selection_option = FeatureDistillationSoftNMS()
         feature_selector = FeatureSelector(options=feature_selection_option)
 
-        # feature_a and feature_b have IoU ~0.80
         original_features = [
             Feature(
                 id="feature_a",
@@ -298,6 +345,9 @@ class TestFeatureSelection(TestCase):
         assert processed_properties == expected_properties
 
     def test_feature_selection_soft_nms_single_feature(self):
+        """
+        Test that Soft NMS handles a single feature correctly without modification.
+        """
         from aws.osml.model_runner.inference import FeatureSelector
 
         feature_selector = FeatureSelector()
@@ -338,3 +388,7 @@ class TestFeatureSelection(TestCase):
         ]
         processed_features = feature_selector.select_features(test_feature)
         assert len(processed_features) == 1
+
+
+if __name__ == "__main__":
+    unittest.main()

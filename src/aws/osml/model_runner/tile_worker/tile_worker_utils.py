@@ -1,5 +1,7 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
+import ast
+import json
 import logging
 import tempfile
 from pathlib import Path
@@ -10,18 +12,25 @@ from typing import List, Optional, Tuple
 from aws_embedded_metrics import MetricsLogger
 from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
+from geojson import Feature
 from osgeo import gdal
 
 from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
 from aws.osml.gdal import GDALConfigEnv
 from aws.osml.image_processing.gdal_tile_factory import GDALTileFactory
+from aws.osml.model_runner.api import RegionRequest
+from aws.osml.model_runner.app_config import MetricLabels, ServiceConfig
+from aws.osml.model_runner.common import (
+    FeatureDistillationDeserializer,
+    ImageRegion,
+    Timer,
+    get_credentials_for_assumed_role,
+)
+from aws.osml.model_runner.database import FeatureTable, RegionRequestItem, RegionRequestTable
+from aws.osml.model_runner.inference import FeatureSelector
+from aws.osml.model_runner.inference.endpoint_factory import FeatureDetectorFactory
 from aws.osml.photogrammetry import ElevationModel, SensorModel
 
-from ..api import RegionRequest
-from ..app_config import MetricLabels, ServiceConfig
-from ..common import Timer, get_credentials_for_assumed_role
-from ..database import FeatureTable
-from ..inference.endpoint_factory import FeatureDetectorFactory
 from .exceptions import ProcessTilesException, SetupTileWorkersException
 from .tile_worker import TileWorker
 from .tiling_strategy import TilingStrategy
@@ -60,6 +69,9 @@ def setup_tile_workers(
                 region_request.tile_overlap,
             )
 
+            # Set up our feature table to work with the region quest
+            region_request_table = RegionRequestTable(ServiceConfig.region_request_table)
+
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed
             feature_detector = FeatureDetectorFactory(
@@ -72,11 +84,11 @@ def setup_tile_workers(
             if sensor_model is not None:
                 geolocator = Geolocator(ImagedFeaturePropertyAccessor(), sensor_model, elevation_model=elevation_model)
 
-            worker = TileWorker(tile_queue, feature_detector, geolocator, feature_table)
+            worker = TileWorker(tile_queue, feature_detector, geolocator, feature_table, region_request_table)
             worker.start()
             tile_workers.append(worker)
 
-        logger.info(f"Setup pool of {len(tile_workers)} tile workers")
+        logger.debug(f"Setup pool of {len(tile_workers)} tile workers")
 
         return tile_queue, tile_workers
     except Exception as err:
@@ -86,7 +98,7 @@ def setup_tile_workers(
 
 def process_tiles(
     tiling_strategy: TilingStrategy,
-    region_request: RegionRequest,
+    region_request_item: RegionRequestItem,
     tile_queue: Queue,
     tile_workers: List[TileWorker],
     raster_dataset: gdal.Dataset,
@@ -96,18 +108,43 @@ def process_tiles(
     Loads a GDAL dataset into memory and processes it with a pool of tile workers.
 
     :param tiling_strategy: the approach used to decompose the region into tiles for the ML model
-    :param region_request: RegionRequest = the region request to update.
+    :param region_request_item: RegionRequestItem = the region request to update.
     :param tile_queue: Queue = keeps the image in the queue for processing
-    :param tile_workers: List[Tileworker] = the list of tile workers
+    :param tile_workers: List[TileWorker] = the list of tile workers
     :param raster_dataset: gdal.Dataset = the raster dataset containing the region
     :param sensor_model: Optional[SensorModel] = the sensor model for this raster dataset
 
-    :return: Tuple[int, int] = number of tiles processed, number of tiles with an error
+    :return: Tuple[int, int, List[ImageRegion]] = number of tiles processed, number of tiles with an error
     """
 
-    tile_array = tiling_strategy.compute_tiles(
-        region_request.region_bounds, region_request.tile_size, region_request.tile_overlap
+    # Grab completed tiles from region item
+    # Explicitly cast to Tuple[Tuple[int, int], Tuple[int, int]]
+    # Ensure the bounds have exactly two integers before converting
+    region_bounds: Tuple[Tuple[int, int], Tuple[int, int]] = (
+        (region_request_item.region_bounds[0][0], region_request_item.region_bounds[0][1]),
+        (region_request_item.region_bounds[1][0], region_request_item.region_bounds[1][1]),
     )
+
+    # Explicitly cast tile_size to Tuple[int, int]
+    tile_size: Tuple[int, int] = (region_request_item.tile_size[0], region_request_item.tile_size[1])
+
+    # Explicitly cast tile_overlap to Tuple[int, int]
+    tile_overlap: Tuple[int, int] = (region_request_item.tile_overlap[0], region_request_item.tile_overlap[1])
+
+    tile_array = tiling_strategy.compute_tiles(region_bounds, tile_size, tile_overlap)
+
+    if region_request_item.succeeded_tiles is not None:
+        # Filter ImageRegions based on matching in succeeded_tiles
+        filtered_regions = [
+            region
+            for region in tile_array
+            if [[region[0][0], region[0][1]], [region[1][0], region[1][1]]] not in region_request_item.succeeded_tiles
+        ]
+        if len(tile_array) != len(tile_array):
+            logger.debug(f"{len(tile_array) - len(tile_array)} tiles have already been processed!")
+
+        tile_array = filtered_regions
+
     total_tile_count = len(tile_array)
     try:
         # This will update the GDAL configuration options to use the security credentials for
@@ -115,8 +152,8 @@ def process_tiles(
         # dataset stored in S3) within this "with" statement will be made using customer
         # credentials. At the end of the "with" scope the credentials will be removed.
         image_read_credentials = None
-        if region_request.image_read_role:
-            image_read_credentials = get_credentials_for_assumed_role(region_request.image_read_role)
+        if region_request_item.image_read_role:
+            image_read_credentials = get_credentials_for_assumed_role(region_request_item.image_read_role)
 
         with GDALConfigEnv().with_aws_credentials(image_read_credentials):
             # Use the request and metadata from the raster dataset to create a set of keyword
@@ -124,8 +161,8 @@ def process_tiles(
             # create image tiles using the format, compression, etc. needed by the CV container.
             gdal_tile_factory = GDALTileFactory(
                 raster_dataset=raster_dataset,
-                tile_format=region_request.tile_format,
-                tile_compression=region_request.tile_compression,
+                tile_format=region_request_item.tile_format,
+                tile_compression=region_request_item.tile_compression,
                 sensor_model=sensor_model,
             )
 
@@ -139,7 +176,7 @@ def process_tiles(
                     # Create a temp file name for the encoded region
                     region_image_filename = (
                         f"{token_hex(16)}-region-{tile_bounds[0][0]}-{tile_bounds[0][1]}-"
-                        f"{tile_bounds[1][0]}-{tile_bounds[1][1]}.{region_request.tile_format}"
+                        f"{tile_bounds[1][0]}-{tile_bounds[1][1]}.{region_request_item.tile_format}"
                     )
 
                     # Set a path for the tmp image
@@ -155,8 +192,9 @@ def process_tiles(
                     image_info = {
                         "image_path": tmp_image_path,
                         "region": tile_bounds,
-                        "image_id": region_request.image_id,
-                        "job_id": region_request.job_id,
+                        "image_id": region_request_item.image_id,
+                        "job_id": region_request_item.job_id,
+                        "region_id": region_request_item.region_id,
                     }
 
                     # Place the image info onto our processing queue
@@ -173,12 +211,12 @@ def process_tiles(
                 tile_error_count = 0
                 for worker in tile_workers:
                     worker.join()
-                    tile_error_count += worker.feature_detector.error_count
+                    tile_error_count += worker.failed_tile_count
 
-        logger.info(
+        logger.debug(
             (
                 f"Model Runner Stats Processed {total_tile_count} image tiles for "
-                f"region {region_request.region_bounds}. {tile_error_count} tile errors."
+                f"region {region_request_item.region_bounds}. {tile_error_count} tiles failed to process."
             )
         )
     except Exception as err:
@@ -237,7 +275,7 @@ def _create_tile(gdal_tile_factory, tile_bounds, tmp_image_path, metrics: Metric
             metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
         return None
     else:
-        logger.info(
+        logger.debug(
             "Created %s size %s",
             absolute_tile_path,
             sizeof_fmt(tmp_image_path.stat().st_size),
@@ -252,3 +290,51 @@ def sizeof_fmt(num: float, suffix: str = "B") -> str:
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, "Yi", suffix)
+
+
+def select_features(
+    feature_distillation_option: str,
+    features: List[Feature],
+    processing_bounds: ImageRegion,
+    region_size: str,
+    tile_size: str,
+    tile_overlap: str,
+    tiling_strategy: TilingStrategy,
+) -> List[Feature]:
+    """
+    Selects the desired features using the options in the JobItem (NMS, SOFT_NMS, etc.).
+    This code applies a feature selector only to the features that came from regions of the image
+    that were processed multiple times. First features are grouped based on the region they were
+    processed in. Any features found in the overlap area between regions are run through the
+    FeatureSelector. If they were not part of an overlap area between regions, they will be grouped
+    based on tile boundaries. Any features that fall into the overlap of adjacent tiles are filtered
+    by the FeatureSelector. All other features should not be duplicates; they are added to the result
+    without additional filtering.
+
+    Computationally, this implements two critical factors that lower the overall processing time for the
+    O(N^2) selection algorithms. First, it will filter out the majority of features that couldn't possibly
+    have duplicates generated by our tiled image processing; Second, it runs the selection algorithms
+    incrementally on much smaller groups of features.
+
+    :param region_size:
+    :param feature_distillation_option: str = the options used in selecting features (e.g., NMS/SOFT_NMS, thresholds)
+    :param features: List[Feature] = the list of geojson features to process
+    :param processing_bounds: the requested area of the image
+    :param region_size: str = region size to use for feature dedup
+    :param tile_size: str = size of the tiles used during processing
+    :param tile_overlap: str = overlap between tiles during processing
+    :param tiling_strategy: the tiling strategy to use for feature dedup
+    :return: List[Feature] = the list of geojson features after processing
+    """
+    feature_distillation_option_dict = json.loads(feature_distillation_option)
+    feature_distillation_option = FeatureDistillationDeserializer().deserialize(feature_distillation_option_dict)
+    feature_selector = FeatureSelector(feature_distillation_option)
+
+    region_size = ast.literal_eval(region_size)
+    tile_size = ast.literal_eval(tile_size)
+    overlap = ast.literal_eval(tile_overlap)
+    deduped_features = tiling_strategy.cleanup_duplicate_features(
+        processing_bounds, region_size, tile_size, overlap, features, feature_selector
+    )
+
+    return deduped_features

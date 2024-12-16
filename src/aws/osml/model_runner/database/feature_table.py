@@ -9,7 +9,6 @@ from secrets import token_hex
 from typing import Dict, List, Optional
 
 import geojson
-from _decimal import Decimal
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
@@ -22,6 +21,7 @@ from aws.osml.model_runner.common import ImageDimensions, Timer, get_feature_ima
 
 from .ddb_helper import DDBHelper, DDBItem, DDBKey
 from .exceptions import AddFeaturesException
+from .job_table import JobItem
 
 logger = logging.getLogger(__name__)
 
@@ -53,14 +53,14 @@ class FeatureItem(DDBItem):
         range_key: str
         tile_id: str
         features: [str]
-        expire_time: Optional[Decimal] = None
+        expire_time: Optional[int] = None
     """
 
     hash_key: str
     range_key: Optional[str] = None
     tile_id: Optional[str] = None
     features: Optional[List[str]] = None
-    expire_time: Optional[Decimal] = None
+    expire_time: Optional[int] = None
 
     def __post_init__(self):
         self.ddb_key = DDBKey(
@@ -100,7 +100,7 @@ class FeatureTable(DDBHelper):
         # These records are temporary and will expire 24 hours after creation. Jobs should take
         # minutes to run, so this time should be conservative enough to let a team debug an urgent
         # issue without leaving a ton of state leftover in the system.
-        expire_time_epoch_sec = Decimal(int(start_time_millisec / 1000) + (2 * 60 * 60))
+        expire_time_epoch_sec = int((start_time_millisec / 1000) + (2 * 60 * 60))
         with Timer(
             task_str="Add image features",
             metric_name=MetricLabels.DURATION,
@@ -162,11 +162,11 @@ class FeatureTable(DDBHelper):
     def get_features(self, image_id: str, metrics: MetricsLogger = None) -> List[Feature]:
         """
         Parallelized version to query the database for all items with a given image_id,
-        then convert them into feature items, and group the features per tile.
+        then convert them into feature items.
 
         :param image_id: The image_id to aggregate features from DDB for.
         :param metrics: MetricsLogger = the metrics logger to use to report metrics.
-        :return: List of features aggregates from the DDB table.
+        :return: List of features aggregated from the DDB table.
         """
 
         def process_query(index: int):
@@ -189,23 +189,19 @@ class FeatureTable(DDBHelper):
             logger=logger,
             metrics_logger=metrics,
         ):
-            with ThreadPoolExecutor(max_workers=5) as executor:
+            with ThreadPoolExecutor(max_workers=10) as executor:
                 # Create a range of tasks to query the database for the salted image hash
                 futures = [executor.submit(process_query, i) for i in range(1, self.hash_salt + 1)]
 
-                # For each of the salted index processes the returned items
+                # For each of the salted index processes, add the features to the list
                 for future in as_completed(futures):
                     feature_items = future.result()
-                    grouped_items = self.group_items_by_tile_id(feature_items)
-                    for group in grouped_items:
-                        batch_features = []
-                        for item in grouped_items[group]:
-                            if item.features:
-                                for feature in item.features:
-                                    batch_features.append(geojson.loads(feature))
-                            else:
-                                logger.warning(f"Found FeatureTable item: {item.range_key} with no features!")
-                        features.extend(batch_features)
+                    for item in feature_items:
+                        if item.features:
+                            for feature in item.features:
+                                features.append(geojson.loads(feature))
+                        else:
+                            logger.warning(f"Found FeatureTable item: {item.range_key} with no features!")
 
         return features
 
@@ -223,22 +219,6 @@ class FeatureTable(DDBHelper):
             result.setdefault(key, []).append(feature)
         return result
 
-    @staticmethod
-    def group_items_by_tile_id(items: List[FeatureItem]) -> Dict[str, List[FeatureItem]]:
-        """
-        Group all the feature items by tile id
-
-        :param items: The list of feature items
-        :return: A unique tile id and within tile id contains a list of features
-        """
-        grouped_items: Dict[str, List[FeatureItem]] = {}
-        for item in items:
-            if item.tile_id:
-                grouped_items.setdefault(item.tile_id, []).append(item)
-            else:
-                logger.warning(f"Found FeatureTable item: {item.range_key} with no tile_id!")
-        return grouped_items
-
     def generate_tile_key(self, feature: Feature) -> str:
         """
         Generate the tile key based on the given feature.
@@ -247,6 +227,11 @@ class FeatureTable(DDBHelper):
         :return: The tile key associated with this list of features.
         """
         bbox = get_feature_image_bounds(feature)
+
+        # Handle cases where bounding box could not be determined
+        if not bbox or len(bbox) != 4:
+            logger.error(f"Invalid bounding box for feature: {feature}")
+            raise ValueError("Unable to generate tile key: Invalid bounding box.")
 
         # This is the size of the unique pixels in each tile
         stride_x = self.tile_size[0] - self.overlap[0]
@@ -266,3 +251,30 @@ class FeatureTable(DDBHelper):
             min_y_index -= 1
 
         return f"{feature['properties']['image_id']}-region-{min_x_index}:{max_x_index}:{min_y_index}:{max_y_index}"
+
+    @metric_scope
+    def aggregate_features(self, image_request_item: JobItem, metrics: MetricsLogger = None) -> List[Feature]:
+        """
+        For a given image processing job - aggregate all the features that were collected for it and
+        put them in the correct output sink locations.
+
+        :param image_request_item: JobItem = the image request
+        :param metrics: the current metrics scope
+
+        :return: List[geojson.Feature] = the list of features
+        """
+        if isinstance(metrics, MetricsLogger):
+            metrics.set_dimensions()
+            metrics.put_dimensions(
+                {
+                    MetricLabels.OPERATION_DIMENSION: MetricLabels.FEATURE_AGG_OPERATION,
+                }
+            )
+
+        with Timer(
+            task_str="Aggregating Features", metric_name=MetricLabels.DURATION, logger=logger, metrics_logger=metrics
+        ):
+            features = self.get_features(image_request_item.image_id)
+            logger.debug(f"Total features aggregated: {len(features)}")
+
+        return features
