@@ -4,6 +4,14 @@ This file is used to represent changes made between each tagged version of the M
 
 [Reference for OSML Model Runner Release Guide](https://github.com/aws-solutions-library-samples/osml-model-runner/releases)
 
+## v2.1.0
+
+- Upgrade to OSML v2.3.0 to bring to parity. Includes features:
+    - Feature Selection: Resolved issues in feature selection, particularly addressing errors related to zero-area features, ensuring accurate and error-free processing
+    - Kinesis Integration: Addressed rate exceedance issues with Kinesis by implementing the put_records method, improving data throughput and stability
+    - Miscellaneous Fixes: Corrected missing list handling in FeatureCollection dump calls and removed redundant logic in the no-operation model, streamlining the processing workflow
+- Update `create_elevation_model` function to enable additional parameters for use with `GenericDEMTileSet`
+
 ## v2.0.4
 
 - Add tracking of duplicate detections via logging.warning
