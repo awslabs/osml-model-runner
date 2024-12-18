@@ -44,11 +44,11 @@ push_to_ecr_tst_stable:
     # Login to ECR
     - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}
     # Pull rebaked CTM image
-    - docker pull ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CURRENT_TAG}-rebake
+    - docker pull ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable-rebake
     # Tag gitlab registry image to ecr
-    - docker tag ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CURRENT_TAG}-rebake ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/${MICROSERVICE}:${CURRENT_TAG}-rebake
+    - docker tag ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable-rebake ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/${MICROSERVICE}:stable-rebake
     # push newly tagged image to ecr
-    - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/${MICROSERVICE}:${CURRENT_TAG}-rebake
+    - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/${MICROSERVICE}:stable-rebake
 
 push_to_ecr_ops_semver:
   stage: push
@@ -90,9 +90,9 @@ push_to_ecr_ops_stable:
     # Login to ECR
     - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}
     # Pull rebaked CTM image
-    - docker pull ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CURRENT_TAG}-rebake
+    - docker pull ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable-rebake
     # Tag gitlab registry image to ecr
-    - docker tag ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CURRENT_TAG}-rebake ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/${MICROSERVICE}:${CURRENT_TAG}-rebake
+    - docker tag ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable-rebake ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/${MICROSERVICE}:stable-rebake
     # push newly tagged image to ecr
-    - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/${MICROSERVICE}:${CURRENT_TAG}-rebake
+    - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/${MICROSERVICE}:stable-rebake
   when: manual
