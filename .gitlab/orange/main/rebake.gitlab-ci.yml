@@ -19,7 +19,7 @@ rebake:mr-semver:
     - docker build --file ./docker/Dockerfile.rebake
         --build-arg BASE_IMG=$CI_REGISTRY_IMAGE/${MICROSERVICE}:$CURRENT_TAG
         --tag $CI_REGISTRY_IMAGE/${MICROSERVICE}:${CURRENT_TAG}-rebake .
-    - docker push $CI_REGISTRY_IMAGE/i${MICROSERVICE}:${CURRENT_TAG}-rebake
+    - docker push $CI_REGISTRY_IMAGE/${MICROSERVICE}:${CURRENT_TAG}-rebake
 
 rebake:mr-stable:
   stage: build
