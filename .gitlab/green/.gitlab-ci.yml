@@ -26,6 +26,8 @@ include:
   # always
   - local: .gitlab/green/always/*.gitlab-ci.yml
 
+  - local: .gitlab/orange/.hidden.gitlab-ci.yml
+
   # tag version
   - local: .gitlab/common/current-tag.gitlab-ci.yml
 
