@@ -41,7 +41,7 @@
             "auth": "${GITLAB_AUTH}"
           },
           "${IRONBANK_REGISTRY}": {
-            "auth": "${IRONBANK_CREDENTIAL}"
+            "auth": "$(echo -n "${IRONBANK_USERNAME}:${IRONBANK_CREDENTIAL}" | base64 -w 0)"
           }
         }
       }
@@ -61,6 +61,7 @@
       --label aws.project.commit_author="${CI_COMMIT_AUTHOR}"
       --label aws.project.branch=${CI_COMMIT_BRANCH}
       --label aws.project.url=${CI_PROJECT_URL}
+      --skip-tls-verify
       $( [[ "$(printf '%s' "${TAR_IMAGE_NAME}")" != "" ]] && echo "--tar-path ${TAR_IMAGE_NAME}.tar")
       $( [[ "$(printf '%s' "${DESTINATION}")" != "" ]] && echo "--destination ${DESTINATION}")
       $( [[ "$(printf '%s' "${DESTINATION_ECR_IMAGE}")" != "" ]] && echo "--destination ${DESTINATION_ECR_IMAGE}")
