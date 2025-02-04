@@ -1,7 +1,0 @@
----
-# Tag
-#
-
-include:
-  - local: .gitlab/common/release.gitlab-ci.yml
-  - local: .gitlab/green/tag/stable.gitlab-ci.yml

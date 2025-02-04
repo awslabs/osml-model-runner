@@ -40,7 +40,7 @@ include:
   - local: .gitlab/aws/.hidden.gitlab-ci.yml
 
   # always
-  - local: .gitlab/aws/always/.gitlab-ci.yml
+  - local: .gitlab/aws/always/*.gitlab-ci.yml
 
   # merge requests
   - local: .gitlab/aws/merge_request/*.gitlab-ci.yml
@@ -53,9 +53,21 @@ include:
       - if: $CI_COMMIT_BRANCH == "mainline"
 
   # tag/release
-  - local: .gitlab/aws/tag/.gitlab-ci.yml
+  - local: .gitlab/aws/tag/*.gitlab-ci.yml
     rules:
       - if: $CI_COMMIT_TAG
 
   # overrides
   - local: .gitlab/aws/.overrides.gitlab-ci.yml
+
+  # common
+  - local: .gitlab/common/templates.gitlab-ci.yml
+
+identify_tag_version:
+  extends: .identify_tag_version_template
+
+pytest:
+  extends: .pytest_template
+
+release:
+  extends: .release_template

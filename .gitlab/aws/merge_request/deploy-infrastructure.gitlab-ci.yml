@@ -15,6 +15,10 @@ trigger-infrastructure-pipeline:
     - apk add --no-cache curl jq
     - echo "Triggering infrastructure pipeline..."
     - |
+      # Creating a descriptive label for the pipeline
+      PIPELINE_TITLE="Deploy ${MICROSERVICE}:${CI_COMMIT_REF_SLUG} to ${REVIEW_ACCOUNT_ID}"
+      echo "Pipeline title: $PIPELINE_TITLE"
+    - |
       echo "REVIEW_ACCOUNT_ID: ${REVIEW_ACCOUNT_ID}"
       echo "REVIEW_ACCOUNT_REGION: $REVIEW_ACCOUNT_REGION"
       echo "MICROSERVICE: $MICROSERVICE"
@@ -22,11 +26,12 @@ trigger-infrastructure-pipeline:
     - |
       infrastructure_pipeline_id=$(curl --request POST \
         --form token=$IPCDK_TRIGGER_TOKEN \
-        --form "ref=ci/fix-destroy-review-jobs" \
+        --form "ref=mainline" \
         --form "variables[REVIEW_ACCOUNT_ID]=$REVIEW_ACCOUNT_ID" \
         --form "variables[REVIEW_ACCOUNT_REGION]=$REVIEW_ACCOUNT_REGION" \
         --form "variables[MICROSERVICE]=$MICROSERVICE" \
         --form "variables[TAG]=${CI_COMMIT_REF_SLUG}" \
+        --form "variables[PIPELINE_TITLE]=$PIPELINE_TITLE" \
         "${CI_API_V4_URL}/projects/${IPCDK_ID}/trigger/pipeline" | jq -r '.id')
     - echo "infrastructure_pipeline_id=$infrastructure_pipeline_id" >> infra.env
     - echo $infrastructure_pipeline_id

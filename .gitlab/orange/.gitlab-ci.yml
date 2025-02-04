@@ -23,11 +23,8 @@ include:
   - local: .gitlab/orange/.hidden.gitlab-ci.yml
   - local: .gitlab/aws/.hidden.gitlab-ci.yml
 
-  # release
-  - local: .gitlab/common/release.gitlab-ci.yml
-
-  # tag version
-  - local: .gitlab/common/current-tag.gitlab-ci.yml
+  # common
+  - local: .gitlab/common/templates.gitlab-ci.yml
 
   # green
   - local: .gitlab/green/.gitlab-ci.yml
@@ -43,3 +40,9 @@ include:
   - local: .gitlab/orange/main/*.gitlab-ci.yml
     rules:
       - if: ($CI_COMMIT_BRANCH == "main")
+
+identify_tag_version:
+  extends: .identify_tag_version_template
+
+release:
+  extends: .release_template
