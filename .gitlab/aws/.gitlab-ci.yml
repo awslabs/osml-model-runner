@@ -17,6 +17,7 @@ stages:
   - unit
   - test
   - deploy
+  - cleanup
   - push
   - release
 

@@ -5,101 +5,53 @@ target:select:
 
 target:load:
   extends: .target:load
-  needs: 
+  needs:
     - job: target:select
       artifacts: true
 
 trigger-infrastructure-pipeline:
   stage: deploy
-  script:
-    - apk add --no-cache curl jq
-    - echo "Triggering infrastructure pipeline..."
-    - |
-      # Creating a descriptive label for the pipeline
-      PIPELINE_TITLE="Deploy ${MICROSERVICE}:${CI_COMMIT_REF_SLUG} to ${REVIEW_ACCOUNT_ID}"
-      echo "Pipeline title: $PIPELINE_TITLE"
-    - |
-      echo "REVIEW_ACCOUNT_ID: ${REVIEW_ACCOUNT_ID}"
-      echo "REVIEW_ACCOUNT_REGION: $REVIEW_ACCOUNT_REGION"
-      echo "MICROSERVICE: $MICROSERVICE"
-      echo "TAG: ${CI_COMMIT_REF_SLUG}"
-    - |
-      infrastructure_pipeline_id=$(curl --request POST \
-        --form token=$IPCDK_TRIGGER_TOKEN \
-        --form "ref=mainline" \
-        --form "variables[REVIEW_ACCOUNT_ID]=$REVIEW_ACCOUNT_ID" \
-        --form "variables[REVIEW_ACCOUNT_REGION]=$REVIEW_ACCOUNT_REGION" \
-        --form "variables[MICROSERVICE]=$MICROSERVICE" \
-        --form "variables[TAG]=${CI_COMMIT_REF_SLUG}" \
-        --form "variables[PIPELINE_TITLE]=$PIPELINE_TITLE" \
-        "${CI_API_V4_URL}/projects/${IPCDK_ID}/trigger/pipeline" | jq -r '.id')
-    - echo "infrastructure_pipeline_id=$infrastructure_pipeline_id" >> infra.env
-    - echo $infrastructure_pipeline_id
+  resource_group: ${MICROSERVICE}_${REVIEW_ACCOUNT_ID}_deploy
+  trigger:
+    project: helix/aip/inference-platform-cdk
+    branch: mainline
+    strategy: depend
+  variables:
+    REVIEW_ACCOUNT_ID: ${REVIEW_ACCOUNT_ID}
+    REVIEW_ACCOUNT_REGION: ${REVIEW_ACCOUNT_REGION}
+    TAG: ${CI_COMMIT_REF_SLUG}
+    PIPELINE_TITLE: "Deploy ${MICROSERVICE}:${CI_COMMIT_REF_SLUG} to ${REVIEW_ACCOUNT_ID}"
   needs:
     - job: build
     - job: target:select
       artifacts: true
     - job: target:load
       artifacts: true
-  artifacts:
-    reports:
-      dotenv: infra.env
+  allow_failure: true
 
 manual-approval:
   stage: deploy
+  image: public.ecr.aws/docker/library/alpine:3.19.1
   script:
-    - echo "Waiting for manual approval..."
+    - echo "Manual approval provided..."
   when: manual
-  allow_failure: true
-  rules:
-    - when: manual
-
-wait-for-infrastructure-pipeline:
-  stage: deploy
-  script:
-    - apk add --no-cache curl jq
-    - |
-      while true; do
-        echo "${CI_API_V4_URL}/projects/${IPCDK_ID}/pipelines/${infrastructure_pipeline_id}"
-        pipeline=$(curl --header "PRIVATE-TOKEN: ${CI_ENV_TOKEN}" "${CI_API_V4_URL}/projects/${IPCDK_ID}/pipelines/${infrastructure_pipeline_id}")
-        status=$(curl --header "PRIVATE-TOKEN: ${CI_ENV_TOKEN}" "${CI_API_V4_URL}/projects/${IPCDK_ID}/pipelines/${infrastructure_pipeline_id}" | jq -r '.status')
-        echo "pipeline= $pipeline"
-        if [ "$status" == "failed" ]; then
-          echo "Infrastructure pipeline failed."
-          exit 1
-        elif [ "$status" == "success" ]; then
-          echo "Infrastructure pipeline completed successfully."
-          break
-        else
-          echo "Infrastructure pipeline is still running. Status is: $status. Waiting..."
-          sleep 60
-        fi
-      done
   needs:
-    - job: trigger-infrastructure-pipeline
+    - job: target:select
       artifacts: true
     - job: target:load
       artifacts: true
-  rules:
-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
-      when: on_success
-      allow_failure: true
-    - when: manual
-
-wait-for-infrastructure-pipeline-manual:
-  stage: deploy
-  script:
-    - echo "Infrastructure pipeline completed successfully. Proceeding with the next steps."
-  needs:
-    - job: wait-for-infrastructure-pipeline
-      optional: true
-    - job: manual-approval
-  rules:
-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' || $CI_PIPELINE_SOURCE == 'web'
-
+  allow_failure: true
 
 target:unselect:
   extends: .target:unselect
+  stage: cleanup
   needs:
-    - job: wait-for-infrastructure-pipeline
-    - job: wait-for-infrastructure-pipeline-manual
+    - job: trigger-infrastructure-pipeline
+      optional: true
+    - job: manual-approval
+      optional: true
+    - job: target:select
+      artifacts: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_PIPELINE_SOURCE == "web"'
+      when: on_success

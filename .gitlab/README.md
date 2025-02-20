@@ -67,10 +67,23 @@ baz
 
 When a merge request is created for this microservice, a separate deployment will be kicked off within inference-platform-cdk. This will take any changes made within the microservice and use that code to build and test the specific microservice.
 
-The process will "checkout" a review deployment account and trigger a deployment to that account within IPCDK. The CI pipeline will then check periodically that the IPCDK pipeline completed successfully. There are two ways to pass this section of the MR pipeline, one is for the IPCDK pipeline to complete successfully, and the other is to execute the manual approval job within the CI pipeline jobs.
+The process will "checkout" a review deployment account and trigger a deployment to that account within IPCDK. The CI pipeline will then check periodically that the IPCDK pipeline completed successfully. There are two ways to pass this section of the MR pipeline:
 
-There is also a chance that the IPCDK pipeline takes longer to complete than the allowed timeout settings on the gitlab runners. If that is the case, then please monitor the IPCDK pipeline and once complete, re-run the  `wait-for-infrastructure-pipeline` job.
+1. Wait for the IPCDK pipeline to complete successfully.
+2. Execute the manual approval job within the CI pipeline jobs.
 
-Once the deploy stage is completed, the last job is to relinquish the review deployment account so it can be used by the next microservice MR. The review account pipeline will also destroy the existing stacks in the review account to return to a clean slate for the next MR.
+### Manual Approval and Child Pipeline Cancellation
 
-If you encounter any errors during the review account deployment pipeline, it may be necessary to check the review account's console for any lingering resources from previous deployments (S3 buckets, policies, CF stacks, etc.). These can be manually deleted in the console to resolve the deployment pipeline errors.
+If manual approval is chosen instead of waiting for the automated deployment:
+
+- The reviewer should manually cancel the triggered child pipeline in the IPCDK project.
+- To do this:
+  1. Navigate to the IPCDK project's pipeline page.
+  2. Identify the pipeline triggered for this deployment (match by REVIEW_ACCOUNT_ID).
+  3. Cancel the identified pipeline.
+
+### Important Notes
+
+- Once the deploy stage is completed, the last job is to relinquish the review deployment account so it can be used by the next microservice MR. The review account pipeline will also destroy the existing stacks in the review account to return to a clean slate for the next MR (if the child pipeline completes successfully).
+
+- If you encounter any errors during the review account deployment pipeline, it may be necessary to check the review account's console for any lingering resources from previous deployments (S3 buckets, policies, CF stacks, etc.). These can be manually deleted in the console to resolve the deployment pipeline errors.

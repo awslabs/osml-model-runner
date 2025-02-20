@@ -195,7 +195,7 @@
       dotenv: aws.env
 
 .target:unselect:
-  stage: deploy
+  stage: cleanup
   before_script:
     - *gl_api
   script:
