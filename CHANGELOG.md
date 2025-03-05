@@ -4,6 +4,10 @@ This file is used to represent changes made between each tagged version of the M
 
 [Reference for OSML Model Runner Release Guide](https://github.com/aws-solutions-library-samples/osml-model-runner/releases)
 
+## v2.1.4
+
+- Remove usage of root python logger
+
 ## v2.1.3
 
 - osml-imagery-toolkit version bump to v1.4.2

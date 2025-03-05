@@ -30,7 +30,7 @@ def configure_logging(verbose: bool) -> None:
     if verbose:
         logging_level = logging.DEBUG
 
-    root_logger = logging.getLogger()
+    root_logger = logging.getLogger(__name__)
     root_logger.setLevel(logging_level)
 
     ch = logging.StreamHandler()

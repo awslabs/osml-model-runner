@@ -9,6 +9,7 @@ from .base_status_monitor import BaseStatusMonitor
 from .exceptions import StatusMonitorException
 from .status_message import StatusMessage
 
+logger = logging.getLogger(__name__)
 
 class RegionStatusMonitor(BaseStatusMonitor):
     """
@@ -50,7 +51,7 @@ class RegionStatusMonitor(BaseStatusMonitor):
             and region_request_item.processing_duration is not None
         ):
             try:
-                logging.debug(
+                logger.debug(
                     "RegionStatusMonitorUpdate",
                     extra={
                         "reason": message,

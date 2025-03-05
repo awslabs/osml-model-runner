@@ -217,9 +217,9 @@ def get_source_property(image_location: str, image_extension: str, dataset: gdal
             }
 
         except Exception as err:
-            logging.warning(f"Source metadata not available for {image_extension} image extension! {err}")
+            logger.warning(f"Source metadata not available for {image_extension} image extension! {err}")
     else:
-        logging.warning(f"Source metadata not available for {image_extension} image extension!")
+        logger.warning(f"Source metadata not available for {image_extension} image extension!")
 
     return source_property
 

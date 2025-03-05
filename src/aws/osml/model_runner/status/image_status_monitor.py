@@ -9,6 +9,7 @@ from .base_status_monitor import BaseStatusMonitor
 from .exceptions import StatusMonitorException
 from .status_message import StatusMessage
 
+logger = logging.getLogger(__name__)
 
 class ImageStatusMonitor(BaseStatusMonitor):
     """
@@ -49,7 +50,7 @@ class ImageStatusMonitor(BaseStatusMonitor):
             and image_request_item.processing_duration is not None
         ):
             try:
-                logging.info(
+                logger.info(
                     "ImageStatusMonitorUpdate",
                     extra={
                         "reason": message,
