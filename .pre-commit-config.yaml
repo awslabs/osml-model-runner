@@ -57,7 +57,16 @@ repos:
             pyproject.toml|
             setup.cfg|
             setup.py|
-            py.typed
+            py.typed|
+            jest.config.js|
+            pytest.ini|
+            requirements.txt|
+            cdk/osml-model-validation-tool/\..+|
+            cdk/osml-model-validation-tool/cdk.json|
+            cdk/osml-model-validation-tool/package.json|
+            cdk/osml-model-validation-tool/package-lock.json|
+            cdk/osml-model-validation-tool/tsconfig.json|
+            cdk/osml-model-validation-tool/jest.config.js
           )$
       - id: copyright-required
         name: require copyright
@@ -72,5 +81,14 @@ repos:
             pyproject.toml|
             setup.cfg|
             setup.py|
-            py.typed
+            py.typed|
+            jest.config.js|
+            pytest.ini|
+            requirements.txt|
+            cdk/osml-model-validation-tool/\..+|
+            cdk/osml-model-validation-tool/cdk.json|
+            cdk/osml-model-validation-tool/package.json|
+            cdk/osml-model-validation-tool/package-lock.json|
+            cdk/osml-model-validation-tool/tsconfig.json|
+            cdk/osml-model-validation-tool/jest.config.js
           )$

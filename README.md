@@ -115,7 +115,7 @@ Note: Timeline Event logs like the example above are written at an INFO level.
 
 First, ensure you have installed the following tools locally
 
-- [docker](https://nodejs.org/en)
+- [docker](https://docs.docker.com/get-started/)
 - [tox](https://tox.wiki/en/latest/installation.html)
 - [osml cdk](https://github.com/aws-solutions-library-samples/osml-cdk-constructs) deployed into your aws account
 

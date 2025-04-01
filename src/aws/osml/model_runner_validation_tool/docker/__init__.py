@@ -1,5 +1,3 @@
 #  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
-"""
-Unit tests for the project.
-"""
+# Docker module for model runner validation tools

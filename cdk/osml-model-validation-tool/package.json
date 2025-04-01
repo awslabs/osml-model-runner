@@ -1,0 +1,31 @@
+{
+  "name": "osml-model-validation-tool",
+  "version": "0.1.0",
+  "bin": {
+    "osml-model-validation-tool": "bin/osml-model-validation-tool.js"
+  },
+  "description": "OSML Model Validation Tool",
+  "scripts": {
+    "build": "npm run build:lambda && echo && echo Compiling Typescript... && tsc && echo Typescript compiled! && echo",
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk",
+    "deploy": "npm run clean && npm run build && echo Deploying CDK... && npx cdk deploy",
+    "clean": "rm -rf dist && rm -rf cdk.out",
+    "build:lambda": "node scripts/bundle-lambda.js"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "22.7.9",
+    "aws-cdk": "2.1016.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.6.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.196.0",
+    "constructs": "^10.0.0",
+    "fs-extra": "^11.1.1"
+  }
+}

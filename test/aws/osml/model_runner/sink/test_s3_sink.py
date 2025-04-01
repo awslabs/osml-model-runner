@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import unittest
 from typing import List
@@ -62,6 +62,7 @@ class TestS3Sink(unittest.TestCase):
                 "Bucket": TEST_RESULTS_BUCKET,
                 "Key": f"{TEST_PREFIX}/{TEST_IMAGE_ID}.geojson",
                 "Body": ANY,
+                "ChecksumAlgorithm": "CRC32",
             },
         )
         s3_sink.write(TEST_IMAGE_ID, self.sample_feature_list)
@@ -92,6 +93,7 @@ class TestS3Sink(unittest.TestCase):
                 "Bucket": TEST_RESULTS_BUCKET,
                 "Key": f"{TEST_PREFIX}/123.geojson",
                 "Body": ANY,
+                "ChecksumAlgorithm": "CRC32",
             },
         )
         s3_sink.write(image_id_with_slashes, self.sample_feature_list)

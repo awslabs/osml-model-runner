@@ -38,9 +38,14 @@ __pycache__/
 /doc/_apidoc/
 
 # Build and distribution directories
-/build
-/dist
-/htmlcov
+build
+dist
+htmlcov
 
 # Log file outputs
 *.log
+
+# Mise config - prefer more generic .tool-versions over .mise.toml
+*.toml
+
+node_modules
