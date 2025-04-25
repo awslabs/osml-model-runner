@@ -124,11 +124,11 @@ class JobTable(DDBHelper):
         """
 
         try:
-            # These records are temporary and will expire 24 hours after creation. Jobs should take
+            # These records are temporary and will expire 7 days after creation. Jobs should take
             # minutes to run so this time should be conservative enough to let a team debug an urgent
             # issue without leaving a ton of state leftover in the system.
             start_time_millisec = int(time.time() * 1000)
-            expire_time_epoch_sec = int(int(start_time_millisec / 1000) + (24 * 60 * 60))
+            expire_time_epoch_sec = int(int(start_time_millisec / 1000) + (7 * 24 * 60 * 60))
 
             # Update the job item to have the correct start parameters
             image_request_item.start_time = start_time_millisec

@@ -135,7 +135,7 @@ class RegionRequestTable(DDBHelper):
             region_request_item.succeeded_tile_count = 0
             region_request_item.failed_tile_count = 0
             region_request_item.processing_duration = 0
-            region_request_item.expire_time = int((start_time_millisec / 1000) + (24 * 60 * 60))
+            region_request_item.expire_time = int((start_time_millisec / 1000) + (7 * 24 * 60 * 60))
 
             # Put the item into the table
             self.put_ddb_item(region_request_item)
