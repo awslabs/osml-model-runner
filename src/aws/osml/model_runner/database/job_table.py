@@ -7,6 +7,7 @@ from typing import Optional
 
 from dacite import from_dict
 
+from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.api import ImageRequest
 
 from .ddb_helper import DDBHelper, DDBItem, DDBKey
@@ -124,11 +125,12 @@ class JobTable(DDBHelper):
         """
 
         try:
-            # These records are temporary and will expire 24 hours after creation. Jobs should take
+            # These records are temporary and will expire 24 hours after creation.  An optional environment variable can be set to modify this value. Jobs should take
             # minutes to run so this time should be conservative enough to let a team debug an urgent
             # issue without leaving a ton of state leftover in the system.
+            ddb_ttl_in_days = ServiceConfig.ddb_ttl_in_days
             start_time_millisec = int(time.time() * 1000)
-            expire_time_epoch_sec = int(int(start_time_millisec / 1000) + (24 * 60 * 60))
+            expire_time_epoch_sec = int(int(start_time_millisec / 1000) + (ddb_ttl_in_days * 24 * 60 * 60))
 
             # Update the job item to have the correct start parameters
             image_request_item.start_time = start_time_millisec

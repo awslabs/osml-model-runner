@@ -9,6 +9,7 @@ from dacite import from_dict
 
 from aws.osml.model_runner.api import RegionRequest
 from aws.osml.model_runner.common import ImageRegion, RequestStatus, TileState
+from aws.osml.model_runner.app_config import ServiceConfig
 
 from .ddb_helper import DDBHelper, DDBItem, DDBKey
 from .exceptions import CompleteRegionException, GetRegionRequestItemException, StartRegionException, UpdateRegionException
@@ -127,6 +128,7 @@ class RegionRequestTable(DDBHelper):
 
         try:
             start_time_millisec = int(time.time() * 1000)
+            ddb_ttl_in_days = ServiceConfig.ddb_ttl_in_days
 
             # Update the job item to have the correct start parameters
             region_request_item.start_time = start_time_millisec
@@ -135,7 +137,7 @@ class RegionRequestTable(DDBHelper):
             region_request_item.succeeded_tile_count = 0
             region_request_item.failed_tile_count = 0
             region_request_item.processing_duration = 0
-            region_request_item.expire_time = int((start_time_millisec / 1000) + (24 * 60 * 60))
+            region_request_item.expire_time = int((start_time_millisec / 1000) + (ddb_ttl_in_days * 24 * 60 * 60))
 
             # Put the item into the table
             self.put_ddb_item(region_request_item)
