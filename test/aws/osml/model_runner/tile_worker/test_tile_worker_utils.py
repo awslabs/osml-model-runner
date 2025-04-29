@@ -1,13 +1,14 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 from unittest import TestCase, main
 from unittest.mock import Mock, patch
 
 
 class TestTileWorkerUtils(TestCase):
+    @patch("aws.osml.model_runner.tile_worker.tile_worker_utils.FeatureDetectorFactory")
     @patch("aws.osml.model_runner.tile_worker.tile_worker_utils.TileWorker", autospec=True)
     @patch("aws.osml.model_runner.tile_worker.tile_worker_utils.ServiceConfig", autospec=True)
-    def test_setup_tile_workers(self, mock_service_config, mock_tile_worker):
+    def test_setup_tile_workers(self, mock_service_config, mock_tile_worker, mock_feature_detector_factory):
         """
         Test the setup of tile workers, ensuring the correct number of workers is initialized
         based on the configuration and that workers are started correctly.
@@ -15,6 +16,7 @@ class TestTileWorkerUtils(TestCase):
         from aws.osml.model_runner.api import RegionRequest
         from aws.osml.model_runner.tile_worker.tile_worker_utils import setup_tile_workers
 
+        mock_feature_detector_factory.return_value.build.return_value = Mock()
         mock_tile_worker.start = Mock()
         mock_num_tile_workers = 4
         mock_service_config.workers = mock_num_tile_workers
@@ -74,7 +76,59 @@ class TestTileWorkerUtils(TestCase):
             # Attempt to set up workers should fail and raise the specified exception
             setup_tile_workers(mock_region_request, mock_sensor_model, mock_elevation_model)
 
-    def test_process_tiles(self):
+    @patch("aws.osml.model_runner.tile_worker.tile_worker_utils.FeatureDetectorFactory", autospec=True)
+    @patch("aws.osml.model_runner.tile_worker.tile_worker_utils.TileWorker", autospec=True)
+    @patch("aws.osml.model_runner.tile_worker.tile_worker_utils.ServiceConfig", autospec=True)
+    def test_setup_tile_workers_with_endpoint_parameters(
+        self, mock_service_config, mock_tile_worker, mock_feature_detector_factory
+    ):
+        """
+        Test that when model_endpoint_parameters are provided in a region request the feature detector is called with
+         the endpoint parameters.
+        """
+        from aws.osml.model_runner.api import RegionRequest
+        from aws.osml.model_runner.tile_worker.tile_worker_utils import setup_tile_workers
+
+        start_mock = Mock()
+        mock_tile_worker.return_value.start = start_mock
+        mock_num_tile_workers = 1
+        mock_service_config.workers = mock_num_tile_workers
+
+        # Create a mock feature detector
+        mock_feature_detector = Mock()
+        mock_feature_detector_factory.return_value.build.return_value = mock_feature_detector
+
+        mock_region_request = RegionRequest(
+            {
+                "tile_size": (10, 10),
+                "tile_overlap": (1, 1),
+                "tile_format": "NITF",
+                "image_id": "1",
+                "image_url": "/mock/path",
+                "region_bounds": ((0, 0), (50, 50)),
+                "model_invoke_mode": "SM_ENDPOINT",
+                "image_extension": "fake",
+                "model_name": "test-model",
+                "model_endpoint_parameters": {"TargetVariant": "model-variant-1"},
+            }
+        )
+
+        work_queue, tile_worker_list = setup_tile_workers(mock_region_request)
+
+        # Assert that FeatureDetectorFactory was initialized with the correct parameters
+        mock_feature_detector_factory.assert_called_once_with(
+            endpoint="test-model",
+            endpoint_mode="SM_ENDPOINT",
+            endpoint_parameters={"TargetVariant": "model-variant-1"},
+            assumed_credentials=None,
+        )
+
+        # Additional assertions to ensure the rest of the setup process worked as expected
+        assert len(tile_worker_list) == mock_num_tile_workers
+        assert start_mock.call_count == mock_num_tile_workers
+
+    @patch("aws.osml.model_runner.tile_worker.tile_worker_utils.FeatureDetectorFactory", autospec=True)
+    def test_process_tiles(self, mock_feature_detector_factory):
         """
         Test processing of image tiles using a tiling strategy, ensuring all expected tiles are processed
         without errors. The test also validates successful integration with GDAL datasets.
@@ -83,6 +137,9 @@ class TestTileWorkerUtils(TestCase):
         from aws.osml.model_runner.database import RegionRequestItem
         from aws.osml.model_runner.tile_worker import VariableTileTilingStrategy
         from aws.osml.model_runner.tile_worker.tile_worker_utils import process_tiles, setup_tile_workers
+
+        mock_feature_detector = Mock()
+        mock_feature_detector_factory.return_value.build.return_value = mock_feature_detector
 
         # Mock the RegionRequest and RegionRequestItem
         mock_region_request = RegionRequest(

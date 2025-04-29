@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import logging
 from io import BufferedReader
@@ -32,16 +32,19 @@ class SMDetector(Detector):
     provided IAM credentials.
     """
 
-    def __init__(self, endpoint: str, assumed_credentials: Dict[str, str] = None) -> None:
+    def __init__(
+        self, endpoint: str, endpoint_parameters: Optional[Dict[str, str]] = None, assumed_credentials: Dict[str, str] = None
+    ) -> None:
         """
         Initializes the SMDetector with the SageMaker endpoint and optional credentials.
 
         :param endpoint: str = The name of the SageMaker endpoint to invoke.
+        :param endpoint_parameters: Optional[Dict[str, str]] = Additional parameters to pass to the model endpoint.
         :param assumed_credentials: Dict[str, str] = Optional credentials for invoking the SageMaker model.
         """
         if assumed_credentials is not None:
             # Use the provided credentials to invoke SageMaker endpoints in another AWS account.
-            self.sm_client = boto3.client(
+            self.sm_runtime_client = boto3.client(
                 "sagemaker-runtime",
                 config=BotoConfig.sagemaker,
                 aws_access_key_id=assumed_credentials.get("AccessKeyId"),
@@ -50,8 +53,10 @@ class SMDetector(Detector):
             )
         else:
             # Use the default role for this container if no specific credentials are provided.
-            self.sm_client = boto3.client("sagemaker-runtime", config=BotoConfig.sagemaker)
+            self.sm_runtime_client = boto3.client("sagemaker-runtime", config=BotoConfig.sagemaker)
+
         super().__init__(endpoint=endpoint)
+        self.set_endpoint_parameters(endpoint_parameters)
 
     @property
     def mode(self) -> ModelInvokeMode:
@@ -99,8 +104,10 @@ class SMDetector(Detector):
                 logger=logger,
                 metrics_logger=metrics,
             ):
-                # Invoke the real SageMaker model endpoint
-                model_response = self.sm_client.invoke_endpoint(EndpointName=self.endpoint, Body=payload)
+                additional_params: Dict[str, str] = self.endpoint_parameters or {}
+                model_response = self.sm_runtime_client.invoke_endpoint(
+                    EndpointName=self.endpoint, Body=payload, **additional_params
+                )
                 retry_count = model_response.get("ResponseMetadata", {}).get("RetryAttempts", 0)
                 if isinstance(metrics, MetricsLogger):
                     metrics.put_metric(MetricLabels.RETRIES, retry_count, str(Unit.COUNT.value))
@@ -125,6 +132,38 @@ class SMDetector(Detector):
             logger.exception(de)
             raise de
 
+    def set_endpoint_parameters(self, parameters: Optional[Dict[str, str]]) -> None:
+        """
+        This method sets the additional parameters to use in the sagemaker invoke_model call.
+        It filters out any parameter that is not valid for the invoke_model method and logs a warning
+        containing any invalid parameters.  Valid parameters can be found in the boto3 docs
+        https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sagemaker-runtime/client/invoke_endpoint.html
+
+        :param parameters: Optional[Dict] = The endpoint parameters to add to the request
+
+        :return: None
+        """
+        if parameters is not None:
+            valid_sm_parameters = {
+                "ContentType",
+                "Accept",
+                "CustomAttributes",
+                "TargetModel",
+                "TargetVariant",
+                "TargetContainerHostname",
+                "InferenceId",
+                "EnableExplanations",
+                "InferenceComponentName",
+                "SessionId",
+            }
+            filtered_parameters = parameters.copy()
+            invalid_parameters = {k for k in parameters if k not in valid_sm_parameters}
+            for param in invalid_parameters:
+                filtered_parameters.pop(param)
+            self.endpoint_parameters = self.endpoint_parameters | filtered_parameters
+            if invalid_parameters:
+                logger.warning(f"Ignoring invalid sagemaker endpoint parameters: {invalid_parameters}")
+
 
 class SMDetectorBuilder(FeatureEndpointBuilder):
     """
@@ -134,15 +173,19 @@ class SMDetectorBuilder(FeatureEndpointBuilder):
     invocation of SageMaker models.
     """
 
-    def __init__(self, endpoint: str, assumed_credentials: Dict[str, str] = None):
+    def __init__(
+        self, endpoint: str, endpoint_parameters: Optional[Dict[str, str]] = None, assumed_credentials: Dict[str, str] = None
+    ):
         """
         Initializes the SMDetectorBuilder with the SageMaker endpoint and optional credentials.
 
         :param endpoint: str = The name of the SageMaker endpoint to be used.
+        :param endpoint_parameters: Optional[Dict[str, str]] = Additional parameters to pass to the model endpoint.
         :param assumed_credentials: Dict[str, str] = Optional credentials to use with the SageMaker endpoint.
         """
         super().__init__()
         self.endpoint = endpoint
+        self.endpoint_parameters = endpoint_parameters
         self.assumed_credentials = assumed_credentials
 
     def build(self) -> Optional[Detector]:
@@ -153,5 +196,6 @@ class SMDetectorBuilder(FeatureEndpointBuilder):
         """
         return SMDetector(
             endpoint=self.endpoint,
+            endpoint_parameters=self.endpoint_parameters,
             assumed_credentials=self.assumed_credentials,
         )

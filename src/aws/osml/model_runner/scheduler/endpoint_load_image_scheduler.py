@@ -93,7 +93,7 @@ class EndpointLoadImageScheduler(ImageScheduler):
             # do not return an image processing request because we want this worker to go check the region
             # queue before starting a new image.
             if self.image_request_queue.requested_jobs_table.start_next_attempt(next_request):
-                logger.debug(f"Started selected job {next_request.job_id}. Attempt # {next_request.num_attempts +1}")
+                logger.debug(f"Started selected job {next_request.job_id}. Attempt # {next_request.num_attempts + 1}")
                 return next_request.request_payload
 
             logger.debug(
@@ -126,8 +126,10 @@ class EndpointLoadImageScheduler(ImageScheduler):
         """
         try:
             response = self.sm_client.describe_endpoint(EndpointName=endpoint_name)
-            production_variant = response["ProductionVariants"][0]
-            return production_variant.get("CurrentInstanceCount", 1)
+            total_instances = 0
+            for production_variant in response["ProductionVariants"]:
+                total_instances += production_variant.get("CurrentInstanceCount", 1)
+            return total_instances
         except ClientError as e:
             logger.error(f"Error describing endpoint {endpoint_name}: {e}")
             return 1  # Default to 1 instance if we can't get the count
