@@ -61,6 +61,7 @@ class ImageRequest:
     outputs: List[Dict[str, Any]] = field(default_factory=list)
     model_name: str = ""
     model_invoke_mode: ModelInvokeMode = ModelInvokeMode.NONE
+    model_endpoint_parameters: Optional[Dict[str, Any]] = None
     tile_size: ImageDimensions = (1024, 1024)
     tile_overlap: ImageDimensions = (50, 50)
     tile_format: str = ImageFormats.NITF.value
@@ -89,6 +90,9 @@ class ImageRequest:
             "image_read_role": image_request.get("imageReadRole", ""),
             "model_name": image_request["imageProcessor"]["name"],
             "model_invoke_mode": ImageRequest._parse_model_invoke_mode(image_request["imageProcessor"].get("type")),
+            "model_endpoint_parameters": ImageRequest._parse_model_endpoint_parameters(
+                image_request.get("imageProcessorParameters")
+            ),
             "model_invocation_role": image_request["imageProcessor"].get("assumedRole", ""),
             "tile_size": ImageRequest._parse_tile_dimension(image_request.get("imageProcessorTileSize")),
             "tile_overlap": ImageRequest._parse_tile_dimension(image_request.get("imageProcessorTileOverlap")),
@@ -193,6 +197,23 @@ class ImageRequest:
         )
         return deserialize_post_processing_list(cleaned_post_processing)
 
+    @staticmethod
+    def _parse_model_endpoint_parameters(endpoint_parameters: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """
+        Parses endpoint parameters as a dictionary.
+
+        :param endpoint_parameters: Dictionary of model endpoint parameters
+        :return: Validated dictionary of model endpoint parameters
+        """
+        if isinstance(endpoint_parameters, dict):
+            return endpoint_parameters
+        else:
+            logger.warning(
+                f"Missing/Invalid model endpoint parameters dictionary: {endpoint_parameters}."
+                f" Proceeding with default values."
+            )
+            return None
+
     def is_valid(self) -> bool:
         """
         Validates whether the ImageRequest instance has all required attributes.
@@ -229,6 +250,7 @@ class ImageRequest:
             "image_read_role": self.image_read_role,
             "model_name": self.model_name,
             "model_invoke_mode": self.model_invoke_mode,
+            "model_endpoint_parameters": self.model_endpoint_parameters,
             "model_invocation_role": self.model_invocation_role,
             "tile_size": self.tile_size,
             "tile_overlap": self.tile_overlap,

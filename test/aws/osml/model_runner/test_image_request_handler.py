@@ -1,10 +1,13 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
-
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+from collections import Counter
 from datetime import datetime, timezone
 from unittest import TestCase, main
 from unittest.mock import MagicMock, patch
 
-from aws.osml.model_runner.api import ImageRequest
+import boto3
+from botocore.stub import Stubber
+
+from aws.osml.model_runner.api import ImageRequest, ModelInvokeMode
 from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.common import EndpointUtils, RequestStatus
 from aws.osml.model_runner.database import EndpointStatisticsTable, JobItem, JobTable, RegionRequestTable
@@ -13,6 +16,16 @@ from aws.osml.model_runner.image_request_handler import ImageRequestHandler
 from aws.osml.model_runner.queue import RequestQueue
 from aws.osml.model_runner.status import ImageStatusMonitor
 from aws.osml.model_runner.tile_worker import TilingStrategy
+
+MOCK_DESCRIBE_ENDPOINT_RESPONSE = {
+    "EndpointName": "test-model-name",
+    "EndpointArn": "arn:aws:sagemaker:region:account:endpoint/test-model-name",
+    "EndpointConfigName": "test-config",
+    "ProductionVariants": [{"VariantName": "variant1", "CurrentWeight": 1.0}],
+    "EndpointStatus": "InService",
+    "CreationTime": datetime(2025, 1, 1),
+    "LastModifiedTime": datetime(2025, 1, 1),
+}
 
 
 class TestImageRequestHandler(TestCase):
@@ -64,6 +77,19 @@ class TestImageRequestHandler(TestCase):
 
         self.mock_job_item = JobItem.from_image_request(self.mock_image_request)
 
+        # Create and stub the SageMaker client
+        self.sm_client = boto3.client("sagemaker")
+        self.sm_client_stub = Stubber(self.sm_client)
+
+        # Patch boto3.client to return our stubbed client
+        self.boto3_patcher = patch("boto3.client")
+        self.mock_boto3_client = self.boto3_patcher.start()
+        self.mock_boto3_client.return_value = self.sm_client
+
+    def tearDown(self):
+        self.sm_client_stub.deactivate()
+        self.boto3_patcher.stop()
+
     def test_process_image_request_success(self):
         """
         Test successful image request processing.
@@ -71,6 +97,8 @@ class TestImageRequestHandler(TestCase):
         # Mock internal methods
         self.handler.load_image_request = MagicMock(return_value=("tif", MagicMock(), MagicMock(), [MagicMock()]))
         self.handler.queue_region_request = MagicMock()
+
+        self.handler.set_default_model_endpoint_variant = MagicMock(return_value=self.mock_image_request)
 
         # Call process_image_request
         self.handler.process_image_request(self.mock_image_request)
@@ -94,6 +122,7 @@ class TestImageRequestHandler(TestCase):
         # Mock internal methods
         self.mock_endpoint_utils.calculate_max_regions.return_value = 5
         self.mock_endpoint_statistics_table.current_in_progress_regions.return_value = 5
+        self.handler.set_default_model_endpoint_variant = MagicMock(return_value=self.mock_image_request)
 
         # Call process_image_request with throttling enabled
         with self.assertRaises(ProcessImageException):
@@ -166,6 +195,124 @@ class TestImageRequestHandler(TestCase):
             self.mock_job_item, RequestStatus.FAILED, "Test failure"
         )
         self.mock_job_table.end_image_request.assert_called_once_with(self.mock_job_item.image_id)
+
+    def test_select_target_variant_single_variant(self):
+        """
+        Test selection when there's only one variant
+        """
+        self.sm_client_stub.add_response(
+            "describe_endpoint",
+            expected_params={"EndpointName": "test-model-name"},
+            service_response=MOCK_DESCRIBE_ENDPOINT_RESPONSE,
+        )
+        self.sm_client_stub.activate()
+
+        image_request = self._build_request_data()
+        image_request.model_endpoint_parameters = None
+        image_request = ImageRequestHandler.set_default_model_endpoint_variant(image_request)
+
+        # Verify the selected variant
+        assert image_request.model_endpoint_parameters["TargetVariant"] == "variant1"
+
+    def test_select_target_variant_http_endpoint(self):
+        """
+        Test selection when there's only one variant
+        """
+        image_request = self._build_request_data()
+        image_request.model_invoke_mode = ModelInvokeMode.HTTP_ENDPOINT
+        expected_parameters = {"http_parameter": "not sagemaker"}
+        image_request.model_endpoint_parameters = expected_parameters
+        image_request = ImageRequestHandler.set_default_model_endpoint_variant(image_request)
+
+        # Verify the parameters were not altered
+        assert image_request.model_endpoint_parameters == expected_parameters
+
+    def test_select_target_variant_multiple_variants(self):
+        """
+        Test selection with multiple variants with different weights
+        """
+        multiple_variants_response = {
+            **MOCK_DESCRIBE_ENDPOINT_RESPONSE,
+            "ProductionVariants": [
+                {"VariantName": "variant1", "CurrentWeight": 0.6},
+                {"VariantName": "variant2", "CurrentWeight": 0.3},
+                {"VariantName": "variant3", "CurrentWeight": 0.1},
+            ],
+        }
+        image_request = self._build_request_data()
+        # Test multiple selections to ensure all variants can be selected
+        selections = Counter()
+        for _ in range(100):
+            self.sm_client_stub.add_response(
+                "describe_endpoint",
+                expected_params={"EndpointName": "test-model-name"},
+                service_response=multiple_variants_response,
+            )
+            self.sm_client_stub.activate()
+            image_request.model_endpoint_parameters = None
+            image_request = ImageRequestHandler.set_default_model_endpoint_variant(image_request)
+            selections[image_request.model_endpoint_parameters["TargetVariant"]] += 1
+            self.sm_client_stub.deactivate()
+
+        # Verify that variants were selected at least once
+        assert len(selections) == 3
+        assert "variant1" in selections
+        assert "variant2" in selections
+        assert "variant3" in selections
+        assert selections.most_common(1)[0][0] == "variant1"
+
+    def test_select_target_variant_default_weight(self):
+        """
+        Test that variants without specified weights get default weight of 1.0
+        """
+        default_weight_response = {
+            **MOCK_DESCRIBE_ENDPOINT_RESPONSE,
+            "ProductionVariants": [
+                {"VariantName": "variant1"},
+                {"VariantName": "variant2", "CurrentWeight": 1.0},
+            ],
+        }
+        image_request = self._build_request_data()
+        # Run multiple selections to ensure both variants can be selected
+        selections = set()
+        for _ in range(100):
+            self.sm_client_stub.add_response(
+                "describe_endpoint",
+                expected_params={"EndpointName": "test-model-name"},
+                service_response=default_weight_response,
+            )
+            self.sm_client_stub.activate()
+            image_request.model_endpoint_parameters = {"other_param": "important_value"}
+            image_request = ImageRequestHandler.set_default_model_endpoint_variant(image_request)
+            selections.add(image_request.model_endpoint_parameters["TargetVariant"])
+            self.sm_client_stub.deactivate()
+
+        # Verify that both variants were selected at least once
+        assert len(selections) == 2
+        assert "variant1" in selections
+        assert "variant2" in selections
+
+    @staticmethod
+    def _build_request_data():
+        """
+        Helper method to build sample image request data for tests.
+        """
+        return ImageRequest(
+            job_id="test-job-id",
+            image_id="test-image-id",
+            image_url="test-image-url",
+            image_read_role="arn:aws:iam::012345678910:role/TestRole",
+            outputs=[
+                {"type": "S3", "bucket": "test-bucket", "prefix": "test-bucket-prefix"},
+                {"type": "Kinesis", "stream": "test-stream", "batchSize": 1000},
+            ],
+            tile_size=(1024, 1024),
+            tile_overlap=(50, 50),
+            tile_format="NITF",
+            model_name="test-model-name",
+            model_invoke_mode=ModelInvokeMode.SM_ENDPOINT,
+            model_invocation_role="arn:aws:iam::012345678910:role/TestRole",
+        )
 
 
 if __name__ == "__main__":

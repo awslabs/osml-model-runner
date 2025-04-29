@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import ast
 import json
@@ -27,7 +27,7 @@ from aws.osml.model_runner.common import (
     get_credentials_for_assumed_role,
 )
 from aws.osml.model_runner.database import FeatureTable, RegionRequestItem, RegionRequestTable
-from aws.osml.model_runner.inference import FeatureSelector
+from aws.osml.model_runner.inference import Detector, FeatureSelector
 from aws.osml.model_runner.inference.endpoint_factory import FeatureDetectorFactory
 from aws.osml.photogrammetry import ElevationModel, SensorModel
 
@@ -72,13 +72,7 @@ def setup_tile_workers(
             # Set up our feature table to work with the region quest
             region_request_table = RegionRequestTable(ServiceConfig.region_request_table)
 
-            # Ignoring mypy error - if model_name was None the call to validate the region
-            # request at the start of this function would have failed
-            feature_detector = FeatureDetectorFactory(
-                endpoint=region_request.model_name,
-                endpoint_mode=region_request.model_invoke_mode,
-                assumed_credentials=model_invocation_credentials,
-            ).build()
+            feature_detector = _get_feature_detector(region_request, model_invocation_credentials)
 
             geolocator = None
             if sensor_model is not None:
@@ -94,6 +88,23 @@ def setup_tile_workers(
     except Exception as err:
         logger.exception(f"Failed to setup tile workers!: {err}")
         raise SetupTileWorkersException("Failed to setup tile workers!") from err
+
+
+def _get_feature_detector(region_request: RegionRequest, model_invocation_credentials: dict[str, str]) -> Detector:
+    """
+    Constructs the feature detector used by the tile worker.
+
+    :param region_request: RegionRequestItem = the region request to use to create the feature detector.
+    :param model_invocation_credentials: credentials to use with the SageMaker Endpoint
+    :return: A feature Detector
+    """
+    feature_detector = FeatureDetectorFactory(
+        endpoint=region_request.model_name,
+        endpoint_mode=region_request.model_invoke_mode,
+        endpoint_parameters=region_request.model_endpoint_parameters,
+        assumed_credentials=model_invocation_credentials,
+    ).build()
+    return feature_detector
 
 
 def process_tiles(

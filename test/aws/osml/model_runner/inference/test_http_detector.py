@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import json
 import unittest
@@ -118,6 +118,21 @@ class TestHTTPDetector(TestCase):
             # Expecting the function to raise a JSONDecodeError
             with pytest.raises(JSONDecodeError):
                 feature_detector.find_features(image_file)
+
+    def test_set_endpoint_parameters(self):
+        """
+        Test setting only valid SageMaker endpoint parameters
+        """
+        from aws.osml.model_runner.inference import HTTPDetector
+
+        detector = HTTPDetector(endpoint="http-test")
+        valid_params = {
+            "key1": "value1",
+            "key2": "value2",
+        }
+
+        detector.set_endpoint_parameters(valid_params)
+        assert detector.endpoint_parameters == valid_params
 
 
 if __name__ == "__main__":

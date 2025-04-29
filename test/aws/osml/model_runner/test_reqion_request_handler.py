@@ -1,7 +1,7 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 from unittest import TestCase, main
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from osgeo import gdal
 
@@ -70,12 +70,19 @@ class TestRegionRequestHandler(TestCase):
         # Mock the is_valid function and set to true, so we can reverse for failure testing
         self.mock_region_request.is_valid = MagicMock(return_value=True)
 
-    def test_process_region_request_success(self):
+        # Mock the tile workers and queue
+        self.mock_tile_queue = MagicMock()
+        self.mock_tile_workers = [MagicMock()]
+
+    @patch("aws.osml.model_runner.region_request_handler.setup_tile_workers")
+    @patch("aws.osml.model_runner.region_request_handler.process_tiles")
+    def test_process_region_request_success(self, mock_process_tiles, mock_setup_workers):
         """
         Test successful region processing.
         """
         # Mock tile processing behavior
-        self.mock_tiling_strategy.return_value = MagicMock()
+        mock_setup_workers.return_value = (self.mock_tile_queue, self.mock_tile_workers)
+        mock_process_tiles.return_value = (10, 0)  # total_tiles, failed_tiles
         self.mock_region_request_table.start_region_request.return_value = self.mock_region_request_item
         self.mock_region_request_table.update_region_request.return_value = self.mock_region_request_item
         self.mock_job_table.complete_region_request.return_value = MagicMock(spec=JobItem)
@@ -135,15 +142,17 @@ class TestRegionRequestHandler(TestCase):
         self.mock_endpoint_statistics_table.increment_region_count.assert_not_called()
         self.mock_endpoint_statistics_table.decrement_region_count.assert_not_called()
 
-    def test_process_region_request_exception(self):
+    @patch("aws.osml.model_runner.region_request_handler.setup_tile_workers")
+    @patch("aws.osml.model_runner.region_request_handler.process_tiles")
+    def test_process_region_request_exception(self, mock_process_tiles, mock_setup_workers):
         """
         Test region processing failure scenario.
         """
-        self.mock_tiling_strategy.return_value = MagicMock()
-        self.mock_job_table.complete_region_request.return_value = MagicMock(spec=JobItem)
+        mock_setup_workers.return_value = (self.mock_tile_queue, self.mock_tile_workers)
+        mock_process_tiles.side_effect = Exception("Tile processing failed")
 
-        # Simulate tile processing throwing an error
-        self.mock_region_request_table.update_region_request.side_effect = Exception("Tile processing failed")
+        self.mock_region_request_table.start_region_request.return_value = self.mock_region_request_item
+        self.mock_job_table.complete_region_request.return_value = MagicMock(spec=JobItem)
 
         # Call process_region_request and expect failure
         result = self.handler.process_region_request(

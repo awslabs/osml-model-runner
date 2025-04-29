@@ -3,10 +3,12 @@
 import ast
 import json
 import logging
+import random
 from dataclasses import asdict
 from json import dumps
 from typing import List, Optional, Tuple
 
+import boto3
 import shapely.geometry.base
 from aws_embedded_metrics import MetricsLogger, metric_scope
 from aws_embedded_metrics.unit import Unit
@@ -15,7 +17,8 @@ from osgeo import gdal
 from osgeo.gdal import Dataset
 
 from aws.osml.gdal import GDALConfigEnv, get_image_extension, load_gdal_dataset
-from aws.osml.model_runner.api import get_image_path
+from aws.osml.model_runner.api import ModelInvokeMode, get_image_path
+from aws.osml.model_runner.app_config import BotoConfig
 from aws.osml.photogrammetry import SensorModel
 
 from .api import VALID_MODEL_HOSTING_OPTIONS, ImageRequest, RegionRequest
@@ -109,6 +112,7 @@ class ImageRequestHandler:
         """
         job_item = None
         try:
+            image_request = self.set_default_model_endpoint_variant(image_request)
             if self.config.self_throttling:
                 max_regions = self.endpoint_utils.calculate_max_regions(
                     image_request.model_name, image_request.model_invocation_role
@@ -527,3 +531,27 @@ class ImageRequestHandler:
             is_write_succeeded = SinkFactory.sink_features(job_item.job_id, job_item.outputs, features)
             if not is_write_succeeded:
                 raise AggregateOutputFeaturesException("Failed to write features to S3 or Kinesis!")
+
+    @staticmethod
+    def set_default_model_endpoint_variant(image_request: ImageRequest) -> ImageRequest:
+        """
+        Select an endpoint model variant for the ImageRequest to use.  If it is a SageMaker endpoint and the variant
+        is not already set, it chooses the variant based on the deployed SageMaker model variants' weights.
+
+        :return: None
+        """
+        if image_request.model_invoke_mode is ModelInvokeMode.SM_ENDPOINT and (
+            image_request.model_endpoint_parameters is None or "TargetVariant" not in image_request.model_endpoint_parameters
+        ):
+            sm_client = boto3.client("sagemaker", config=BotoConfig.default)
+            variants = sm_client.describe_endpoint(EndpointName=image_request.model_name)["ProductionVariants"]
+            names = [v["VariantName"] for v in variants]
+            weights = [v.get("CurrentWeight", 1.0) for v in variants]
+            selected_variant = random.choices(names, weights=weights, k=1)[0]
+            if image_request.model_endpoint_parameters is None:
+                image_request.model_endpoint_parameters = {"TargetVariant": selected_variant}
+            else:
+                image_request.model_endpoint_parameters = image_request.model_endpoint_parameters | {
+                    "TargetVariant": selected_variant
+                }
+        return image_request

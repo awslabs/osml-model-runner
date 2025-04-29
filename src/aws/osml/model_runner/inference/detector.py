@@ -1,7 +1,8 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import abc
 from io import BufferedReader
+from typing import Dict, Optional
 
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.metric_scope import metric_scope
@@ -23,6 +24,7 @@ class Detector(abc.ABC):
         """
         self.endpoint = endpoint
         self.request_count = 0
+        self.endpoint_parameters: Optional[Dict[str, str]] = dict()
 
     @property
     @abc.abstractmethod

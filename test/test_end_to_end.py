@@ -92,6 +92,7 @@ class TestModelRunnerEndToEnd(TestCase):
                 ],
                 "featureProperties": [self.test_custom_feature_properties],
                 "imageProcessor": {"name": TEST_CONFIG["MODEL_ENDPOINT"], "type": "SM_ENDPOINT"},
+                "imageProcessorParameters": {"TargetVariant": TEST_CONFIG["MODEL_VARIANT"]},
                 "imageProcessorTileSize": 2048,
                 "imageProcessorTileOverlap": 50,
                 "imageProcessorTileFormat": "NITF",
@@ -269,45 +270,46 @@ class TestModelRunnerEndToEnd(TestCase):
         self.model_runner.stop()
         assert self.model_runner.running is False
 
-    def test_end_to_end(self) -> None:
+    @patch("aws.osml.model_runner.inference.sm_detector.boto3")
+    def test_end_to_end(self, mock_boto3) -> None:
         """
         Test the process of handling an image request, ensuring that jobs are marked as complete,
         features are created, and the correct metadata is stored in S3. Checks that we calculated
         the max in progress regions with the test instance type is set to m5.12xl with 48 vcpus.
         """
-        with patch("aws.osml.model_runner.inference.sm_detector.boto3") as mock_boto3:
-            # Build stubbed model client for ModelRunner to interact with
-            mock_boto3.client.return_value = self.get_stubbed_sm_client()
-            self.model_runner.image_request_handler.process_image_request(self.image_request)
+        # Build stubbed model client for ModelRunner to interact with
+        sm_runtime_client = self.get_stubbed_sm_boto_client()
+        mock_boto3.client.return_value = sm_runtime_client
+        self.model_runner.image_request_handler.process_image_request(self.image_request)
 
-            # Ensure that the single region was processed successfully
-            image_request_item = self.job_table.get_image_request(self.image_request.image_id)
-            assert image_request_item.region_success == 1
+        # Ensure that the single region was processed successfully
+        image_request_item = self.job_table.get_image_request(self.image_request.image_id)
+        assert image_request_item.region_success == 1
 
-            # Ensure that the detection outputs arrived in our DDB table
-            features = self.feature_table.get_features(self.image_request.image_id)
-            assert len(features) == 1
-            assert features[0]["geometry"]["type"] == "Polygon"
+        # Ensure that the detection outputs arrived in our DDB table
+        features = self.feature_table.get_features(self.image_request.image_id)
+        assert len(features) == 1
+        assert features[0]["geometry"]["type"] == "Polygon"
 
-            # Ensure that the detection outputs arrived in our output bucket
-            results_key = self.s3.list_objects(Bucket=TEST_CONFIG["RESULTS_BUCKET"])["Contents"][0]["Key"]
-            results_contents = self.s3.get_object(Bucket=TEST_CONFIG["RESULTS_BUCKET"], Key=results_key)["Body"].read()
-            results_features = geojson.loads(results_contents.decode("utf-8"))["features"]
-            assert len(results_features) > 0
+        # Ensure that the detection outputs arrived in our output bucket
+        results_key = self.s3.list_objects(Bucket=TEST_CONFIG["RESULTS_BUCKET"])["Contents"][0]["Key"]
+        results_contents = self.s3.get_object(Bucket=TEST_CONFIG["RESULTS_BUCKET"], Key=results_key)["Body"].read()
+        results_features = geojson.loads(results_contents.decode("utf-8"))["features"]
+        assert len(results_features) > 0
 
-            # Test that we get the correct model metadata appended to our feature outputs
-            actual_model_metadata = results_features[0]["properties"]["modelMetadata"]
-            expected_model_metadata = self.test_custom_feature_properties.get("modelMetadata")
-            assert actual_model_metadata == expected_model_metadata
+        # Test that we get the correct model metadata appended to our feature outputs
+        actual_model_metadata = results_features[0]["properties"]["modelMetadata"]
+        expected_model_metadata = self.test_custom_feature_properties.get("modelMetadata")
+        assert actual_model_metadata == expected_model_metadata
 
-            # Test that we get the correct source metadata appended to our feature outputs
-            actual_source_metadata = results_features[0]["properties"]["sourceMetadata"]
-            expected_source_metadata = self.test_feature_source_property
-            assert actual_source_metadata == expected_source_metadata
+        # Test that we get the correct source metadata appended to our feature outputs
+        actual_source_metadata = results_features[0]["properties"]["sourceMetadata"]
+        expected_source_metadata = self.test_feature_source_property
+        assert actual_source_metadata == expected_source_metadata
 
-            # Default scale factor set to 10 and workers per cpu is 1 so: floor((10 * 1 * 48) / 1) = 480
-            regions = self.model_runner.endpoint_utils.calculate_max_regions(endpoint_name=TEST_CONFIG["MODEL_ENDPOINT"])
-            assert 480 == regions
+        # Default scale factor set to 10 and workers per cpu is 1 so: floor((10 * 1 * 48) / 1) = 480
+        regions = self.model_runner.endpoint_utils.calculate_max_regions(endpoint_name=TEST_CONFIG["MODEL_ENDPOINT"])
+        assert 480 == regions
 
     @patch.dict("os.environ", values={"ELEVATION_DATA_LOCATION": TEST_CONFIG["ELEVATION_DATA_LOCATION"]})
     def test_create_elevation_model(self) -> None:
@@ -356,22 +358,25 @@ class TestModelRunnerEndToEnd(TestCase):
         assert not elevation_model
 
     @staticmethod
-    def get_stubbed_sm_client() -> boto3.client:
+    def get_stubbed_sm_boto_client() -> boto3.client:
         """
-        Get a stubbed SageMaker client for use in testing.
+        Get stubbed SageMaker client for use in testing.
 
         :return: A stubbed SageMaker Runtime client.
         """
-        sm_client = boto3.client("sagemaker-runtime")
-        sm_runtime_stub = Stubber(sm_client)
-        sm_runtime_stub.add_response(
-            "invoke_endpoint",
-            expected_params={"EndpointName": TEST_CONFIG["MODEL_ENDPOINT"], "Body": ANY},
-            service_response=MOCK_MODEL_RESPONSE,
-        )
+        expected_sm_runtime_calls = 1
+        # Create and stub the SageMaker runtime client
+        sm_runtime_client = boto3.client("sagemaker-runtime")
+        sm_runtime_stub = Stubber(sm_runtime_client)
+        for _ in range(expected_sm_runtime_calls):
+            sm_runtime_stub.add_response(
+                "invoke_endpoint",
+                expected_params={"EndpointName": TEST_CONFIG["MODEL_ENDPOINT"], "Body": ANY, "TargetVariant": "variant1"},
+                service_response=MOCK_MODEL_RESPONSE,
+            )
         sm_runtime_stub.activate()
 
-        return sm_client
+        return sm_runtime_client
 
 
 if __name__ == "__main__":

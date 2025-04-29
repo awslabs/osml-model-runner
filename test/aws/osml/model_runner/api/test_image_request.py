@@ -1,7 +1,6 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
-import unittest
-from unittest import TestCase
+from unittest import TestCase, main
 
 import boto3
 import pytest
@@ -157,6 +156,86 @@ class TestImageRequest(TestCase):
 
         s3_client_stub.deactivate()
 
+    def test_parse_model_endpoint_parameters_valid(self):
+        """
+        Test parsing of valid model endpoint parameters.
+        """
+        model_params = {"TargetVariant": "version-1", "CustomAttributes": "custom-attributes"}
+        request = ImageRequest.from_external_message(
+            {
+                "jobName": "test-job-name",
+                "jobId": "test-job-id",
+                "imageUrls": ["test-image-url"],
+                "outputs": [{"type": "SQS", "queue": "FakeQueue"}],
+                "imageProcessor": {"name": "test-model", "type": "SM_ENDPOINT"},
+                "imageProcessorTileSize": 1024,
+                "imageProcessorTileOverlap": 50,
+                "imageProcessorParameters": model_params,
+            }
+        )
+        assert request.model_endpoint_parameters == model_params
+
+    def test_parse_model_endpoint_parameters_none(self):
+        """
+        Test parsing when no model endpoint parameters are provided.
+        """
+        request = ImageRequest.from_external_message(
+            {
+                "jobName": "test-job-name",
+                "jobId": "test-job-id",
+                "imageUrls": ["test-image-url"],
+                "outputs": [{"type": "SQS", "queue": "FakeQueue"}],
+                "imageProcessor": {"name": "test-model", "type": "SM_ENDPOINT"},
+                "imageProcessorTileSize": 1024,
+                "imageProcessorTileOverlap": 50,
+            }
+        )
+        assert request.model_endpoint_parameters is None
+
+    def test_parse_model_endpoint_parameters_invalid(self):
+        """
+        Test parsing of invalid model endpoint parameters.
+        """
+        invalid_params = "not a dictionary"
+
+        with self.assertLogs(level="WARNING") as log:
+            request = ImageRequest.from_external_message(
+                {
+                    "jobName": "test-job-name",
+                    "jobId": "test-job-id",
+                    "imageUrls": ["test-image-url"],
+                    "outputs": [{"type": "SQS", "queue": "FakeQueue"}],
+                    "imageProcessor": {"name": "test-model", "type": "SM_ENDPOINT"},
+                    "imageProcessorTileSize": 1024,
+                    "imageProcessorTileOverlap": 50,
+                    "imageProcessorParameters": invalid_params,
+                }
+            )
+
+            assert request.model_endpoint_parameters is None
+            assert "Invalid model endpoint parameters dictionary" in log.output[0]
+
+    def test_parse_model_endpoint_parameters_empty_dict(self):
+        """
+        Test parsing of empty dictionary for model endpoint parameters.
+        """
+        empty_params = {}
+
+        request = ImageRequest.from_external_message(
+            {
+                "jobName": "test-job-name",
+                "jobId": "test-job-id",
+                "imageUrls": ["test-image-url"],
+                "outputs": [{"type": "SQS", "queue": "FakeQueue"}],
+                "imageProcessor": {"name": "test-model", "type": "SM_ENDPOINT"},
+                "imageProcessorTileSize": 1024,
+                "imageProcessorTileOverlap": 50,
+                "imageProcessorParameters": empty_params,
+            }
+        )
+
+        assert request.model_endpoint_parameters == empty_params
+
     @staticmethod
     def build_request_data():
         """
@@ -175,10 +254,10 @@ class TestImageRequest(TestCase):
             tile_overlap=(50, 50),
             tile_format="NITF",
             model_name="test-model-name",
-            model_invoke_mode="SM_ENDPOINT",
+            model_invoke_mode=ModelInvokeMode.SM_ENDPOINT,
             model_invocation_role="arn:aws:iam::012345678910:role/TestRole",
         )
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()

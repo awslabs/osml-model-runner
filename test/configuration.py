@@ -61,6 +61,7 @@ TEST_CONFIG = {
     ),
     "MODEL_ENDPOINT": "TestEndpoint",
     "MODEL_NAME": "TestModel",
+    "MODEL_VARIANT": "variant1",
     "OUTSTANDING_JOBS_TABLE_ATTRIBUTE_DEFINITIONS": [
         {"AttributeName": "endpoint_id", "AttributeType": "S"},
         {"AttributeName": "job_id", "AttributeType": "S"},

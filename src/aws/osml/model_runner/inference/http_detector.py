@@ -1,9 +1,9 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import logging
 from io import BufferedReader
 from json import JSONDecodeError
-from typing import Optional
+from typing import Dict, Optional
 
 import geojson
 import urllib3
@@ -89,12 +89,19 @@ class HTTPDetector(Detector):
     issues.
     """
 
-    def __init__(self, endpoint: str, name: Optional[str] = None, retry: Optional[urllib3.Retry] = None) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        name: Optional[str] = None,
+        endpoint_parameters: Optional[Dict[str, str]] = None,
+        retry: Optional[urllib3.Retry] = None,
+    ) -> None:
         """
         Initializes the HTTPDetector with the model endpoint URL, optional name, and retry policy.
 
         :param endpoint: str = The full URL of the model endpoint to invoke.
         :param name: Optional[str] = A name for the model endpoint.
+        :param endpoint_parameters: Optional[Dict[str, str]] = Additional parameters to pass to the model endpoint.
         :param retry: Optional[Retry] = Retry policy for network requests.
         """
         if retry is None:
@@ -104,6 +111,7 @@ class HTTPDetector(Detector):
         self.http_pool = urllib3.PoolManager(cert_reqs="CERT_NONE", retries=self.retry)
         self.name = name or "http"
         super().__init__(endpoint=endpoint)
+        self.set_endpoint_parameters(endpoint_parameters)
 
     @property
     def mode(self) -> ModelInvokeMode:
@@ -187,6 +195,16 @@ class HTTPDetector(Detector):
             logger.exception(err)
             raise err
 
+    def set_endpoint_parameters(self, parameters: Dict[str, str]) -> None:
+        """
+        Sets additional model endpoint parameters to be included with a request
+
+        :param parameters: Dict = the parameters to set
+
+        :return: None
+        """
+        self.endpoint_parameters = parameters
+
 
 class HTTPDetectorBuilder(FeatureEndpointBuilder):
     """
@@ -196,14 +214,16 @@ class HTTPDetectorBuilder(FeatureEndpointBuilder):
     detection.
     """
 
-    def __init__(self, endpoint: str):
+    def __init__(self, endpoint: str, endpoint_parameters: Optional[Dict[str, str]] = None):
         """
         Initializes the HTTPDetectorBuilder with the model endpoint URL.
 
         :param endpoint: str = The full URL of the model endpoint to be used.
+        :param endpoint_parameters: Optional[Dict[str, str]] = Additional parameters to pass to the model endpoint.
         """
         super().__init__()
         self.endpoint = endpoint
+        self.endpoint_parameters = endpoint_parameters
 
     def build(self) -> Optional[Detector]:
         """
@@ -211,6 +231,4 @@ class HTTPDetectorBuilder(FeatureEndpointBuilder):
 
         :return: Optional[Detector] = An HTTPDetector instance configured for the specified HTTP model endpoint.
         """
-        return HTTPDetector(
-            endpoint=self.endpoint,
-        )
+        return HTTPDetector(endpoint=self.endpoint, endpoint_parameters=self.endpoint_parameters)

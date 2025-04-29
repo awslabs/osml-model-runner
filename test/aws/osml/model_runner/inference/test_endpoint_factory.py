@@ -1,16 +1,36 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
-import unittest
+from datetime import datetime
+from unittest import TestCase, main
+from unittest.mock import patch
+
+import boto3
+
+MOCK_DESCRIBE_ENDPOINT_RESPONSE = {
+    "EndpointName": "test",
+    "EndpointArn": "arn:aws:sagemaker:region:account:endpoint/test",
+    "EndpointConfigName": "test-config",
+    "ProductionVariants": [{"VariantName": "variant1", "CurrentWeight": 1.0}],
+    "EndpointStatus": "InService",
+    "CreationTime": datetime(2024, 1, 1),
+    "LastModifiedTime": datetime(2024, 1, 1),
+}
 
 
-class TestFeatureDetectorFactory(unittest.TestCase):
-    def test_sm_detector_generation(self):
+class TestFeatureDetectorFactory(TestCase):
+    @patch("aws.osml.model_runner.inference.sm_detector.boto3")
+    def test_sm_detector_generation(self, mock_boto3):
         """
         Test that the FeatureDetectorFactory correctly creates an SMDetector
         when the endpoint mode is set to ModelInvokeMode.SM_ENDPOINT.
         """
         from aws.osml.model_runner.api.inference import ModelInvokeMode
         from aws.osml.model_runner.inference import FeatureDetectorFactory, SMDetector
+
+        # Create and stub the SageMaker client
+        sm_runtime_client = boto3.client("sagemaker-runtime")
+
+        mock_boto3.client.return_value = sm_runtime_client
 
         feature_detector = FeatureDetectorFactory(
             endpoint="test",
@@ -40,4 +60,4 @@ class TestFeatureDetectorFactory(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()

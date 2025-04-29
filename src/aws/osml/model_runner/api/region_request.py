@@ -1,8 +1,8 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from aws.osml.model_runner.common import ImageCompression, ImageDimensions, ImageFormats, ImageRegion
 
@@ -45,6 +45,7 @@ class RegionRequest:
     image_read_role: str = ""
     model_name: str = ""
     model_invoke_mode: ModelInvokeMode = ModelInvokeMode.NONE
+    model_endpoint_parameters: Optional[Dict[str, Any]] = None
     model_invocation_role: str = ""
     tile_size: ImageDimensions = (1024, 1024)
     tile_overlap: ImageDimensions = (50, 50)
