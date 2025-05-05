@@ -4,6 +4,9 @@ This file is used to represent changes made between each tagged version of the M
 
 [Reference for OSML Model Runner Release Guide](https://github.com/aws-solutions-library-samples/osml-model-runner/releases)
 
+## v2.3.0
+
+
 ## v2.2.0
 
 - Modify TTL from 24 hours to 7 days for longer historical storage of state 
