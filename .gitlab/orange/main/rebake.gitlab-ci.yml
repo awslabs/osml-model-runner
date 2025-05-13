@@ -4,33 +4,16 @@
 # Rebuild containers with highside artifacts injected
 #
 
-stages:
-  - build
-
-rebake:mr-semver:
-  stage: build
-  tags: [dind]
-  before_script:
-    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
-  script:
-    # Copy certificate from provided mount
-    - cp /certs/tls-ca-bundle.pem ./tls-ca-bundle.pem
-    # Rebake
-    - docker build --file ./docker/Dockerfile.rebake
-        --build-arg BASE_IMG=$CI_REGISTRY_IMAGE/${MICROSERVICE}:$CURRENT_TAG
-        --tag $CI_REGISTRY_IMAGE/${MICROSERVICE}:${CURRENT_TAG}-rebake .
-    - docker push $CI_REGISTRY_IMAGE/${MICROSERVICE}:${CURRENT_TAG}-rebake
-
-rebake:mr-stable:
-  stage: build
-  tags: [dind]
-  before_script:
-    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
-  script:
-    # Copy certificate from provided mount
-    - cp /certs/tls-ca-bundle.pem ./tls-ca-bundle.pem
-    # Rebake
-    - docker build --file ./docker/Dockerfile.rebake
-        --build-arg BASE_IMG=$CI_REGISTRY_IMAGE/${MICROSERVICE}:stable
-        --tag $CI_REGISTRY_IMAGE/${MICROSERVICE}:stable-rebake .
-    - docker push $CI_REGISTRY_IMAGE/${MICROSERVICE}:stable-rebake
+# This rebake:mr job runs in the orange pipeline main branch
+# and handles rebakes for all deployments
+rebake:mr:
+  extends: .rebake_template
+  needs:
+    - job: identify_tag_version
+      artifacts: true
+    # Wait for the build job to complete (green pipeline)
+    - job: build
+      optional: true
+    # Wait for the container-registry job to complete (red/yellow pipelines)
+    - job: check_update_registry
+      optional: true

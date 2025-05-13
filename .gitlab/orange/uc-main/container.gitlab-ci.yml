@@ -6,7 +6,7 @@
 stages:
   - pre_deployment
 
-check_update_registry_semver:
+check_update_registry:
   stage: pre_deployment
   tags: [dind]
   before_script:
@@ -28,35 +28,5 @@ check_update_registry_semver:
           echo "uc container re-tagged and pushed to registry";
         else
           echo "$CURRENT_TAG does not exist yet on this enclave, check that container wormhole was successful"
-        fi
-      fi
-
-check_update_registry_stable:
-  stage: pre_deployment
-  tags: [dind]
-  before_script:
-    - docker login -u $GITLAB_ACCESS_TOKEN_NAME -p $GITLAB_ACCESS_TOKEN_VALUE $CI_REGISTRY
-  script:
-    - echo "checking for stable image tag"
-    - CONTAINER_EXISTS=$(docker manifest inspect ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable > /dev/null ; echo $?)
-    - echo $CONTAINER_EXISTS
-    - UC_CONTAINER_EXISTS=$(docker manifest inspect ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:uc-stable > /dev/null ; echo $?)
-    - |
-      if [ "$CONTAINER_EXISTS" == 0 ]; then
-        echo "stable container exists, but may be old version. Updating stable tag with current uc registry image"
-        docker pull ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:uc-stable
-        docker tag ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:uc-stable ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable
-        docker images
-        docker push ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable
-        echo "uc container re-tagged and pushed to registry";
-      else
-        if [ "$UC_CONTAINER_EXISTS" == 0 ]; then
-          echo "uc-stable container exists! Re-tagging for enclave"
-          docker pull ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:uc-stable
-          docker tag ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:uc-stable ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable
-          docker push ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable
-          echo "uc container re-tagged and pushed to registry";
-        else
-          echo "uc-stable tag does not exist yet on this enclave, check that container wormhole was successful"
         fi
       fi

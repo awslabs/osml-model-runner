@@ -87,3 +87,40 @@
     - python3 -m pip install --user --index-url ${PIP_INDEX_URL} --cert ${BUILD_CERT} -r test/requirements-test.txt
     - python3 -m pytest --durations=10 --cov-config .coveragerc --cov aws.osml.model_runner
   coverage: '/^TOTAL.*?(\d+)%/'
+
+.rebake_template: &rebake
+  stage: build
+  tags: [dind]
+  before_script:
+    - docker login -u GITLAB_ACCESS_TOKEN_NAME -p $GITLAB_ACCESS_TOKEN_VALUE $CI_REGISTRY
+  script:
+    - cp /certs/tls-ca-bundle.pem ./tls-ca-bundle.pem
+    - docker build --file ./docker/Dockerfile.rebake
+        --build-arg BASE_IMG=$CI_REGISTRY_IMAGE/${MICROSERVICE}:$CURRENT_TAG
+        --tag $CI_REGISTRY_IMAGE/${MICROSERVICE}:${CURRENT_TAG}-rebake
+        --tag $CI_REGISTRY_IMAGE/${MICROSERVICE}:stable-rebake .
+    - docker push $CI_REGISTRY_IMAGE/${MICROSERVICE}:${CURRENT_TAG}-rebake
+    - docker push $CI_REGISTRY_IMAGE/${MICROSERVICE}:stable-rebake
+  needs:
+    - job: identify_tag_version
+      artifacts: true
+
+.push_template: &push_base
+  stage: push
+  script:
+    - export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    # Login to ECR
+    - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}
+    # Pull rebaked images (both semver and stable)
+    - docker pull ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CURRENT_TAG}-rebake
+    - docker pull ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable-rebake
+    # Tag and push semver rebake
+    - docker tag ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CURRENT_TAG}-rebake ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/${MICROSERVICE}:${CURRENT_TAG}-rebake
+    - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/${MICROSERVICE}:${CURRENT_TAG}-rebake
+    # Tag and push stable rebake
+    - docker tag ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable-rebake ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/${MICROSERVICE}:stable-rebake
+    - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.${ecr_endpoint}/${MICROSERVICE}:stable-rebake
+  needs:
+    - job: identify_tag_version
+      artifacts: true
+

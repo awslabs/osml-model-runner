@@ -14,14 +14,3 @@ trigger-semver:
     DOMAIN: BOTH
   trigger:
     project: wormhole/container-movement-pipelines/container-up
-
-trigger-stable:
-  stage: trigger
-  variables:
-    IMAGE_PATH: $CI_REGISTRY_IMAGE/$MICROSERVICE
-    # Image Tag
-    TAG: stable
-    # Domain to send image to: SC/TC/BOTH
-    DOMAIN: BOTH
-  trigger:
-    project: wormhole/container-movement-pipelines/container-up
