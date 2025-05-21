@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import pathlib
 import re
@@ -10,7 +10,7 @@ import boto3
 from defusedxml import ElementTree
 from osgeo import gdal
 
-SUBDATASET_NAME_PATTERN = re.compile("SUBDATASET_(\d+)_NAME")
+SUBDATASET_NAME_PATTERN = re.compile(r"SUBDATASET_(\d+)_NAME")
 IMAGE_SUFFIXES = [".ntf", ".NTF", ".nitf", ".NITF", ".tif", ".TIF", ".tiff", ".TIFF"]
 
 

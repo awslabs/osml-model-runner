@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import re
 import sys
@@ -6,7 +6,7 @@ import sys
 from defusedxml import ElementTree
 from osgeo import gdal
 
-SUBDATASET_NAME_PATTERN = re.compile("SUBDATASET_(\d+)_NAME")
+SUBDATASET_NAME_PATTERN = re.compile(r"SUBDATASET_(\d+)_NAME")
 
 
 def print_datasset_summary(ds: gdal.Dataset) -> None:
