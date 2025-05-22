@@ -48,6 +48,9 @@ class ServiceConfig:
         os.getenv("SM_SELF_THROTTLING", "False") == "True" or os.getenv("SM_SELF_THROTTLING", "False") == "true"
     )
 
+    # Optional TTL configuration (in days)
+    ddb_ttl_in_days: int = int(os.getenv("DDB_TTL_IN_DAYS", "1"))
+
     # Optional + defaulted configuration
     region_size: str = os.getenv("REGION_SIZE", "(10240, 10240)")
     throttling_vcpu_scale_factor: str = os.getenv("THROTTLING_SCALE_FACTOR", "10")
