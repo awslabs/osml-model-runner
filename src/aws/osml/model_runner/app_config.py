@@ -49,6 +49,7 @@ class ServiceConfig:
     )
 
     # Optional + defaulted configuration
+    ddb_ttl_in_days: int = int(os.getenv("DDB_TTL_IN_DAYS", "1"))
     region_size: str = os.getenv("REGION_SIZE", "(10240, 10240)")
     throttling_vcpu_scale_factor: str = os.getenv("THROTTLING_SCALE_FACTOR", "10")
     throttling_retry_timeout: str = os.getenv("THROTTLING_RETRY_TIMEOUT", "10")
