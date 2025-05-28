@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import logging
 import time
@@ -8,6 +8,7 @@ from typing import List, Optional
 from dacite import from_dict
 
 from aws.osml.model_runner.api import RegionRequest
+from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.common import ImageRegion, RequestStatus, TileState
 
 from .ddb_helper import DDBHelper, DDBItem, DDBKey
@@ -126,16 +127,19 @@ class RegionRequestTable(DDBHelper):
         """
 
         try:
+            # These records are temporary and will expire 24 hours after creation. Jobs should take
+            # minutes to run, so this time should be conservative enough to let a team debug an urgent
+            # issue without leaving a ton of state leftover in the system.
             start_time_millisec = int(time.time() * 1000)
+            ddb_ttl_in_days = ServiceConfig.ddb_ttl_in_days
 
-            # Update the job item to have the correct start parameters
             region_request_item.start_time = start_time_millisec
             region_request_item.region_status = RequestStatus.STARTED
             region_request_item.region_retry_count = 0
             region_request_item.succeeded_tile_count = 0
             region_request_item.failed_tile_count = 0
             region_request_item.processing_duration = 0
-            region_request_item.expire_time = int((start_time_millisec / 1000) + (24 * 60 * 60))
+            region_request_item.expire_time = int((start_time_millisec / 1000) + (ddb_ttl_in_days * 24 * 60 * 60))
 
             # Put the item into the table
             self.put_ddb_item(region_request_item)

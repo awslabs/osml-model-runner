@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import time
 from dataclasses import dataclass
@@ -8,6 +8,7 @@ from typing import Optional
 from dacite import from_dict
 
 from aws.osml.model_runner.api import ImageRequest
+from aws.osml.model_runner.app_config import ServiceConfig
 
 from .ddb_helper import DDBHelper, DDBItem, DDBKey
 from .exceptions import (
@@ -125,15 +126,15 @@ class JobTable(DDBHelper):
 
         try:
             # These records are temporary and will expire 24 hours after creation. Jobs should take
-            # minutes to run so this time should be conservative enough to let a team debug an urgent
+            # minutes to run, so this time should be conservative enough to let a team debug an urgent
             # issue without leaving a ton of state leftover in the system.
+            ddb_ttl_in_days = ServiceConfig.ddb_ttl_in_days
             start_time_millisec = int(time.time() * 1000)
-            expire_time_epoch_sec = int(int(start_time_millisec / 1000) + (24 * 60 * 60))
 
             # Update the job item to have the correct start parameters
             image_request_item.start_time = start_time_millisec
             image_request_item.processing_duration = 0
-            image_request_item.expire_time = expire_time_epoch_sec
+            image_request_item.expire_time = int((start_time_millisec / 1000) + (ddb_ttl_in_days * 24 * 60 * 60))
             image_request_item.region_success = 0
             image_request_item.region_error = 0
 
