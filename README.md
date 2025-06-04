@@ -90,6 +90,20 @@ As the application runs key performance metrics and detailed logging information
 A detailed description of what information is tracked along with example dashboards can be found in
 [METRICS_AND_DASHBOARDS.md](./METRICS_AND_DASHBOARDS.md).
 
+CloudWatch Logs Insights can be leveraged to provide anything from an overview of processing activity to in depth
+diagnostics.  For example, querying the `/aws/OSML/MRService` log group using the following query will provide a
+"Timeline" view of a specific job.
+```
+fields @timestamp, message, job_id, region_id, @logStream
+| filter job_id like /<job_id>/
+| filter tag like "TIMELINE EVENT"
+| sort @timestamp desc
+```
+
+Alternatively, the job_id filter can be omitted to see events from all jobs for a given time window.
+
+Note: Timeline Event logs like the example above are written at an INFO level.
+
 ### Package Layout
 
 * **/src**: This is the Python implementation of this application.
