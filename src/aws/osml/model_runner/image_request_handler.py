@@ -110,6 +110,7 @@ class ImageRequestHandler:
         :raises ProcessImageException: If image processing fails.
         :return: None
         """
+        logger.info("Starting image processing.", extra={"tag": "TIMELINE EVENT", "job_id": image_request.job_id})
         job_item = None
         try:
             image_request = self.set_default_model_endpoint_variant(image_request)
@@ -348,26 +349,32 @@ class ImageRequestHandler:
             job_item = self.job_table.get_image_request(region_request.image_id)
 
             # Log the completion of the last region and proceed with aggregation
-            logger.debug("Last region of image request was completed, aggregating features for image!")
+            logger.info("Aggregating features...", extra={"tag": "TIMELINE EVENT", "job_id": job_item.job_id})
 
             # Set up the feature table
             feature_table = FeatureTable(self.config.feature_table, region_request.tile_size, region_request.tile_overlap)
 
             # Aggregate features
             features = feature_table.aggregate_features(job_item)
-            logger.debug(f"Aggregated {len(features)} features for region {region_request.region_id}")
+            logger.debug(f"Aggregated {len(features)} features for job {job_item.job_id}")
 
             # Deduplicate features
+            logger.info(
+                "Consolidating duplicate features caused by tiling...",
+                extra={"tag": "TIMELINE EVENT", "job_id": job_item.job_id},
+            )
             deduped_features = self.deduplicate(job_item, features, raster_dataset, sensor_model)
 
             # Add the relevant properties to our final features
             final_features = add_properties_to_features(job_item.job_id, job_item.feature_properties, deduped_features)
 
             # Sink features to target outputs
+            logger.info("Writing features to outputs...", extra={"tag": "TIMELINE EVENT", "job_id": job_item.job_id})
             self.sink_features(job_item, final_features)
 
             # Finalize and update the job table with the completed request
             self.end_image_request(job_item, image_format)
+            logger.info("Completed image processing.", extra={"tag": "TIMELINE EVENT", "job_id": job_item.job_id})
 
         except Exception as err:
             raise AggregateFeaturesException("Failed to aggregate features for region!") from err

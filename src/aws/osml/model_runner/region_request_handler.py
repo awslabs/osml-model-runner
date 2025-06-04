@@ -79,6 +79,10 @@ class RegionRequestHandler:
 
         :return: JobItem
         """
+        logger.info(
+            "Starting region processing.",
+            extra={"tag": "TIMELINE EVENT", "job_id": region_request.job_id, "region_id": region_request.region_id},
+        )
         if isinstance(metrics, MetricsLogger):
             metrics.set_dimensions()
 
@@ -151,6 +155,10 @@ class RegionRequestHandler:
 
             self.region_status_monitor.process_event(region_request_item, region_status, "Completed region processing")
             self.on_region_complete(image_request_item, region_request_item, region_status)
+            logger.info(
+                "Completed region processing.",
+                extra={"tag": "TIMELINE EVENT", "job_id": region_request.job_id, "region_id": region_request.region_id},
+            )
 
             # Write CloudWatch Metrics to the Logs
             if isinstance(metrics, MetricsLogger):

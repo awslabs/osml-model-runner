@@ -185,7 +185,6 @@ class ModelRunner:
         if image_request:
             try:
                 ThreadingLocalContextFilter.set_context(image_request.__dict__)
-                logger.info(f"Starting processing for image request: {image_request.job_id}")
                 self.image_request_handler.process_image_request(image_request)
                 self.image_job_scheduler.finish_request(image_request)
             except RetryableJobException:
