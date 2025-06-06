@@ -460,7 +460,7 @@ class ImageRequestHandler:
                     MetricLabels.INPUT_FORMAT_DIMENSION: image_format,
                 }
             )
-            metrics.put_metric(MetricLabels.DURATION, float(job_item.processing_duration), str(Unit.SECONDS.value))
+            metrics.put_metric(MetricLabels.DURATION, float(completed_job_item.processing_duration), str(Unit.SECONDS.value))
             metrics.put_metric(MetricLabels.INVOCATIONS, 1, str(Unit.COUNT.value))
             if job_item.region_error > 0:
                 metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))

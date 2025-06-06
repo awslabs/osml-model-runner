@@ -26,23 +26,21 @@ def configure_logging(verbose: bool) -> None:
 
     :param verbose: if true the logging level will be set to DEBUG, otherwise it will be set to INFO.
     """
-    logging_level = logging.INFO
-    if verbose:
-        logging_level = logging.DEBUG
 
-    root_logger = logging.getLogger(__name__)
+    logging_level = logging.DEBUG if verbose else logging.INFO
+
+    root_logger = logging.getLogger()
     root_logger.setLevel(logging_level)
 
     ch = logging.StreamHandler()
     ch.setLevel(logging_level)
     ch.addFilter(ThreadingLocalContextFilter(["job_id", "image_id"]))
+    
     formatter = jsonlogger.JsonFormatter(
         fmt="%(levelname)s %(message)s %(job_id)s %(image_id)s", datefmt="%Y-%m-%dT%H:%M:%S"
     )
     ch.setFormatter(formatter)
-
     root_logger.addHandler(ch)
-
 
 def map_signals(model_runner: ModelRunner) -> None:
     signal.signal(signal.SIGINT, lambda signum, frame: handler_stop_signals(signum, frame, model_runner))
