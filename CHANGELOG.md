@@ -5,6 +5,11 @@ This file is used to represent changes made between each tagged version of the M
 [Reference for OSML Model Runner Release Guide](https://github.com/aws-solutions-library-samples/osml-model-runner/releases)
 
 
+## v2.3.2
+
+- Update base path location of GDAL image
+- Bump pytest, mock, moto, boto3, botocore, setuptools, and codeguru-profiler-agent packages 
+
 ## v2.3.1
 
 - Update root_logger to root instead of __name__. This was causing no logs to be emitted to CW

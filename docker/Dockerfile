@@ -1,5 +1,6 @@
 #TODO: Update BASE_IMG to be the DSO built base gitlabs 
-ARG BASE_IMG=registry.gitlab.aws.dev/helix/aip/gdal-base:latest
+ARG PROJECT_ROOT=helix/daas
+ARG BASE_IMG=registry.gitlab.aws.dev/${PROJECT_ROOT}/common/gdal-base:latest
 #checkov:skip=CKV_DOCKER_7:This is using an already built non latest image that we maintain
 FROM ${BASE_IMG} as runner
 # Only override if you're using a mirror with a cert pulled in using cert-base as a build parameter
