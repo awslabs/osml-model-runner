@@ -11,6 +11,7 @@ build:
   needs: []
   variables:
     # User defined
+    BASE_IMG: ${GDAL_BASE_IMG}
     TARGET: "runner"
     DOCKERFILE: "docker/Dockerfile"
     DESTINATION: ${MICROSERVICE_IMAGE}
