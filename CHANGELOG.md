@@ -4,6 +4,9 @@ This file is used to represent changes made between each tagged version of the M
 
 [Reference for OSML Model Runner Release Guide](https://github.com/aws-solutions-library-samples/osml-model-runner/releases)
 
+## Unreleased Changes
+
+- Update base path location of GDAL image for UC
 
 ## [v2.4.0] - 2025-07-07
 
