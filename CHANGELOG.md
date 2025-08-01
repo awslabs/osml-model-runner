@@ -6,7 +6,10 @@ This file is used to represent changes made between each tagged version of the M
 
 ## Unreleased Changes
 
+## [v2.4.1] - 2025-07-31
+
 - Update base path location of GDAL image for UC
+- Update BASE_IMG to latest gdal-base version
 
 ## [v2.4.0] - 2025-07-07
 
