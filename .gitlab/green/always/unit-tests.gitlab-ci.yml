@@ -1,0 +1,31 @@
+---
+# Unit Tests for Model Runner Service - Green Environment
+#
+
+unit-tests:
+  extends: .pytest_customer_template
+  stage: unit
+  needs: [build]
+  variables:
+    MICROSERVICE_IMAGE: ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CI_COMMIT_REF_SLUG}
+    # ModelRunner-specific test configuration
+    PYTEST_PATH: "test"  # ModelRunner uses test/ directory in root
+    TEST_REQUIREMENTS_FILE: "test/requirements-test.txt"  # ModelRunner has test requirements in test/
+    COVERAGE_PACKAGE: "aws.osml.model_runner"  # Cover the model runner package
+    PYTEST_ARGS: "--durations=10"  # Let the template handle coverage args
+    # Green environment-specific variables
+    BUILD_CERT: /certs/tls-ca-bundle.pem
+    PIP_INDEX_URL: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
+    # Fix permission issues by setting writable home directory
+    HOME: "/tmp"
+    PIP_CACHE_DIR: "/tmp/.pip-cache"
+    # ModelRunner-specific environment variables
+    WORKERS: "4"
+    WORKERS_PER_CPU: "1"
+    JOB_TABLE: "TEST-JOB-TABLE"
+    ENDPOINT_TABLE: "TEST-ENDPOINT-STATS-TABLE"
+    REGION_REQUEST_TABLE: "TEST-REGION-REQUEST-TABLE"
+    MODEL_RUNNER_QUEUE: "TEST-MODEL-RUNNER-QUEUE"
+    IMAGE_STATUS_TOPIC: "TEST-IMAGE-STATUS-TOPIC"
+    REGION_STATUS_TOPIC: "TEST-REGION-STATUS-TOPIC"
+    SM_SELF_THROTTLING: "true"

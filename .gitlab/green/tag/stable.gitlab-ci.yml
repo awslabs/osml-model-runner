@@ -1,0 +1,7 @@
+---
+# Tag stable version for Auth Service in Green environment
+# Uses docker-in-docker instead of skopeo
+#
+
+tag_stable:
+  extends: .docker_stable_tag_template

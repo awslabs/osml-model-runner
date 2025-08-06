@@ -1,8 +1,0 @@
----
-# Tag
-#
-
-include:
-  - local: .gitlab/common/release.gitlab-ci.yml
-  - local: .gitlab/aws/tag/push_to_ecr.gitlab-ci.yml
-  - local: .gitlab/aws/tag/stable.gitlab-ci.yml

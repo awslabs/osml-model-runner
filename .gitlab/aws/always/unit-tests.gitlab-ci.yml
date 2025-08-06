@@ -1,0 +1,36 @@
+---
+# Unit Tests for Model Runner Service
+#
+
+unit-tests:
+  extends: .pytest_template
+  stage: unit
+  needs: [build]
+  variables:
+    MICROSERVICE_IMAGE: ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CI_COMMIT_REF_SLUG}
+    # ModelRunner-specific test configuration
+    PYTEST_PATH: "test"  # ModelRunner uses test/ directory in root
+    TEST_REQUIREMENTS_FILE: "test/requirements-test.txt"  # ModelRunner has test requirements in test/
+    COVERAGE_PACKAGE: "aws.osml.model_runner"  # Cover the model runner package
+    PYTEST_ARGS: "--durations=10"  # Let the template handle coverage args
+    # Fix permission issues by setting writable home directory
+    HOME: "/tmp"
+    PIP_CACHE_DIR: "/tmp/.pip-cache"
+    # ModelRunner-specific environment variables
+    WORKERS: "4"
+    WORKERS_PER_CPU: "1"
+    JOB_TABLE: "TEST-JOB-TABLE"
+    ENDPOINT_TABLE: "TEST-ENDPOINT-STATS-TABLE"
+    FEATURE_TABLE: "TEST-FEATURE-TABLE"
+    REGION_REQUEST_TABLE: "TEST-REGION-REQUEST-TABLE"
+    IMAGE_QUEUE: "TEST-IMAGE-QUEUE"
+    REGION_QUEUE: "TEST-REGION-QUEUE"
+    IMAGE_STATUS_TOPIC: "TEST-IMAGE-STATUS-TOPIC"
+    REGION_STATUS_TOPIC: "TEST-REGION-STATUS-TOPIC"
+    SM_SELF_THROTTLING: "true"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG

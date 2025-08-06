@@ -1,29 +1,39 @@
 ---
 # Overrides
 #
-# This file contains overrides for jobs that are inherited from other external
-# sources. This is necessary to adhere to the pipeline configuration for this
-# project repository.
+# This file contains overrides for jobs that are inherited from external
+# sources (shared CICD templates). This ensures external jobs follow
+# the same pipeline workflow rules as defined at the root level.
 #
 
-.job_config: &job_config
+# Standard configuration for external jobs to follow workflow rules
+.external_job_config: &external_job_config
   needs: []
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
     - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG
+
+# Override external security scanning jobs from shared templates
 gl-secret-detection:
-  <<: *job_config
+  <<: *external_job_config
+
 gl-semgrep-sast:
-  <<: *job_config
+  <<: *external_job_config
+
 bandit-sast-scan:
-  <<: *job_config
+  <<: *external_job_config
+
 checkov-sast:
-  <<: *job_config
+  <<: *external_job_config
+
 grype-sca:
-  <<: *job_config
+  <<: *external_job_config
+
 semgrep-sast-scan:
-  <<: *job_config
+  <<: *external_job_config
+
 fortify-sast:
-  <<: *job_config
+  <<: *external_job_config
+  tags: [size:xlarge, arch:amd64]

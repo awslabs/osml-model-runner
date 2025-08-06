@@ -1,17 +1,14 @@
 ---
-# Build
+# Build job for Model Runner Service
 #
 
-stages:
-  - build
-
-build: 
-  extends: .kaniko
+build:
+  extends: .kaniko_template
   stage: build
-  needs: []
+  needs: [identify_tag_version]
   variables:
-    # User defined
+    # Override Dockerfile default with GDAL base image
     BASE_IMG: ${GDAL_BASE_IMG}
     TARGET: "runner"
-    DOCKERFILE: "docker/Dockerfile"
+    DOCKERFILE: docker/Dockerfile
     DESTINATION: ${MICROSERVICE_IMAGE}

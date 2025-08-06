@@ -1,0 +1,11 @@
+---
+# Release Preparation for Auth Service
+# Automatically updates version.json and CHANGELOG.md on release branches
+#
+
+release_prep:
+  extends: .release_prep_template
+
+# Automatically merge release MR after all jobs pass
+merge_release:
+  extends: .merge_release_template

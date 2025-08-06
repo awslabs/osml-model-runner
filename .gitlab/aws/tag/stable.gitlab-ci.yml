@@ -2,12 +2,4 @@
 #
 
 tag_stable:
-  stage: build
-  extends: .skopeo
-  script:
-    - echo "Tagging and pushing container image as stable"
-    - skopeo copy docker://${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CURRENT_TAG} docker://${CI_REGISTRY_IMAGE}/${MICROSERVICE}:stable --dest-creds gitlab-ci-token:${CI_JOB_TOKEN} --src-creds gitlab-ci-token:${CI_JOB_TOKEN}
-  needs:
-    - job: identify_tag_version
-      artifacts: true
-    - job: build
+  extends: .stable_tag_template

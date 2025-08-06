@@ -1,0 +1,7 @@
+---
+# Merge Request Specific Jobs
+#
+
+# Check if CHANGELOG.md has been updated in merge requests
+changelog:
+  extends: .changelog_template

@@ -7,38 +7,38 @@ stages:
   - build
   - unit
   - test
+  - security
+  - docs
   - push
   - trigger
   - publish
   - release
 
-variables: 
+variables:
   BUILD_CERT: /certs/tls-ca-bundle.pem
-  BASE_GIT_URL: https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.gs.mil/maven-daas/inference-engine
   PIP_INDEX_URL: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
+  PIP_TRUSTED_HOST: mirrors.gs.mil  # For customer environment PyPI mirror
+  NEXUS_URL: ${NEXUS_URL}  # GitLab group CI variable
   NEXUS3_USER: ${maven_daas_nexus_3_credential_username}
   NEXUS3_PASSWORD: ${maven_daas_nexus_3_credential_password}
-  MICROSERVICE: ie-model-runner
+  GDAL_BASE_IMG: ${CI_REGISTRY}/${PROJECT_ROOT}/common/gdal-base:latest  # Dynamic GDAL base image location
+  MICROSERVICE: "ie-model-runner"
   MICROSERVICE_IMAGE: ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CI_COMMIT_REF_SLUG}
-  GDAL_BASE_IMG: ${CI_REGISTRY}/${PROJECT_ROOT}/common/gdal-base:latest
+  DOCKERFILE: docker/Dockerfile
 
 include:
-  # always
+  # Always included jobs
   - local: .gitlab/green/always/*.gitlab-ci.yml
 
-  # hidden
-  - local: .gitlab/orange/.hidden.gitlab-ci.yml
-
-  # common
-  - local: .gitlab/common/templates.gitlab-ci.yml
-
-  # branch: main
+  # Main branch specific jobs
   - local: .gitlab/green/main/*.gitlab-ci.yml
     rules:
       - if: $CI_COMMIT_BRANCH == "main"
-  - local: .gitlab/orange/main/*.gitlab-ci.yml
+
+  # tag/release
+  - local: .gitlab/green/tag/*.gitlab-ci.yml
     rules:
-      - if: $CI_COMMIT_BRANCH == "main"
+      - if: $CI_COMMIT_TAG
 
 identify_tag_version:
   extends: .identify_tag_version_template

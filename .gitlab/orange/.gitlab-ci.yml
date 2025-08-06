@@ -4,33 +4,46 @@
 
 stages:
   - identify_tag_version
-  - pre_deployment
   - build
   - unit
   - test
+  - pre_deployment
+  - security
+  - docs
   - push
   - trigger
   - publish
   - release
 
-variables: 
-  MICROSERVICE: ie-model-runner
+variables:
+  NEXUS_URL: ${NEXUS_URL}  # GitLab group CI variable
+  NEXUS3_USER: ${maven_daas_nexus_3_credential_username}
+  NEXUS3_PASSWORD: ${maven_daas_nexus_3_credential_password}
+  GDAL_BASE_IMG: ${CI_REGISTRY}/${PROJECT_ROOT}/common/gdal-base:latest  # Dynamic GDAL base image location
+  MICROSERVICE: "ie-model-runner"
   MICROSERVICE_IMAGE: ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CI_COMMIT_REF_SLUG}
+  DOCKERFILE: docker/Dockerfile
 
 # Choose pipeline depending on scenario
 include:
-  # hidden
-  - local: .gitlab/orange/.hidden.gitlab-ci.yml
-  - local: .gitlab/aws/.hidden.gitlab-ci.yml
+  # Common templates from project (uses default branch: main)
+  - project: '${PROJECT_ROOT}/common/cicd-templates'
+    file: 'templates.gitlab-ci.yml'
 
-  # common
-  - local: .gitlab/common/templates.gitlab-ci.yml
+  # Customer-specific templates (uses default branch: main)
+  - project: '${PROJECT_ROOT}/common/cicd-templates'
+    file: 'templates-customer.gitlab-ci.yml'
 
-  # green
+  # Environment-specific templates (uses default branch: main)
+  - project: '${PROJECT_ROOT}/common/cicd-templates'
+    file: 'templates-environment.gitlab-ci.yml'
+
+  # Green environment pipeline (build/tag/push jobs)
   - local: .gitlab/green/.gitlab-ci.yml
     rules:
       - if: ($GITLAB_CI_ENV == "green")
 
+  # Orange-specific includes based on branches
   # branch: uc-main (pre_deployment)
   - local: .gitlab/orange/uc-main/*.gitlab-ci.yml
     rules:
@@ -41,6 +54,8 @@ include:
     rules:
       - if: ($CI_COMMIT_BRANCH == "main")
 
+
+# Version identification
 identify_tag_version:
   extends: .identify_tag_version_template
 

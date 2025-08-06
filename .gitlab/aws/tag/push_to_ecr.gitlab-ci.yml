@@ -3,7 +3,7 @@
 
 push_to_ecr_tst:
   stage: push
-  extends: .aws_ecr_push_command
+  extends: .aws_ecr_push_template
   needs:
     - job: identify_tag_version
       artifacts: true
@@ -16,7 +16,7 @@ push_to_ecr_tst:
 
 push_to_ecr_ops:
   stage: push
-  extends: .aws_ecr_push_command
+  extends: .aws_ecr_push_template
   needs:
     - job: identify_tag_version
       artifacts: true

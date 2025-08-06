@@ -7,7 +7,7 @@
 # This rebake:mr job runs in the orange pipeline main branch
 # and handles rebakes for all deployments
 rebake:mr:
-  extends: .rebake_template
+  extends: .customer_rebake_template
   needs:
     - job: identify_tag_version
       artifacts: true

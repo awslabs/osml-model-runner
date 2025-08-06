@@ -5,12 +5,9 @@
 #
 
 trigger-semver:
-  stage: trigger
+  extends: .wormhole_template
   variables:
+    # Override variables as needed
     IMAGE_PATH: $CI_REGISTRY_IMAGE/$MICROSERVICE
-    # Image Tag
     TAG: $CURRENT_TAG
-    # Domain to send image to: SC/TC/BOTH
     DOMAIN: BOTH
-  trigger:
-    project: wormhole/container-movement-pipelines/container-up
