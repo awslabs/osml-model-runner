@@ -1,12 +1,19 @@
-# Model Runner CHANGELOG
+# Changelog
 
-This file is used to represent changes made between each tagged version of the Model Runner image. This should be updated as part of each merge request to identify what has changed. If possible, include the story that links to the feature update.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Reference for OSML Model Runner Release Guide](https://github.com/aws-solutions-library-samples/osml-model-runner/releases)
+## [Unreleased]
 
-## Unreleased Changes
+## [2.5.0] - 2025-08-12
+
+### Added
+
+### Changed
 
 - Refactor to leverage Common/cicd-templates
+
+### Fixed
 
 ## [v2.4.1] - 2025-07-31
 
@@ -21,7 +28,6 @@ This file is used to represent changes made between each tagged version of the M
 
 - Update root_logger to root instead of __name__. This was causing no logs to be emitted to CW
 - Update METRIC to emit the completed duration instead of default
-
 
 ## v2.3.0
 
