@@ -1,4 +1,4 @@
-# Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+# Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 # Stage 1: Build environment
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal as build
@@ -27,6 +27,11 @@ RUN wget -c ${MINICONDA_URL} && \
 
 # Copy the conda environment file
 COPY environment-py311.yml environment.yml
+
+# Accept Conda TOS before creating the environment
+RUN conda config --set always_yes true && \
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
 # Create the conda environment and remove additional unnecessary files
 RUN conda env create -f environment.yml \
