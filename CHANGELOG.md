@@ -5,6 +5,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.2] - 2025-08-25
+
+### Changed
+
+- Run pipeline to auto-update packages
+
 ## [2.5.1] - 2025-08-18
 
 ### Changed
