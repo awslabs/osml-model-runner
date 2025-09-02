@@ -1,12 +1,19 @@
 AWS_ACCOUNT_ID		:= $(shell aws sts get-caller-identity --query Account --output text)
-TAG 							:= stable 
-
-publish_local_build: ecr_login
-	docker build --build-arg BASE_IMG=${BASE_IMG} --target runner -f docker/Dockerfile -t $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_DEFAULT_REGION).amazonaws.com/ie-model-runner:$(TAG) .
-	docker push $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_DEFAULT_REGION).amazonaws.com/ie-model-runner:$(TAG) 
+TAG 				:= stable 
 
 ecr_login:
 	aws ecr get-login-password --region $(AWS_DEFAULT_REGION) | docker login --username AWS --password-stdin $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_DEFAULT_REGION).amazonaws.com
+
+local_build: ecr_login
+	docker build \
+		--target runner \
+		-f docker/Dockerfile \
+		--build-arg BASE_IMG=$(GDAL_BASE_IMG) \
+		-t $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_DEFAULT_REGION).amazonaws.com/ie-model-runner:$(TAG) \
+		.
+
+publish_local_build: local_build
+	docker push $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_DEFAULT_REGION).amazonaws.com/ie-model-runner:$(TAG) 
 
 docker_test: 
 	docker build --target unit-test -f docker/Dockerfile -t ie-model-runner:test .

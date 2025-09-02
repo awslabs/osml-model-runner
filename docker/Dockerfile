@@ -37,6 +37,11 @@ WORKDIR /home
 # copy our lcoal application source into the container
 COPY . osml-model-runner
 
+# copy extensions to override files in src
+COPY extensions/src/ osml-model-runner/src/
+
+
+
 # Update C env vars so compiler can find gdal
 ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
 ENV C_INCLUDE_PATH=/usr/include/gdal
