@@ -57,7 +57,9 @@ repos:
             pyproject.toml|
             setup.cfg|
             setup.py|
-            py.typed
+            py.typed|
+            cdk/bin/deployment/deployment\.json\.example|
+            .*package.*\.json
           )$
       - id: copyright-required
         name: require copyright
@@ -72,5 +74,7 @@ repos:
             pyproject.toml|
             setup.cfg|
             setup.py|
-            py.typed
+            py.typed|
+            cdk/bin/deployment/deployment\.json\.example|
+            .*package.*\.json
           )$
