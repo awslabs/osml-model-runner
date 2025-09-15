@@ -1,0 +1,9 @@
+{
+  "projectName": "<YOUR-PROJECT-NAME>",
+  "account": {
+    "id": "<YOUR-ACCOUNT-ID>",
+    "region": "<YOUR-REGION>"
+  },
+  "targetVpcId": "<YOUR-VPC-ID>",
+  "workspaceBucketName": "<YOUR-WORKSPACE-BUCKET-NAME>"
+}

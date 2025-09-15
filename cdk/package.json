@@ -1,0 +1,41 @@
+{
+  "name": "cdk",
+  "version": "0.1.0",
+  "bin": {
+    "cdk": "bin/app.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@eslint/js": "^8.56.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "24.0.7",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "aws-cdk": "2.1019.2",
+    "cdk-nag": "^2.36.30",
+    "chalk": "^5.4.1",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-import": "^2.29.0",
+    "eslint-plugin-jest": "^28.0.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "eslint-plugin-promise": "^6.1.0",
+    "eslint-plugin-simple-import-sort": "^12.0.0",
+    "install": "^0.13.0",
+    "jest": "^30.0.3",
+    "prettier": "^3.0.0",
+    "npm": "^11.4.2",
+    "ts-jest": "^29.4.0",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.8.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.202.0",
+    "constructs": "^10.4.2",
+    "osml-cdk-constructs": "2.1.0"
+  }
+}
