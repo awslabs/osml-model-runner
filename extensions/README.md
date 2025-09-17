@@ -107,7 +107,7 @@ class CustomDetector(AsyncSMDetector):
     def _preprocess_payload(self, payload):
         # Custom preprocessing logic
         return super()._preprocess_payload(payload)
-    
+
     def _postprocess_features(self, features):
         # Custom postprocessing logic
         enhanced_features = super()._postprocess_features(features)
