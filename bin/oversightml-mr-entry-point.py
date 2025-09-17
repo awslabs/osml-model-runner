@@ -55,6 +55,8 @@ def map_signals(model_runner: ModelRunner) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--disable-extensions", action="store_true", 
+                       help="Disable extensions even if available and configured")
     return parser.parse_args()
 
 
@@ -65,15 +67,32 @@ def setup_code_profiling() -> None:
 
 
 def main() -> int:
-    model_runner = ModelRunner()
+    try:
+        # Parse command line arguments
+        args = parse_args()
+        
+        # Configure logging first
+        configure_logging(args.verbose)
+        
+        # Set up extensions if available
+        setup_extensions(args)
+        
+        # Create and configure model runner
+        model_runner = ModelRunner()
 
-    map_signals(model_runner)
-    args = parse_args()
-    configure_logging(args.verbose)
-    setup_code_profiling()
+        map_signals(model_runner)
+        # setup_code_profiling()
 
-    model_runner.run()
-    return 1
+        model_runner.run()
+        
+        return 0
+        
+    except KeyboardInterrupt:
+        logger.info("Model runner interrupted by user")
+        return 130  # Standard exit code for SIGINT
+    except Exception as e:
+        logger.error(f"Model runner failed with error: {e}", exc_info=True)
+        return 1
 
 
 if __name__ == "__main__":

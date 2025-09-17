@@ -57,9 +57,17 @@ RUN ${PYTHON_BINARY} -m pip install \
     --trusted-host ${PIP_TRUSTED_HOST} \
     osml-model-runner/.
 
-# Resolve broken simlinks for gdal python header bindings after python installs.
-RUN ldconfig
-# Clean up old python installs
+# install extensions as separate package
+COPY extensions/ /home/extensions/
+RUN python3 -m pip install \
+    --no-cache-dir \
+    --index-url ${PIP_INDEX_URL} \ 
+    --trusted-host https://mirrors.gs.mil \
+    /home/extensions/
+
+# Resolve broken simlinks for gdal python header bindings after python installs. 
+RUN ldconfig 
+# Clean up old python3.6 install
 USER root
 RUN rm -rf /usr/lib/python3.6/site-packages/urllib3* \
            /usr/lib/python3.9 \
@@ -108,7 +116,10 @@ ENV AWS_SECRET_ACCESS_KEY=testing
 ENV AWS_SECURITY_TOKEN=testing
 ENV AWS_SESSION_TOKEN=testing
 
-RUN ${PYTHON_BINARY} -m pip install \
+# Extension configuration
+ENV USE_EXTENSIONS=true
+
+RUN python3 -m pip install \
     --no-cache-dir \
     --index-url ${PIP_INDEX_URL} \
     --trusted-host ${PIP_TRUSTED_HOST} \
