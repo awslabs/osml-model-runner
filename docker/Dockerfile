@@ -34,13 +34,8 @@ USER root
 
 WORKDIR /home
 
-# copy our lcoal application source into the container
+# copy our local application source into the container
 COPY . osml-model-runner
-
-# copy extensions to override files in src
-COPY extensions/src/ osml-model-runner/src/
-
-
 
 # Update C env vars so compiler can find gdal
 ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
@@ -60,8 +55,23 @@ RUN ${PYTHON_BINARY} -m pip install \
     --trusted-host ${PIP_TRUSTED_HOST} \
     osml-model-runner/.
 
-# Resolve broken simlinks for gdal python header bindings after python installs.
-RUN ldconfig
+# install extensions as separate package
+COPY extensions/ /home/extensions/
+RUN python3 -m pip install \
+    --no-cache-dir \
+    --index-url ${PIP_INDEX_URL} \ 
+    --trusted-host https://mirrors.gs.mil \
+    /home/extensions/
+
+# Resolve broken simlinks for gdal python header bindings after python installs. 
+RUN ldconfig 
+# Clean up old python3.6 install
+USER root
+RUN rm -rf /usr/lib/python3.6/site-packages/urllib3* \
+           /usr/lib/python3.9 \
+           /home/osml-model-runner/.venv/lib/python3.11 \
+           /usr/share/python3-wheels/setuptools-*.whl \
+           /usr/share/python3.11-wheels
 
 # Create directory that pip can install required packages
 # for unit tests to run. Needed for pipeline unit-test job.
@@ -103,7 +113,10 @@ ENV AWS_SECRET_ACCESS_KEY=testing
 ENV AWS_SECURITY_TOKEN=testing
 ENV AWS_SESSION_TOKEN=testing
 
-RUN ${PYTHON_BINARY} -m pip install \
+# Extension configuration
+ENV USE_EXTENSIONS=true
+
+RUN python3 -m pip install \
     --no-cache-dir \
     --index-url ${PIP_INDEX_URL} \ 
     --trusted-host ${PIP_TRUSTED_HOST} \

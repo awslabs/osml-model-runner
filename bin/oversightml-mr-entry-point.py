@@ -14,6 +14,17 @@ from pythonjsonlogger import jsonlogger
 from aws.osml.model_runner import ModelRunner
 from aws.osml.model_runner.common import ThreadingLocalContextFilter
 
+logger = logging.getLogger(__name__)
+
+# Check if extensions are available
+EXTENSIONS_AVAILABLE = False
+try:
+    import osml_extensions
+    from osml_extensions.entry_point import initialize_extensions
+    EXTENSIONS_AVAILABLE = True
+except ImportError:
+    EXTENSIONS_AVAILABLE = False
+
 
 def handler_stop_signals(signal_num: int, frame: Optional[FrameType], model_runner: ModelRunner) -> None:
     model_runner.stop()
@@ -50,7 +61,47 @@ def map_signals(model_runner: ModelRunner) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--disable-extensions", action="store_true", 
+                       help="Disable extensions even if available and configured")
     return parser.parse_args()
+
+
+def use_extensions() -> bool:
+    """
+    Check if extensions should be used based on environment variable.
+    
+    :return: bool = True if extensions should be used, False otherwise
+    """
+    env_value = os.getenv('USE_EXTENSIONS', 'true').lower()
+    return env_value in ('true', '1')
+
+
+def setup_extensions(args: argparse.Namespace) -> None:
+    """
+    Set up extensions based on command line arguments and environment.
+    
+    :param args: Parsed command line arguments
+    """
+    if not EXTENSIONS_AVAILABLE:
+        logger.info("Extensions not available (osml_extensions not installed)")
+        return
+    
+    if args.disable_extensions:
+        logger.info("Extensions disabled via command line argument")
+        os.environ['USE_EXTENSIONS'] = 'false'
+        return
+    
+    if not use_extensions():
+        logger.info("Extensions disabled via USE_EXTENSIONS environment variable")
+        return
+    
+    try:
+        # Initialize extensions
+        initialize_extensions()
+        logger.info("Extensions initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize extensions: {e}")
+        logger.info("Continuing with base functionality")
 
 
 # def setup_code_profiling() -> None:
@@ -60,15 +111,32 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    model_runner = ModelRunner()
+    try:
+        # Parse command line arguments
+        args = parse_args()
+        
+        # Configure logging first
+        configure_logging(args.verbose)
+        
+        # Set up extensions if available
+        setup_extensions(args)
+        
+        # Create and configure model runner
+        model_runner = ModelRunner()
 
-    map_signals(model_runner)
-    args = parse_args()
-    configure_logging(args.verbose)
-    # setup_code_profiling()
+        map_signals(model_runner)
+        # setup_code_profiling()
 
-    model_runner.run()
-    return 1
+        model_runner.run()
+        
+        return 0
+        
+    except KeyboardInterrupt:
+        logger.info("Model runner interrupted by user")
+        return 130  # Standard exit code for SIGINT
+    except Exception as e:
+        logger.error(f"Model runner failed with error: {e}", exc_info=True)
+        return 1
 
 
 if __name__ == "__main__":
