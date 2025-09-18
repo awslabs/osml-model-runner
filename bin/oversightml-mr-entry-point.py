@@ -20,10 +20,12 @@ logger = logging.getLogger(__name__)
 EXTENSIONS_AVAILABLE = False
 try:
     import osml_extensions
-    from osml_extensions.entry_point import initialize_extensions
+    from osml_extensions.enhanced_model_runner import EnhancedModelRunner
     EXTENSIONS_AVAILABLE = True
-except ImportError:
+    logger.info("Extensions package found and imported successfully")
+except ImportError as e:
     EXTENSIONS_AVAILABLE = False
+    logger.info(f"Extensions package not available: {e}")
 
 
 def handler_stop_signals(signal_num: int, frame: Optional[FrameType], model_runner: ModelRunner) -> None:
@@ -76,38 +78,52 @@ def use_extensions() -> bool:
     return env_value in ('true', '1')
 
 
-def setup_extensions(args: argparse.Namespace) -> None:
+def should_use_extensions(args: argparse.Namespace) -> bool:
     """
-    Set up extensions based on command line arguments and environment.
+    Determine if extensions should be used based on command line arguments and environment.
     
     :param args: Parsed command line arguments
+    :return: True if extensions should be used, False otherwise
     """
     if not EXTENSIONS_AVAILABLE:
-        logger.info("Extensions not available (osml_extensions not installed)")
-        return
+        logger.info("Extensions not available (osml_extensions package not installed)")
+        return False
     
     if args.disable_extensions:
-        logger.info("Extensions disabled via command line argument")
-        os.environ['USE_EXTENSIONS'] = 'false'
-        return
+        logger.info("Extensions disabled via --disable-extensions command line argument")
+        return False
     
     if not use_extensions():
         logger.info("Extensions disabled via USE_EXTENSIONS environment variable")
-        return
+        return False
     
-    try:
-        # Initialize extensions
-        initialize_extensions()
-        logger.info("Extensions initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize extensions: {e}")
-        logger.info("Continuing with base functionality")
+    logger.info("Extensions are available and enabled")
+    return True
 
 
 # def setup_code_profiling() -> None:
 #     codeguru_profiling_group = os.environ.get("CODEGURU_PROFILING_GROUP")
 #     if codeguru_profiling_group:
 #         Profiler(profiling_group_name=codeguru_profiling_group).start()
+
+
+def create_model_runner(use_enhanced: bool) -> ModelRunner:
+    """
+    Create the appropriate model runner based on configuration.
+    
+    :param use_enhanced: Whether to use the enhanced model runner
+    :return: ModelRunner instance (base or enhanced)
+    """
+    if use_enhanced and EXTENSIONS_AVAILABLE:
+        try:
+            logger.info("Creating EnhancedModelRunner with extension support")
+            return EnhancedModelRunner()
+        except Exception as e:
+            logger.error(f"Failed to create EnhancedModelRunner: {e}")
+            logger.info("Falling back to base ModelRunner")
+    
+    logger.info("Creating base ModelRunner")
+    return ModelRunner()
 
 
 def main() -> int:
@@ -118,11 +134,11 @@ def main() -> int:
         # Configure logging first
         configure_logging(args.verbose)
         
-        # Set up extensions if available
-        setup_extensions(args)
+        # Determine if extensions should be used
+        use_enhanced = should_use_extensions(args)
         
         # Create and configure model runner
-        model_runner = ModelRunner()
+        model_runner = create_model_runner(use_enhanced)
 
         map_signals(model_runner)
         # setup_code_profiling()

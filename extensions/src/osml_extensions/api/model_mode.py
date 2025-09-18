@@ -1,15 +1,16 @@
-from enum import auto
+#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
-from aws.osml.model_runner.common import AutoStringEnum
+from enum import Enum
 
 
-class ExtendedModelInvokeMode(str, AutoStringEnum):
+class ExtendedModelInvokeMode(Enum):
     """
-    Extended enumeration defining additional hosting options for CV models.
-    Inherits from ModelInvokeMode and adds async SageMaker endpoint support.
+    Extended model invocation modes for enhanced detectors.
+
+    This enum extends the base ModelInvokeMode to support additional
+    detector types while maintaining full compatibility with existing modes.
     """
 
-    NONE = auto()
-    SM_ENDPOINT = auto()
-    HTTP_ENDPOINT = auto()
-    SM_ENDPOINT_ASYNC = auto()
+    SM_ENDPOINT_ASYNC = "SM_ENDPOINT_ASYNC"
+    # Future extension modes can be added here
+    # HTTP_ENDPOINT_ASYNC = "HTTP_ENDPOINT_ASYNC"  # Example future extension
