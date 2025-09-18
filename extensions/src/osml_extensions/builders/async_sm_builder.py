@@ -18,13 +18,15 @@ class AsyncSMDetectorBuilder(SMDetectorBuilder):
     This builder maintains compatibility with the base SMDetectorBuilder.
     """
 
-    def __init__(self, endpoint: str, assumed_credentials: Dict[str, str]):
+    def __init__(self, endpoint: str, assumed_credentials: Optional[Dict[str, str]] = None):
         """
         Initializes the AsyncSMDetectorBuilder.
 
         :param endpoint: str = The name of the SageMaker endpoint to be used.
         :param assumed_credentials: Dict[str, str] = Optional credentials to use with the SageMaker endpoint.
         """
+        if not assumed_credentials:
+            raise ValueError("assumed credentials cann't be None")
         super().__init__(endpoint, assumed_credentials)
         logger.info(f"AsyncSMDetectorBuilder initialized for endpoint: {endpoint}")
 
