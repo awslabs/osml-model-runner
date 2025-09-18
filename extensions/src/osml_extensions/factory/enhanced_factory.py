@@ -12,24 +12,6 @@ from aws.osml.model_runner.inference.detector import Detector
 logger = logging.getLogger(__name__)
 
 
-def get_original_factory():
-    """
-    Get the original FeatureDetectorFactory class before any patching.
-
-    :return: The original FeatureDetectorFactory class
-    """
-    try:
-        from osml_extensions.entry_point import get_original_feature_detector_factory
-
-        return get_original_feature_detector_factory()
-    except ImportError as e:
-        logger.error(f"Could not access original factory: {e}")
-        # Last resort fallback
-        from aws.osml.model_runner.inference.endpoint_factory import FeatureDetectorFactory
-
-        return FeatureDetectorFactory
-
-
 class EnhancedFeatureDetectorFactory:
     """
     Enhanced factory that supports both base and extended detector classes
@@ -58,6 +40,22 @@ class EnhancedFeatureDetectorFactory:
 
         logger.info(f"EnhancedFeatureDetectorFactory initialized - " f"endpoint: {endpoint}, mode: {endpoint_mode}, ")
 
+    def _build_with_original_factory(self) -> Optional[Detector]:
+        """
+        Build a detector using the original factory as fallback.
+
+        :return: Optional[Detector] = A detector instance from the original factory
+        """
+        try:
+            from osml_extensions.entry_point import get_original_feature_detector_factory
+
+            original_factory_class = get_original_feature_detector_factory()
+            original_factory = original_factory_class(self.endpoint, self.endpoint_mode, self.assumed_credentials)  # type: ignore
+            return original_factory.build()
+        except Exception as fallback_error:
+            logger.error(f"Fallback to original factory also failed: {fallback_error}")
+            return None
+
     def build(self) -> Optional[Detector]:
         """
         Build a detector instance, preferring extensions when enabled and available.
@@ -75,27 +73,11 @@ class EnhancedFeatureDetectorFactory:
             else:
                 # Use the original factory for base functionality
                 logger.debug("Using original factory for base detector types")
-                original_factory_class = get_original_factory()
-                original_factory = original_factory_class(self.endpoint, self.endpoint_mode, self.assumed_credentials)  # type: ignore
-                return original_factory.build()
+                return self._build_with_original_factory()
 
         except ImportError as e:
             logger.warning(f"Extension classes not available: {e}")
-            # Fall back to original factory
-            try:
-                original_factory_class = get_original_factory()
-                original_factory = original_factory_class(self.endpoint, self.endpoint_mode, self.assumed_credentials)  # type: ignore
-                return original_factory.build()
-            except Exception as fallback_error:
-                logger.error(f"Fallback to original factory also failed: {fallback_error}")
-                return None
+            return self._build_with_original_factory()
         except Exception as e:
             logger.error(f"Failed to build detector with extensions: {e}")
-            # Fall back to original factory
-            try:
-                original_factory_class = get_original_factory()
-                original_factory = original_factory_class(self.endpoint, self.endpoint_mode, self.assumed_credentials)  # type: ignore
-                return original_factory.build()
-            except Exception as fallback_error:
-                logger.error(f"Fallback to original factory also failed: {fallback_error}")
-                return None
+            return self._build_with_original_factory()

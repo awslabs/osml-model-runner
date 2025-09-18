@@ -1,4 +1,5 @@
 from enum import auto
+
 from aws.osml.model_runner.common import AutoStringEnum
 
 

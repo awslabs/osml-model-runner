@@ -105,7 +105,8 @@ def get_original_feature_detector_factory():
     Get the original FeatureDetectorFactory class before any patching.
 
     This function provides access to the unpatched factory class for use
-    in extensions and fallback scenarios.
+    in extensions and fallback scenarios. It includes robust fallback handling
+    to ensure the original factory is always accessible.
 
     :return: The original FeatureDetectorFactory class
     """
