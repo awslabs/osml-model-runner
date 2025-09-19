@@ -2,7 +2,7 @@
 
 import logging
 import traceback
-from typing import Optional, Type
+from typing import Optional, Type, Tuple
 
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.metric_scope import metric_scope
@@ -21,16 +21,20 @@ from aws.osml.model_runner.tile_worker.tile_worker_utils import _create_tile
 from aws.osml.photogrammetry import SensorModel
 
 from osml_extensions import EnhancedServiceConfig
-from osml_extensions.api import ExtendedModelInvokeMode
-from osml_extensions.config import AsyncEndpointConfig
-from osml_extensions.detectors.async_sm_detector import AsyncSMDetector
 from osml_extensions.errors import ExtensionRuntimeError
-from osml_extensions.metrics import AsyncMetricsTracker
-from osml_extensions.workers import setup_enhanced_tile_workers, AsyncTileWorkerPool
+from osml_extensions.registry import register_handler, HandlerType
+
+from .workers import AsyncTileWorkerPool
 
 logger = logging.getLogger(__name__)
 
 
+@register_handler(
+    request_type="async_sm_endpoint",
+    handler_type=HandlerType.REGION_REQUEST_HANDLER,
+    name="enhanced_region_request_handler",
+    description="Enhanced region request handler with async processing capabilities"
+)
 class EnhancedRegionRequestHandler(RegionRequestHandler):
     """
     Enhanced region request handler with additional monitoring and processing capabilities.
@@ -38,79 +42,6 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
     This class maintains full compatibility with the base RegionRequestHandler while adding
     enhanced features for improved performance and monitoring.
     """
-
-    def __init__(
-        self,
-        region_request_table: RegionRequestTable,
-        job_table: JobTable,
-        region_status_monitor: RegionStatusMonitor,
-        endpoint_statistics_table: EndpointStatisticsTable,
-        tiling_strategy: TilingStrategy,
-        endpoint_utils: EndpointUtils,
-        config: ServiceConfig,
-    ) -> None:
-        """
-        Initialize the EnhancedRegionRequestHandler with enhanced capabilities.
-
-        :param region_request_table: The table that handles region requests.
-        :param job_table: The job table for image/region processing.
-        :param region_status_monitor: A monitor to track region request status.
-        :param endpoint_statistics_table: Table for tracking endpoint statistics.
-        :param tiling_strategy: The strategy for handling image tiling.
-        :param endpoint_utils: Utility class for handling endpoint-related operations.
-        :param config: Configuration settings for the service.
-        """
-        super().__init__(
-            region_request_table,
-            job_table,
-            region_status_monitor,
-            endpoint_statistics_table,
-            tiling_strategy,
-            endpoint_utils,
-            config
-        )
-        
-        logger.info(f"EnhancedRegionRequestHandler initialized with enhanced_processing")
-
-    def _enhance_region_processing(self, region_request: RegionRequest) -> RegionRequest:
-        """
-        Enhance region request processing with additional metadata and validation.
-        
-        This method can be overridden by subclasses to add custom preprocessing logic.
-        
-        :param region_request: The region request to enhance
-        :return: Enhanced region request
-        """
-
-        try:
-            # For now, just return the region request as-is
-            # Future enhancements could include request validation, transformation, etc.
-            logger.debug(f"Enhancing region request processing for region: {region_request.region_id}")
-            return region_request
-        except Exception as e:
-            logger.warning(f"Region request enhancement failed: {e}, using original request")
-            logger.debug(f"Traceback: {traceback.format_exc()}")
-            return region_request
-
-    def _add_enhanced_monitoring(self, metrics: MetricsLogger) -> None:
-        """
-        Add enhanced monitoring metrics for detailed region processing tracking.
-        
-        :param metrics: The metrics logger instance
-        """
-
-        try:
-            metrics.put_metric("EnhancedRegionRequestHandler.Invocations", 1, str(Unit.COUNT.value))
-            metrics.put_metric("EnhancedRegionRequestHandler.EnhancedProcessing", 1, str(Unit.COUNT.value))
-            
-            # Add custom dimensions for enhanced tracking
-            metrics.put_dimensions({
-                "HandlerType": "EnhancedRegionRequestHandler",
-                "EnhancedProcessing": "Enabled"
-            })
-        except Exception as e:
-            logger.warning(f"Failed to add enhanced monitoring metrics: {e}")
-            logger.debug(f"Traceback: {traceback.format_exc()}")
 
     @metric_scope
     def process_region_request(
@@ -137,16 +68,9 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
         logger.debug(f"EnhancedRegionRequestHandler processing region: {region_request.region_id}")
 
         try:
-            # Add enhanced monitoring metrics
-            if isinstance(metrics, MetricsLogger):
-                self._add_enhanced_monitoring(metrics)
-
-            # Enhance region request processing
-            enhanced_region_request = self._enhance_region_processing(region_request)
-
             # Validate the enhanced region request
-            if not enhanced_region_request.is_valid():
-                logger.error(f"Invalid Enhanced Region Request! {enhanced_region_request.__dict__}")
+            if not region_request.is_valid():
+                logger.error(f"Invalid Enhanced Region Request! {region_request.__dict__}")
                 raise ValueError("Invalid Enhanced Region Request")
 
             # Set up enhanced dimensions for metrics
@@ -154,7 +78,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
                 image_format = str(raster_dataset.GetDriver().ShortName).upper()
                 metrics.put_dimensions({
                     "Operation": "EnhancedRegionProcessing",
-                    "ModelName": enhanced_region_request.model_name,
+                    "ModelName": region_request.model_name,
                     "InputFormat": image_format,
                     "HandlerType": "EnhancedRegionRequestHandler"
                 })
@@ -162,10 +86,10 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
             # Handle self-throttling with enhanced monitoring
             if self.config.self_throttling:
                 max_regions = self.endpoint_utils.calculate_max_regions(
-                    enhanced_region_request.model_name, enhanced_region_request.model_invocation_role
+                    region_request.model_name, region_request.model_invocation_role
                 )
-                self.endpoint_statistics_table.upsert_endpoint(enhanced_region_request.model_name, max_regions)
-                in_progress = self.endpoint_statistics_table.current_in_progress_regions(enhanced_region_request.model_name)
+                self.endpoint_statistics_table.upsert_endpoint(region_request.model_name, max_regions)
+                in_progress = self.endpoint_statistics_table.current_in_progress_regions(region_request.model_name)
 
                 if in_progress >= max_regions:
                     if isinstance(metrics, MetricsLogger):
@@ -174,7 +98,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
                     from aws.osml.model_runner.exceptions import SelfThrottledRegionException
                     raise SelfThrottledRegionException
 
-                self.endpoint_statistics_table.increment_region_count(enhanced_region_request.model_name)
+                self.endpoint_statistics_table.increment_region_count(region_request.model_name)
 
             try:
                 # Start region request processing
@@ -182,7 +106,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
                 logger.debug(f"Enhanced handler starting region request: region id: {region_request_item.region_id}")
 
                 # Set up async worker pool
-                worker_setup = self._setup_async_worker_pool(enhanced_region_request, sensor_model, self.config.elevation_model)
+                worker_setup = self._setup_async_worker_pool(region_request, sensor_model, self.config.elevation_model)
 
                 # Process tiles using appropriate method
                 total_tile_count, failed_tile_count = self._process_tiles_with_async_pool(
@@ -202,7 +126,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
 
                 # Complete region processing
                 image_request_item = self.job_table.complete_region_request(
-                    enhanced_region_request.image_id, bool(failed_tile_count)
+                    region_request.image_id, bool(failed_tile_count)
                 )
 
                 # Update region status
@@ -244,7 +168,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
             finally:
                 # Decrement the endpoint region counter
                 if self.config.self_throttling:
-                    self.endpoint_statistics_table.decrement_region_count(enhanced_region_request.model_name)
+                    self.endpoint_statistics_table.decrement_region_count(region_request.model_name)
 
         except Exception as e:
             logger.error(f"EnhancedRegionRequestHandler error: {e}")
@@ -426,7 +350,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
                 model_invocation_credentials = get_credentials_for_assumed_role(region_request.model_invocation_role)
             
             # Create and return async worker pool
-            return AsyncTileWorkerPool(sensor_model, elevation_model)
+            return AsyncTileWorkerPool(region_request, sensor_model, elevation_model, model_invocation_credentials)
             
         except Exception as e:
             logger.error(f"Failed to setup async worker pool: {e}")

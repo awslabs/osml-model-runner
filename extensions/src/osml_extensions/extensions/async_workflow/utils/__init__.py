@@ -4,16 +4,6 @@
 Utility modules for OSML extensions.
 """
 
-from .resource_manager import (
-    ResourceManager,
-    ManagedResource,
-    ResourceType,
-    CleanupPolicy
-)
+from .resource_manager import CleanupPolicy, ManagedResource, ResourceManager, ResourceType
 
-__all__ = [
-    "ResourceManager",
-    "ManagedResource", 
-    "ResourceType",
-    "CleanupPolicy"
-]
+__all__ = ["ResourceManager", "ManagedResource", "ResourceType", "CleanupPolicy"]

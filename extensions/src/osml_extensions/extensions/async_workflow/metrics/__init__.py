@@ -4,9 +4,6 @@
 Metrics module for OSML extensions.
 """
 
-from .async_metrics import AsyncMetricsTracker, AsyncMetricsContext
+from .async_metrics import AsyncMetricsContext, AsyncMetricsTracker
 
-__all__ = [
-    "AsyncMetricsTracker",
-    "AsyncMetricsContext"
-]
+__all__ = ["AsyncMetricsTracker", "AsyncMetricsContext"]

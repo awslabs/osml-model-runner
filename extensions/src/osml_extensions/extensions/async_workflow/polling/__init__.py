@@ -6,7 +6,4 @@ Polling module for OSML extensions.
 
 from .async_inference_poller import AsyncInferencePoller, AsyncInferenceTimeoutError
 
-__all__ = [
-    "AsyncInferencePoller",
-    "AsyncInferenceTimeoutError"
-]
+__all__ = ["AsyncInferencePoller", "AsyncInferenceTimeoutError"]

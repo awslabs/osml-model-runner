@@ -120,20 +120,20 @@ config = AsyncEndpointConfig(
 config = AsyncEndpointConfig(
     input_bucket="my-input-bucket",
     output_bucket="my-output-bucket",
-    
+
     # Optimized polling
     polling_interval=10,
     max_polling_interval=60,
     exponential_backoff_multiplier=1.2,
-    
+
     # High concurrency
     submission_workers=12,
     polling_workers=6,
     max_concurrent_jobs=300,
-    
+
     # Immediate cleanup
     cleanup_policy="immediate",
-    
+
     enable_worker_optimization=True
 )
 ```
@@ -186,11 +186,11 @@ try:
 except S3OperationError as e:
     print(f"S3 operation failed: {e}")
     # Handle S3 permission or connectivity issues
-    
+
 except AsyncInferenceTimeoutError as e:
     print(f"Inference timed out: {e}")
     # Handle long-running inference jobs
-    
+
 except ExtensionRuntimeError as e:
     print(f"Runtime error: {e}")
     # Handle general runtime issues

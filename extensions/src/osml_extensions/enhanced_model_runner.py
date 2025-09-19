@@ -1,16 +1,15 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
 import logging
+import os
 import traceback
-from typing import Optional, Type
+from typing import Optional
 
 from aws.osml.model_runner import ModelRunner
-from aws.osml.model_runner.inference import FeatureDetectorFactory
 from aws.osml.model_runner.tile_worker import TilingStrategy, VariableOverlapTilingStrategy
 
 from .enhanced_app_config import EnhancedServiceConfig
-from .enhanced_image_handler import EnhancedImageRequestHandler
-from .enhanced_region_handler import EnhancedRegionRequestHandler
+from .registry import DependencyInjectionError, HandlerSelectionError, HandlerSelector
 
 logger = logging.getLogger(__name__)
 
@@ -26,19 +25,14 @@ class EnhancedModelRunner(ModelRunner):
     def __init__(
         self,
         tiling_strategy: TilingStrategy = VariableOverlapTilingStrategy(),
-        factory_class: Optional[Type[FeatureDetectorFactory]] = None,
     ) -> None:
         """
         Initialize an enhanced model runner with dependency injection support.
 
         :param tiling_strategy: Defines how a larger image will be broken into chunks for processing
-        :param factory_class: Optional custom factory class for creating detectors
 
         :return: None
         """
-        # Store injected classes before calling parent constructor
-        self.factory_class = factory_class
-
         # Call parent constructor to set up base functionality
         super().__init__(tiling_strategy)
 
@@ -57,13 +51,20 @@ class EnhancedModelRunner(ModelRunner):
         :return: None
         """
         try:
-            # Determine if we should use enhanced components
-            if not self.config.use_extensions:
-                logger.info("Extensions disabled, using base components")
-                return
+            # Initialize handler selector and dependency injector
+            handler_selector = HandlerSelector()
 
-            # Create enhanced region request handler if configured
-            self.region_request_handler = EnhancedRegionRequestHandler(
+            # Determine request type from environment or configuration
+            request_type = self._determine_request_type()
+
+            logger.info(f"Setting up components for request_type='{request_type}'")
+
+            region_handler_metadata, image_handler_metadata = handler_selector.select_handlers(request_type)
+
+            # Create image request handler
+            # TODO: For now this assumes all image handlers and all region handlers have the same class signature, update this so this is configurable.
+            image_handler_args = []
+            image_handler_kwargs = dict(
                 region_request_table=self.region_request_table,
                 job_table=self.job_table,
                 region_status_monitor=self.region_status_monitor,
@@ -73,7 +74,8 @@ class EnhancedModelRunner(ModelRunner):
                 config=self.config,
             )
 
-            self.image_request_handler = EnhancedImageRequestHandler(
+            region_handler_args = []
+            region_handler_kwargs = dict(
                 job_table=self.job_table,
                 image_status_monitor=self.image_status_monitor,
                 endpoint_statistics_table=self.endpoint_statistics_table,
@@ -84,8 +86,44 @@ class EnhancedModelRunner(ModelRunner):
                 config=self.config,
                 region_request_handler=self.region_request_handler,
             )
-            logger.info("Enhanced components configured successfully")
+
+            self.image_request_handler = image_handler_metadata.handler_class(*image_handler_args, **image_handler_kwargs)
+            self.region_request_handler = region_handler_metadata.handler_class(
+                *region_handler_args, **region_handler_kwargs
+            )
+
+            logger.info(
+                f"Successfully configured handlers: region='{region_handler_metadata.name}', "
+                f"image='{image_handler_metadata.name}'"
+            )
+
+        except (HandlerSelectionError, DependencyInjectionError) as e:
+            logger.error(f"Failed to set up enhanced components: {e}")
+            if hasattr(self.config, "extension_fallback_enabled") and not self.config.extension_fallback_enabled:
+                raise
 
         except Exception as e:
-            logger.warning(f"Failed to set up enhanced components: {e}, using base components")
+            logger.error(f"Unexpected error setting up enhanced components: {e}")
             logger.debug(f"Traceback: {traceback.format_exc()}")
+            if hasattr(self.config, "extension_fallback_enabled") and not self.config.extension_fallback_enabled:
+                raise
+
+    def _determine_request_type(self) -> Optional[str]:
+        """
+        Determine the request type based on environment variables and configuration.
+
+        :return: Request type string or None for auto-detection
+        """
+        # Check environment variable first
+        request_type = os.getenv("REQUEST_TYPE")
+        if request_type:
+            logger.debug(f"Using REQUEST_TYPE from environment: {request_type}")
+            return request_type
+
+        # Check if extensions are disabled
+        if not self.config.use_extensions:
+            logger.debug("Extensions disabled, using 'http' request type")
+            return "http"
+
+        # Let handler selector determine based on configuration
+        return None

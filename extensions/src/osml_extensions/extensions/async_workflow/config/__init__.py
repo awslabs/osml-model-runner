@@ -5,15 +5,6 @@ Configuration module for OSML extensions.
 """
 
 from .async_endpoint_config import AsyncEndpointConfig
-from .config_utils import (
-    ConfigurationValidator,
-    EnvironmentConfigLoader,
-    ConfigurationManager
-)
+from .config_utils import ConfigurationManager, ConfigurationValidator, EnvironmentConfigLoader
 
-__all__ = [
-    "AsyncEndpointConfig",
-    "ConfigurationValidator",
-    "EnvironmentConfigLoader",
-    "ConfigurationManager"
-]
+__all__ = ["AsyncEndpointConfig", "ConfigurationValidator", "EnvironmentConfigLoader", "ConfigurationManager"]

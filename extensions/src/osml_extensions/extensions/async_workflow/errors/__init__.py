@@ -4,15 +4,15 @@
 Error classes for OSML extensions.
 """
 
-from .extension_errors import ExtensionConfigurationError, ExtensionRuntimeError
 from .async_errors import (
+    AsyncEndpointError,
+    AsyncErrorHandler,
     AsyncInferenceError,
     AsyncInferenceTimeoutError,
     S3OperationError,
-    AsyncEndpointError,
     WorkerPoolError,
-    AsyncErrorHandler
 )
+from .extension_errors import ExtensionConfigurationError, ExtensionRuntimeError
 
 __all__ = [
     "ExtensionConfigurationError",
@@ -22,5 +22,5 @@ __all__ = [
     "S3OperationError",
     "AsyncEndpointError",
     "WorkerPoolError",
-    "AsyncErrorHandler"
+    "AsyncErrorHandler",
 ]
