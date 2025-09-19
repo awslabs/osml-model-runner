@@ -100,7 +100,11 @@ def _create_tile_worker(
             geolocator = Geolocator(ImagedFeaturePropertyAccessor(), sensor_model, elevation_model=elevation_model)
 
         # Create worker instance
-        return EnhancedTileWorker(tile_queue, feature_detector, geolocator, feature_table, region_request_table)
+        return EnhancedTileWorker(tile_queue, 
+                                feature_detector, 
+                                geolocator, 
+                                feature_table, 
+                                region_request_table)
         
     except Exception as err:
         logger.error(f"Failed to create tile worker: {err}")

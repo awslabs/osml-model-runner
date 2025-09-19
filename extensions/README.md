@@ -1,340 +1,131 @@
 # OSML Model Runner Extensions
 
-This package provides extensions for the OSML Model Runner that enhance functionality while maintaining full compatibility with the base open source package.
+This directory contains modular extensions for the OSML Model Runner, organized by functionality to enable easy maintenance and development of different types of extensions.
 
-## Overview
+## Extension Modules
 
-The extension architecture uses clean inheritance-based patterns to extend the base model runner functionality without modifying the original source code. This approach provides:
+### async_workflow/
 
-- **Clean Separation**: Extensions are separate from the base package
-- **Easy Maintenance**: Upstream updates can be integrated without conflicts
-- **Graceful Fallback**: Automatic fallback to base functionality if extensions fail
-- **Environment Control**: Extensions can be enabled/disabled via environment variables
+The **async_workflow** module provides comprehensive support for Amazon SageMaker Async Inference endpoints, enabling high-throughput, scalable machine learning inference processing.
 
-## Architecture
+**Key Features:**
+- True asynchronous processing with SageMaker async endpoints
+- S3-based input/output handling with configurable cleanup policies
+- Worker pool optimization for maximum throughput (3-5x performance improvement)
+- Comprehensive resource management and cleanup
+- Robust error handling with retry logic and exponential backoff
+- Detailed metrics and performance monitoring
 
-### Extension Components
-
-1. **EnhancedFeatureDetectorFactory**: Factory that chooses between base and extended detector implementations
-2. **AsyncSMDetector**: Enhanced SageMaker detector with preprocessing and postprocessing capabilities
-3. **EnhancedTileWorker**: Enhanced tile worker with improved processing and monitoring
-4. **EnhancedRegionRequestHandler**: Enhanced region handler with integrated dependencies
-5. **EnhancedModelRunner**: Model runner with dependency injection support
-
-### How It Works
-
-```mermaid
-graph TB
-    A[Application Start] --> B[Check USE_EXTENSIONS]
-    B -->|true| C[Load Enhanced Components]
-    B -->|false| D[Use Base Components]
-    C --> E[Enhanced Processing]
-    D --> F[Standard Processing]
-    E --> G[Enhanced Monitoring]
-    F --> H[Standard Monitoring]
-```
-
-## Installation
-
-### From Source
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd osml-model-runner-extensions
-
-# Install in development mode
-pip install -e .
-
-# Or install with development dependencies
-pip install -e ".[dev]"
-```
-
-### From Package
-
-```bash
-pip install osml-model-runner-extensions
-```
-
-## Configuration
-
-Extensions are configured through environment variables:
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `USE_EXTENSIONS` | `false` | Enable/disable extensions |
-| `ASYNC_DETECTOR_ENABLED` | `true` | Enable AsyncSMDetector when extensions are on |
-| `ENHANCED_MONITORING_ENABLED` | `true` | Enable enhanced monitoring features |
-| `EXTENSION_FALLBACK_ENABLED` | `true` | Enable fallback to base components on error |
-| `EXTENSION_MAX_RETRY_ATTEMPTS` | `3` | Maximum retry attempts for failed operations |
-| `EXTENSION_RETRY_DELAY_SECONDS` | `1.0` | Delay between retry attempts |
-| `EXTENSION_PERFORMANCE_MONITORING_ENABLED` | `true` | Enable performance monitoring |
-| `EXTENSION_DEBUG_LOGGING_ENABLED` | `false` | Enable debug logging |
-
-### Boolean Value Formats
-
-Boolean environment variables accept the following values:
-- True: "true", "1", "yes", "on" (case-insensitive)
-- False: "false", "0", "no", "off" (case-insensitive)
-
-## Usage
-
-### Basic Usage
-
+**Quick Start:**
 ```python
-from osml_extensions import EnhancedModelRunner
+from async_workflow.src.osml_extensions.config import AsyncEndpointConfig
+from async_workflow.src.osml_extensions.detectors import AsyncSMDetector
 
-# Create enhanced model runner with default configuration
-runner = EnhancedModelRunner()
-
-# Start processing
-runner.run()
-```
-
-### Custom Configuration
-
-```python
-from osml_extensions import (
-    EnhancedModelRunner,
-    EnhancedFeatureDetectorFactory,
-    EnhancedRegionRequestHandler,
-    EnhancedTileWorker
+config = AsyncEndpointConfig(
+    input_bucket="my-async-input-bucket",
+    output_bucket="my-async-output-bucket"
 )
 
-# Create model runner with custom components
-runner = EnhancedModelRunner(
-    factory_class=EnhancedFeatureDetectorFactory,
-    region_handler_class=EnhancedRegionRequestHandler,
-    tile_worker_class=EnhancedTileWorker
+detector = AsyncSMDetector(
+    endpoint="my-async-sagemaker-endpoint",
+    async_config=config
 )
 
-runner.run()
+result = detector.find_features(payload)
 ```
 
-### Using Individual Components
+**Documentation:** See [async_workflow/README.md](async_workflow/README.md) for complete documentation.
 
-```python
-from osml_extensions import EnhancedFeatureDetectorFactory, ExtendedModelInvokeMode
-from aws.osml.model_runner.api import ModelInvokeMode
+## Extension Structure
 
-# Create enhanced factory
-factory = EnhancedFeatureDetectorFactory(
-    endpoint="my-sagemaker-endpoint",
-    endpoint_mode=ExtendedModelInvokeMode.SM_ENDPOINT_ASYNC,
-    use_extensions=True
-)
+Each extension module follows a consistent structure:
 
-# Build detector (will be AsyncSMDetector if extensions enabled)
-detector = factory.build()
-
-# Use detector normally
-features = detector.find_features(payload, metrics)
+```
+extension_name/
+├── README.md                    # Extension-specific documentation
+├── __init__.py                  # Module initialization and exports
+├── src/                         # Source code
+│   └── osml_extensions/         # Extension package
+│       ├── __init__.py          # Package initialization
+│       ├── config/              # Configuration management
+│       ├── detectors/           # Detector implementations
+│       ├── errors/              # Error classes
+│       ├── handlers/            # Request handlers
+│       ├── metrics/             # Metrics and monitoring
+│       ├── polling/             # Polling mechanisms
+│       ├── s3/                  # S3 operations
+│       ├── utils/               # Utility classes
+│       └── workers/             # Worker pool implementations
+├── tests/                       # Unit tests
+├── examples/                    # Usage examples
+├── docs/                        # Detailed documentation
+└── test_implementation.py       # Implementation validation script
 ```
 
-### Configuration Management
+## Adding New Extensions
 
-```python
-from osml_extensions import ExtensionConfig, load_extension_config
+To add a new extension module:
 
-# Load configuration from environment
-config = load_extension_config()
+1. **Create the module directory:**
+   ```bash
+   mkdir -p extensions/new_extension_name/{src/osml_extensions,tests,examples,docs}
+   ```
 
-# Check configuration
-if config.use_extensions:
-    print("Extensions are enabled")
+2. **Implement the extension following the standard structure**
 
-# Create custom configuration
-custom_config = ExtensionConfig(
-    use_extensions=True,
-    async_detector_enabled=True,
-    enhanced_monitoring_enabled=True,
-    fallback_on_error=True
-)
-```
+3. **Create module __init__.py with appropriate exports**
 
-### Logging
+4. **Add comprehensive tests and documentation**
 
-```python
-from osml_extensions import get_extension_logger, performance_timer, log_context
+5. **Update this README to include the new extension**
 
-# Get extension logger
-logger = get_extension_logger("my_component", "MyComponent")
+## Development Guidelines
 
-# Log with context
-logger.info("Processing started", context={"request_id": "12345"})
+### Code Organization
+- Keep extension-specific code within the extension directory
+- Use consistent naming conventions across extensions
+- Follow the established package structure
 
-# Use performance timer
-with performance_timer(logger, "my_operation"):
-    # Your operation here
-    pass
+### Testing
+- Each extension should have comprehensive unit tests
+- Include integration tests where appropriate
+- Provide a test_implementation.py script for validation
 
-# Use log context manager
-with log_context(logger, request_id="12345", user_id="user123"):
-    logger.info("Processing request")  # Will include context
-```
+### Documentation
+- Include detailed README for each extension
+- Provide usage examples and API documentation
+- Document configuration options and best practices
 
-## Environment Setup Examples
+### Dependencies
+- Minimize cross-extension dependencies
+- Clearly document any shared dependencies
+- Use relative imports within extensions
 
-### Enable Extensions with Enhanced Monitoring
+## Available Extensions
 
-```bash
-export USE_EXTENSIONS=true
-export ENHANCED_MONITORING_ENABLED=true
-export EXTENSION_DEBUG_LOGGING_ENABLED=true
-```
+| Extension | Description | Status |
+|-----------|-------------|--------|
+| [async_workflow](async_workflow/) | SageMaker Async Endpoint Integration | ✅ Complete |
 
-### Configure Retry Behavior
+## Future Extensions
 
-```bash
-export USE_EXTENSIONS=true
-export EXTENSION_MAX_RETRY_ATTEMPTS=5
-export EXTENSION_RETRY_DELAY_SECONDS=2.5
-```
-
-### Disable Extensions (Use Base Functionality)
-
-```bash
-export USE_EXTENSIONS=false
-```
-
-## Docker Integration
-
-The extensions can be integrated into Docker containers:
-
-```dockerfile
-# Install base model-runner package
-RUN python3 -m pip install osml-model-runner
-
-# Install extensions
-COPY osml-model-runner-extensions/ /tmp/extensions/
-RUN python3 -m pip install /tmp/extensions/
-
-# Set environment variables
-ENV USE_EXTENSIONS=true
-ENV ENHANCED_MONITORING_ENABLED=true
-```
-
-## Development
-
-### Setting Up Development Environment
-
-```bash
-# Clone repository
-git clone <repository-url>
-cd osml-model-runner-extensions
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install in development mode with all dependencies
-pip install -e ".[dev,test]"
-
-# Install pre-commit hooks
-pre-commit install
-```
-
-### Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=osml_extensions --cov-report=html
-
-# Run specific test file
-pytest tests/test_enhanced_factory.py
-
-# Run with verbose output
-pytest -v
-```
-
-### Code Quality
-
-```bash
-# Format code
-black src/ tests/
-
-# Lint code
-flake8 src/ tests/
-
-# Type checking
-mypy src/
-```
-
-## Troubleshooting
-
-### Common Issues
-
-#### Extensions Not Loading
-
-**Problem**: Extensions are enabled but base functionality is being used.
-
-**Solutions**:
-1. Check that `USE_EXTENSIONS=true` is set
-2. Verify extensions package is installed: `pip list | grep osml-extensions`
-3. Check logs for import errors
-4. Verify Python path includes extension modules
-
-#### Import Errors
-
-**Problem**: `ImportError` when trying to use extensions.
-
-**Solutions**:
-1. Ensure extensions package is installed in the same environment
-2. Check Python path and module locations
-3. Verify all dependencies are installed
-4. Try importing components individually to isolate the issue
-
-#### Configuration Issues
-
-**Problem**: Extensions not behaving as expected.
-
-**Solutions**:
-1. Validate environment variables: `python -c "from osml_extensions.config import validate_environment_variables; print(validate_environment_variables())"`
-2. Check configuration summary: `python -c "from osml_extensions.config import get_config_summary; print(get_config_summary())"`
-3. Enable debug logging: `export EXTENSION_DEBUG_LOGGING_ENABLED=true`
-
-### Debug Information
-
-```python
-# Get configuration summary
-from osml_extensions.config import get_config_summary
-print(get_config_summary())
-
-# Validate environment variables
-from osml_extensions.config import validate_environment_variables
-issues = validate_environment_variables()
-if issues:
-    print("Configuration issues:", issues)
-else:
-    print("Configuration is valid")
-
-# Get configuration documentation
-from osml_extensions.config import create_config_documentation
-print(create_config_documentation())
-```
+Potential future extensions could include:
+- **batch_processing**: Batch inference processing capabilities
+- **streaming_workflow**: Real-time streaming inference
+- **model_optimization**: Model optimization and quantization tools
+- **monitoring_dashboard**: Real-time monitoring and alerting
+- **data_pipeline**: Data preprocessing and postprocessing pipelines
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request
+When contributing to extensions:
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+1. Follow the established directory structure
+2. Include comprehensive tests and documentation
+3. Ensure backward compatibility
+4. Update this main README with new extensions
+5. Follow the existing code style and conventions
 
 ## Support
 
-For support and questions:
-1. Check the troubleshooting section above
-2. Review the configuration documentation
-3. Enable debug logging for more detailed information
-4. Create an issue in the repository with detailed information about your problem
+For extension-specific support, refer to the individual extension documentation. For general questions about the extensions framework, create an issue in the main repository.

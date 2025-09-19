@@ -3,8 +3,8 @@
 import unittest
 from unittest.mock import patch, Mock
 
-from osml_extensions.detectors import AsyncSMDetector, AsyncSMDetectorBuilder
-from osml_extensions.errors import ExtensionConfigurationError
+from ..src.osml_extensions.detectors import AsyncSMDetector, AsyncSMDetectorBuilder
+from ..src.osml_extensions.errors import ExtensionConfigurationError
 
 
 class TestAsyncSMDetectorBuilder(unittest.TestCase):

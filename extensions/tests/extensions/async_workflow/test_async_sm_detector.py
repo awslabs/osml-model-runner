@@ -7,8 +7,8 @@ from unittest.mock import Mock, patch, MagicMock
 
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 
-from osml_extensions.detectors import AsyncSMDetector
-from osml_extensions.errors import ExtensionRuntimeError
+from ..src.osml_extensions.detectors import AsyncSMDetector
+from ..src.osml_extensions.errors import ExtensionRuntimeError
 
 
 class TestAsyncSMDetector(unittest.TestCase):
