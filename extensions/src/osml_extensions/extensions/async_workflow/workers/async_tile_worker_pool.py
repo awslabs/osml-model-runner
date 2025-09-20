@@ -417,6 +417,8 @@ class AsyncPollingWorker(TileWorker):
         """
         logger.error(f"AsyncPollingWorker-{self.worker_id} job {job.inference_id} failed: {reason}")
 
+        assert isinstance(self.feature_detector, AsyncSMDetector)
+
         # Cleanup S3 objects if configured
         if self.config.cleanup_enabled:
             try:
@@ -563,6 +565,16 @@ class AsyncTileWorkerPool:
         # Start polling workers
         for i in range(self.config.polling_workers):
 
+            # Set up our feature table to work with the region quest
+            feature_table = FeatureTable(
+                EnhancedServiceConfig.feature_table,
+                self.region_request.tile_size,
+                self.region_request.tile_overlap,
+            )
+
+            # Set up our feature table to work with the region quest
+            region_request_table = RegionRequestTable(EnhancedServiceConfig.region_request_table)
+
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed
             feature_detector = EnhancedFeatureDetectorFactory(
@@ -575,6 +587,12 @@ class AsyncTileWorkerPool:
                 logger.error("Failed to create feature detector")
                 return None
 
+            # Set up geolocator
+            geolocator = None
+            if self.sensor_model is not None:
+                geolocator = Geolocator(
+                    ImagedFeaturePropertyAccessor(), self.sensor_model, elevation_model=self.elevation_model
+                )
             worker = AsyncPollingWorker(
                 worker_id=i,
                 feature_table=feature_table,

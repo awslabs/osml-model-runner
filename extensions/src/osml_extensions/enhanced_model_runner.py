@@ -1,9 +1,7 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
 import logging
-import os
 import traceback
-from typing import Optional
 
 from aws.osml.model_runner import ModelRunner
 from aws.osml.model_runner.tile_worker import TilingStrategy, VariableOverlapTilingStrategy
@@ -55,7 +53,7 @@ class EnhancedModelRunner(ModelRunner):
             handler_selector = HandlerSelector()
 
             # Determine request type from environment or configuration
-            request_type = self._determine_request_type()
+            request_type = EnhancedServiceConfig.request_type  # ['sm_endpoint', 'async_sm_endpoint']
 
             logger.info(f"Setting up components for request_type='{request_type}'")
 
@@ -107,23 +105,3 @@ class EnhancedModelRunner(ModelRunner):
             logger.debug(f"Traceback: {traceback.format_exc()}")
             if hasattr(self.config, "extension_fallback_enabled") and not self.config.extension_fallback_enabled:
                 raise
-
-    def _determine_request_type(self) -> Optional[str]:
-        """
-        Determine the request type based on environment variables and configuration.
-
-        :return: Request type string or None for auto-detection
-        """
-        # Check environment variable first
-        request_type = os.getenv("REQUEST_TYPE")
-        if request_type:
-            logger.debug(f"Using REQUEST_TYPE from environment: {request_type}")
-            return request_type
-
-        # Check if extensions are disabled
-        if not self.config.use_extensions:
-            logger.debug("Extensions disabled, using 'http' request type")
-            return "http"
-
-        # Let handler selector determine based on configuration
-        return None

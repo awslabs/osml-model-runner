@@ -10,6 +10,7 @@ profile = "black"
 line_length = 125
 known_first_party = ["aws.osml.*"]
 src_paths = ["src", "test"]
+skip = ["__init__.py"]
 
 
 [tool.pytest.ini_options]

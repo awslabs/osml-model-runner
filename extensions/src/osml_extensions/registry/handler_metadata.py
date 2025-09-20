@@ -4,14 +4,14 @@
 Handler metadata and type definitions for the extension registry system.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import List, Type
+from typing import Type
 
 
 class HandlerType(Enum):
     """Enumeration of supported handler types."""
-    
+
     REGION_REQUEST_HANDLER = "region_request_handler"
     IMAGE_REQUEST_HANDLER = "image_request_handler"
 
@@ -19,13 +19,12 @@ class HandlerType(Enum):
 @dataclass
 class HandlerMetadata:
     """Metadata describing a registered handler."""
-    
-    name: str                           # Unique identifier for the handler (e.g., "enhanced_region_handler")
-    handler_class: Type                 # The actual handler class to instantiate
-    handler_type: HandlerType           # Type of handler (REGION_REQUEST_HANDLER, IMAGE_REQUEST_HANDLER)
-    version: str                        # Handler version for compatibility tracking
-    description: str                    # Human-readable description of handler capabilities
-    
+
+    name: str  # Unique identifier for the handler (e.g., "enhanced_region_handler")
+    handler_class: Type  # The actual handler class to instantiate
+    handler_type: HandlerType  # Type of handler (REGION_REQUEST_HANDLER, IMAGE_REQUEST_HANDLER)
+    description: str  # Human-readable description of handler capabilities
+
     def __post_init__(self):
         """Validate metadata after initialization."""
         if not self.name:

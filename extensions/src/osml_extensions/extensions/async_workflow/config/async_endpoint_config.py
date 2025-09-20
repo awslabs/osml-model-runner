@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
-from osml_extensions.errors import ExtensionConfigurationError
+from ..errors import ExtensionConfigurationError
 
 
 @dataclass

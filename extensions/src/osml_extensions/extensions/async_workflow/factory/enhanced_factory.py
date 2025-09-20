@@ -5,17 +5,19 @@ import traceback
 from typing import Dict, Optional, Union
 
 from osml_extensions import EnhancedServiceConfig
-from osml_extensions.api import ExtendedModelInvokeMode
-from osml_extensions.detectors import AsyncSMDetectorBuilder
-from osml_extensions.errors import ExtensionRuntimeError
 
 from aws.osml.model_runner.api import ModelInvokeMode
-from aws.osml.model_runner.inference.detector import Detector
 from aws.osml.model_runner.inference.endpoint_factory import FeatureDetectorFactory
+
+from ..api import ExtendedModelInvokeMode
+from ..detectors import AsyncSMDetectorBuilder
+from ..detectors.async_sm_detector import AsyncSMDetector
+from ..errors import ExtensionRuntimeError
 
 logger = logging.getLogger(__name__)
 
 
+# TODO: IS THIS NEEDED?
 class EnhancedFeatureDetectorFactory(FeatureDetectorFactory):
     """
     Enhanced factory that supports both base and extended detector classes
@@ -82,7 +84,7 @@ class EnhancedFeatureDetectorFactory(FeatureDetectorFactory):
         }
         return mapping.get(extended_mode, ModelInvokeMode.SM_ENDPOINT)
 
-    def _build_enhanced_detector(self) -> Optional[Detector]:
+    def _build_enhanced_detector(self) -> Optional[AsyncSMDetector]:
         """
         Build an enhanced detector for extended modes.
 
@@ -107,7 +109,7 @@ class EnhancedFeatureDetectorFactory(FeatureDetectorFactory):
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise ExtensionRuntimeError(f"Enhanced detector creation failed: {e}") from e
 
-    def build(self) -> Optional[Detector]:
+    def build(self) -> Optional[AsyncSMDetector]:
         """
         Build a detector instance, preferring extensions when enabled and available.
 

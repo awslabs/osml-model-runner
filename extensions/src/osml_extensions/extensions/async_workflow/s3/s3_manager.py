@@ -11,10 +11,11 @@ from urllib.parse import urlparse
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.unit import Unit
 from botocore.exceptions import ClientError, NoCredentialsError
-from osml_extensions.config import AsyncEndpointConfig
-from osml_extensions.errors import ExtensionRuntimeError
 
 from aws.osml.model_runner.common import Timer
+
+from ..config import AsyncEndpointConfig
+from ..errors import ExtensionRuntimeError
 
 logger = logging.getLogger(__name__)
 

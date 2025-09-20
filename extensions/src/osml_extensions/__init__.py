@@ -10,13 +10,12 @@ This package provides extensions and enhancements to the base OSML Model Runner,
 including an extension registry system for dynamic handler loading and management.
 """
 
+
 # Import extensions to trigger handler registration
-from . import extensions
 from .enhanced_app_config import EnhancedServiceConfig
 
 # Import core extension components
-from .enhanced_model_runner import EnhancedModelRunner
-from .errors import ExtensionConfigurationError, ExtensionError, ExtensionRuntimeError
+# from .errors import ExtensionConfigurationError, ExtensionError, ExtensionRuntimeError
 
 # Import registry system
 from .registry import (  # Core registry components; Handler metadata and types; Registration decorator; Errors
@@ -32,3 +31,6 @@ from .registry import (  # Core registry components; Handler metadata and types;
     register_handler,
     reset_registry,
 )
+
+from . import extensions
+from .enhanced_model_runner import EnhancedModelRunner

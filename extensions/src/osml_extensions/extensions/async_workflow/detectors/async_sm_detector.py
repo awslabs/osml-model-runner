@@ -12,17 +12,18 @@ from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.unit import Unit
 from botocore.exceptions import ClientError
 from geojson import FeatureCollection
-from osml_extensions.api import ExtendedModelInvokeMode
-from osml_extensions.config import AsyncEndpointConfig
-from osml_extensions.errors import ExtensionConfigurationError
-from osml_extensions.polling import AsyncInferencePoller, AsyncInferenceTimeoutError
-from osml_extensions.s3 import S3Manager, S3OperationError
-from osml_extensions.utils import CleanupPolicy, ResourceManager
 
 from aws.osml.model_runner.app_config import BotoConfig, MetricLabels
 from aws.osml.model_runner.common import Timer
 from aws.osml.model_runner.inference.detector import Detector
 from aws.osml.model_runner.inference.sm_detector import SMDetector
+
+from ...errors import ExtensionConfigurationError
+from ..api import ExtendedModelInvokeMode
+from ..config import AsyncEndpointConfig
+from ..polling import AsyncInferencePoller, AsyncInferenceTimeoutError
+from ..s3 import S3Manager, S3OperationError
+from ..utils import CleanupPolicy, ResourceManager
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +60,13 @@ class AsyncSMDetector(SMDetector):
         if assumed_credentials is not None:
             self.s3_client = boto3.client(
                 "s3",
-                config=BotoConfig.s3,
+                config=BotoConfig.default,
                 aws_access_key_id=assumed_credentials.get("AccessKeyId"),
                 aws_secret_access_key=assumed_credentials.get("SecretAccessKey"),
                 aws_session_token=assumed_credentials.get("SessionToken"),
             )
         else:
-            self.s3_client = boto3.client("s3", config=BotoConfig.s3)
+            self.s3_client = boto3.client("s3", config=BotoConfig.default)
 
         # Initialize S3 manager and poller
         self.s3_manager = S3Manager(self.s3_client, self.async_config)

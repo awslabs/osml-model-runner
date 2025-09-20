@@ -6,7 +6,8 @@ from typing import Any, Dict, Optional
 
 import boto3
 from botocore.exceptions import ClientError
-from osml_extensions.errors import ExtensionConfigurationError
+
+from ..errors import ExtensionConfigurationError
 
 logger = logging.getLogger(__name__)
 

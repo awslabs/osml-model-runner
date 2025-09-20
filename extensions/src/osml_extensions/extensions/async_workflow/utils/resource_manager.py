@@ -12,9 +12,10 @@ from urllib.parse import urlparse
 
 import boto3
 from botocore.exceptions import ClientError
-from osml_extensions.config import AsyncEndpointConfig
 
 from aws.osml.model_runner.app_config import BotoConfig
+
+from ..config import AsyncEndpointConfig
 
 logger = logging.getLogger(__name__)
 

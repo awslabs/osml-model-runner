@@ -4,14 +4,17 @@ repos:
     hooks:
     -   id: trailing-whitespace
         files: ^extensions/
+        exclude: ^extensions/tests/|^extensions/docs/
     -   id: end-of-file-fixer
         files: ^extensions/
+        exclude: ^extensions/tests/|^extensions/docs/
 -   repo: https://github.com/psf/black
     rev: 24.1.1
     hooks:
     -   id: black
         args: [--line-length=125]
         files: ^extensions/.*\.py$
+        exclude: ^extensions/tests/|^extensions/docs/
 -   repo: https://github.com/PyCQA/flake8
     rev: 6.1.0
     hooks:
@@ -27,14 +30,17 @@ repos:
             --extend-ignore, "E203,E501,E701,E704,W503"
             ]
         files: ^extensions/.*\.py$
+        exclude: ^extensions/tests/|^extensions/docs/
 -   repo: https://github.com/pycqa/isort
     rev: 5.12.0
     hooks:
     -   id: isort
         args: ["--profile", "black", "--filter-files"]
         files: ^extensions/.*\.py$
+        exclude: ^extensions/tests/|^extensions/docs/
 -   repo: https://github.com/RobertCraigie/pyright-python
     rev: v1.1.358
     hooks:
     -   id: pyright
         files: ^extensions/.*\.py$
+        exclude: ^extensions/tests/|^extensions/docs/
