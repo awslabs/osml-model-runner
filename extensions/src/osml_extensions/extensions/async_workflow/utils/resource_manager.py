@@ -15,7 +15,7 @@ from botocore.exceptions import ClientError
 
 from aws.osml.model_runner.app_config import BotoConfig
 
-from ..config import AsyncEndpointConfig
+from ..async_app_config import AsyncEndpointConfig
 
 logger = logging.getLogger(__name__)
 

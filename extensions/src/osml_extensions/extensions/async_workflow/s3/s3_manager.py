@@ -5,16 +5,22 @@ import time
 import uuid
 from datetime import datetime
 from io import BufferedReader
-from typing import Optional
+from json import JSONDecodeError
+from typing import Dict, Optional
 from urllib.parse import urlparse
 
+import boto3
+import geojson
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
 from botocore.exceptions import ClientError, NoCredentialsError
+from geojson import FeatureCollection
 
+from aws.osml.model_runner.app_config import BotoConfig
 from aws.osml.model_runner.common import Timer
 
-from ..config import AsyncEndpointConfig
+from ..async_app_config import AsyncServiceConfig
 from ..errors import ExtensionRuntimeError
 
 logger = logging.getLogger(__name__)
@@ -34,24 +40,38 @@ class S3Manager:
     with comprehensive retry logic and timing metrics.
     """
 
-    def __init__(self, s3_client, config: AsyncEndpointConfig):
+    def __init__(self, assumed_credentials: Optional[Dict] = None):
         """
         Initialize S3Manager with client and configuration.
 
         :param s3_client: Boto3 S3 client instance
-        :param config: AsyncEndpointConfig with S3 settings
         """
-        self.s3_client = s3_client
-        self.config = config
-        logger.debug(f"S3Manager initialized with buckets: input={config.input_bucket}, output={config.output_bucket}")
 
-    def upload_payload(self, payload: BufferedReader, key: str, metrics: Optional[MetricsLogger] = None) -> str:
+        # Initialize S3 client with same credentials as SageMaker client
+        if assumed_credentials is not None:
+            self.s3_client = boto3.client(
+                "s3",
+                config=BotoConfig.default,
+                aws_access_key_id=assumed_credentials.get("AccessKeyId"),
+                aws_secret_access_key=assumed_credentials.get("SecretAccessKey"),
+                aws_session_token=assumed_credentials.get("SessionToken"),
+            )
+        else:
+            self.s3_client = boto3.client("s3", config=BotoConfig.default)
+
+        self.config = AsyncServiceConfig.async_endpoint_config
+        logger.debug(
+            f"S3Manager initialized with buckets: input={self.config.input_bucket}, output={self.config.output_bucket}"
+        )
+
+    @metric_scope
+    def upload_payload(self, payload: BufferedReader, key: str, metrics: MetricsLogger) -> str:
         """
         Upload payload to S3 input bucket with retry logic and timing metrics.
 
         :param payload: BufferedReader containing the data to upload
         :param key: S3 key for the object
-        :param metrics: Optional metrics logger for tracking performance
+        :param metrics: metrics logger for tracking performance
         :return: S3 URI of the uploaded object
         :raises S3OperationError: If upload fails after all retries
         """
@@ -118,12 +138,13 @@ class S3Manager:
                 logger.error(error_msg)
                 raise S3OperationError(error_msg) from e
 
-    def download_results(self, s3_uri: str, metrics: Optional[MetricsLogger] = None) -> bytes:
+    @metric_scope
+    def download_results(self, s3_uri: str, metrics: MetricsLogger) -> bytes:
         """
         Download results from S3 with retry logic and timing metrics.
 
         :param s3_uri: S3 URI of the object to download
-        :param metrics: Optional metrics logger for tracking performance
+        :param metrics: metrics logger for tracking performance
         :return: Downloaded data as bytes
         :raises S3OperationError: If download fails after all retries
         """
@@ -277,3 +298,51 @@ class S3Manager:
             error_msg = f"Unexpected error during S3 bucket validation: {str(e)}"
             logger.error(error_msg)
             raise S3OperationError(error_msg) from e
+
+    def _upload_to_s3(self, payload: BufferedReader, key: str, metrics: Optional[MetricsLogger]) -> str:
+        """
+        Upload payload to S3 input bucket with unique key generation.
+
+        :param payload: BufferedReader containing the data to upload
+        :param key: S3 key for the object
+        :param metrics: Optional metrics logger
+        :return: S3 URI of uploaded object
+        """
+        logger.debug("Uploading payload to S3 for async inference")
+        return self.upload_payload(payload, key, metrics)
+
+    def _download_from_s3(self, output_s3_uri: str, metrics: Optional[MetricsLogger]) -> FeatureCollection:
+        """
+        Download and parse results from S3 output location.
+
+        :param output_s3_uri: S3 URI of the output data
+        :param metrics: Optional metrics logger
+        :return: Parsed FeatureCollection
+        """
+        logger.debug(f"Downloading results from S3: {output_s3_uri}")
+
+        try:
+            # Download results
+            result_data = self.download_results(output_s3_uri, metrics)
+
+            # Parse as geojson FeatureCollection
+            feature_collection = geojson.loads(result_data.decode("utf-8"))
+
+            logger.debug(
+                f"Successfully parsed FeatureCollection with {len(feature_collection.get('features', []))} features"
+            )
+            return feature_collection
+
+        except (UnicodeDecodeError, JSONDecodeError) as e:
+            logger.error(f"Failed to parse async inference results: {str(e)}")
+            raise JSONDecodeError(f"Failed to parse async inference results: {str(e)}", "", 0)
+
+    # def _cleanup_s3_objects(self, s3_uris: list) -> None:
+    #     """
+    #     Clean up temporary S3 objects.
+
+    #     :param s3_uris: List of S3 URIs to delete
+    #     """
+    #     if self.async_config.cleanup_enabled:
+    #         logger.debug(f"Cleaning up {len(s3_uris)} S3 objects")
+    #         self.cleanup_s3_objects(s3_uris)

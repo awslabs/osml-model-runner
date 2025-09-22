@@ -3,6 +3,7 @@
 import logging
 from typing import List
 
+from aws_embedded_metrics import MetricsLogger
 from geojson import Feature
 from osgeo import gdal
 from osml_extensions.registry import HandlerType, register_handler
@@ -31,15 +32,16 @@ class EnhancedImageRequestHandler(ImageRequestHandler):
     def deduplicate(
         self,
         job_item: JobItem,
+        features: List[Feature],
         raster_dataset: gdal.Dataset,
         sensor_model: SensorModel,
-        metrics=None,
+        metrics: MetricsLogger = None,
     ) -> List[Feature]:
         """
         Example enhanced deduplication with additional processing.
         """
         # Call parent implementation
-        features = super().deduplicate(job_item, raster_dataset, sensor_model, metrics)
+        features = super().deduplicate(job_item, features, raster_dataset, sensor_model, metrics)
 
         # Add example enhancement
         logger.debug(f"Enhanced deduplication processed {len(features)} features")

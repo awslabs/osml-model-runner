@@ -1,10 +1,9 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
-
 import os
 from dataclasses import dataclass
 from typing import Optional
 
-from ..errors import ExtensionConfigurationError
+from .errors import ExtensionConfigurationError
+from osml_extensions.enhanced_app_config import EnhancedServiceConfig
 
 
 @dataclass
@@ -124,11 +123,6 @@ class AsyncEndpointConfig:
         if self.cleanup_delay_seconds <= 0:
             raise ExtensionConfigurationError("cleanup_delay_seconds must be positive")
 
-    @classmethod
-    def from_environment(cls) -> "AsyncEndpointConfig":
-        """Create configuration instance from environment variables only."""
-        return cls()
-
     def get_input_s3_uri(self, key: str) -> str:
         """Generate input S3 URI for the given key."""
         return f"s3://{self.input_bucket}/{self.input_prefix}{key}"
@@ -136,3 +130,14 @@ class AsyncEndpointConfig:
     def get_output_s3_uri(self, key: str) -> str:
         """Generate output S3 URI for the given key."""
         return f"s3://{self.output_bucket}/{self.output_prefix}{key}"
+
+@dataclass
+class AsyncServiceConfig(EnhancedServiceConfig):
+    """
+    Async ServiceConfig
+
+    This class extends the base ServiceConfig with extension settings
+    while maintaining full compatibility with the base model runner.
+    """
+
+    async_endpoint_config: AsyncEndpointConfig = AsyncEndpointConfig()

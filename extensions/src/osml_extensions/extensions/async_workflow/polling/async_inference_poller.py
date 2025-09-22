@@ -5,12 +5,13 @@ import time
 from typing import Optional, Tuple
 
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
 from botocore.exceptions import ClientError
 
 from aws.osml.model_runner.common import Timer
 
-from ..config import AsyncEndpointConfig
+from ..async_app_config import AsyncEndpointConfig
 from ..errors import ExtensionRuntimeError
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,8 @@ class AsyncInferencePoller:
         self.config = config
         logger.debug("AsyncInferencePoller initialized")
 
-    def poll_until_complete(self, inference_id: str, metrics: Optional[MetricsLogger] = None) -> str:
+    @metric_scope
+    def poll_until_complete(self, inference_id: str, metrics: MetricsLogger) -> str:
         """
         Poll async inference job until completion with exponential backoff.
 

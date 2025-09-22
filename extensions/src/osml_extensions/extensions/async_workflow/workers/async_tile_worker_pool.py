@@ -7,6 +7,8 @@ from queue import Empty, Full, Queue
 from threading import Thread
 from typing import Any, Dict, List, Optional, Tuple
 
+from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+from aws_embedded_metrics.metric_scope import metric_scope
 from osml_extensions.enhanced_app_config import EnhancedServiceConfig
 
 from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
@@ -14,13 +16,17 @@ from aws.osml.model_runner.common import TileState
 from aws.osml.model_runner.database import FeatureTable, RegionRequestTable
 from aws.osml.model_runner.tile_worker import TileWorker
 
-from ..config import AsyncEndpointConfig
+from ..async_app_config import AsyncEndpointConfig, AsyncServiceConfig
 from ..detectors.async_sm_detector import AsyncSMDetector
 from ..factory import EnhancedFeatureDetectorFactory
 from ..metrics import AsyncMetricsTracker
+from ..s3 import S3Manager
 from ..utils import ResourceManager, ResourceType
 
 logger = logging.getLogger(__name__)
+
+
+S3_MANAGER = S3Manager()
 
 
 # TODO: Convert to dataclass
@@ -152,12 +158,12 @@ class AsyncSubmissionWorker(Thread):
                 self.metrics_tracker.start_timer("AsyncSubmissionTime")
 
             # Generate unique keys for S3
-            input_key = self.feature_detector.s3_manager.generate_unique_key("input")
-            output_key = self.feature_detector.s3_manager.generate_unique_key("output")
+            input_key = S3_MANAGER.generate_unique_key("input")
+            output_key = S3_MANAGER.generate_unique_key("output")
 
             # Upload tile to S3
             with open(tile_info["image_path"], "rb") as payload:
-                input_s3_uri = self.feature_detector._upload_to_s3(payload, input_key, None)
+                input_s3_uri = AsyncServiceConfig._upload_to_s3(payload, input_key, None)
 
             # Generate output S3 URI
             output_s3_uri = self.feature_detector.async_config.get_output_s3_uri(output_key)
@@ -367,7 +373,7 @@ class AsyncPollingWorker(TileWorker):
             logger.debug(f"AsyncPollingWorker-{self.worker_id} processing completed job: {job.inference_id}")
 
             # Download and parse results
-            feature_collection = self.feature_detector._download_from_s3(output_location, None)
+            feature_collection = AsyncServiceConfig._download_from_s3(output_location, None)
 
             features = self._refine_features(feature_collection, job.tile_info)
 
@@ -395,7 +401,7 @@ class AsyncPollingWorker(TileWorker):
 
             # Cleanup S3 objects if configured
             if self.config.cleanup_enabled:
-                self.feature_detector.s3_manager.cleanup_s3_objects([job.input_s3_uri, job.output_s3_uri])
+                S3_MANAGER.cleanup_s3_objects([job.input_s3_uri, job.output_s3_uri])
 
             if self.metrics_tracker:
                 self.metrics_tracker.increment_counter("JobCompletions")
@@ -422,7 +428,7 @@ class AsyncPollingWorker(TileWorker):
         # Cleanup S3 objects if configured
         if self.config.cleanup_enabled:
             try:
-                self.feature_detector.s3_manager.cleanup_s3_objects([job.input_s3_uri, job.output_s3_uri])
+                S3_MANAGER.cleanup_s3_objects([job.input_s3_uri, job.output_s3_uri])
             except Exception as cleanup_error:
                 logger.warning(f"Failed to cleanup S3 objects for failed job {job.inference_id}: {cleanup_error}")
 
@@ -443,12 +449,12 @@ class AsyncTileWorkerPool:
     and resource utilization.
     """
 
-    def __init__(self, region_request, sensor_model, elevation_model, model_invocation_credentials):
+    @metric_scope
+    def __init__(self, region_request, sensor_model, elevation_model, model_invocation_credentials, metrics: MetricsLogger):
         """
         Initialize AsyncTileWorkerPool.
 
         :param feature_detector: AsyncSMDetector instance for processing
-        :param config: AsyncEndpointConfig for worker pool settings
         :param metrics_tracker: Optional metrics tracker
         """
 
@@ -458,9 +464,9 @@ class AsyncTileWorkerPool:
         self.model_invocation_credentials = model_invocation_credentials
 
         # Create async endpoint configuration
-        self.config = AsyncEndpointConfig()
+        self.config = AsyncServiceConfig.async_endpoint_config
 
-        self.metrics_tracker = AsyncMetricsTracker()
+        self.metrics_tracker = AsyncMetricsTracker(metrics_logger=metrics)
 
         # Worker queues
         self.job_queue = Queue(maxsize=self.config.max_concurrent_jobs)  # tile_queue

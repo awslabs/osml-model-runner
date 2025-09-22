@@ -5,7 +5,7 @@ Handler selection logic for the extension registry system.
 """
 
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
 from .errors import HandlerSelectionError
 from .extension_registry import get_registry
@@ -23,7 +23,7 @@ class HandlerSelector:
 
     def select_handlers(
         self,
-        request_type: Optional[str] = None,
+        request_type: str,
     ) -> Tuple[HandlerMetadata, HandlerMetadata]:
         """
         Select appropriate handler pair based on configuration.

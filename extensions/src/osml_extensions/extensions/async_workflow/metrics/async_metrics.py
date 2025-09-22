@@ -2,7 +2,7 @@
 
 import logging
 import time
-from typing import Dict, Optional
+from typing import Dict
 
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.unit import Unit
@@ -19,11 +19,11 @@ class AsyncMetricsTracker:
     polling, and overall request duration.
     """
 
-    def __init__(self, metrics_logger: Optional[MetricsLogger] = None):
+    def __init__(self, metrics_logger: MetricsLogger):
         """
         Initialize AsyncMetricsTracker.
 
-        :param metrics_logger: Optional MetricsLogger instance for emitting metrics
+        :param metrics_logger: MetricsLogger instance for emitting metrics
         """
         self.metrics_logger = metrics_logger
         self.timings: Dict[str, float] = {}

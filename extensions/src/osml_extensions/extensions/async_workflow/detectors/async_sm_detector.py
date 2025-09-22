@@ -6,26 +6,26 @@ from io import BufferedReader
 from json import JSONDecodeError
 from typing import Dict, Optional
 
-import boto3
-import geojson
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.unit import Unit
 from botocore.exceptions import ClientError
 from geojson import FeatureCollection
 
-from aws.osml.model_runner.app_config import BotoConfig, MetricLabels
+from aws.osml.model_runner.app_config import MetricLabels
 from aws.osml.model_runner.common import Timer
 from aws.osml.model_runner.inference.detector import Detector
 from aws.osml.model_runner.inference.sm_detector import SMDetector
 
 from ...errors import ExtensionConfigurationError
-from ..api import ExtendedModelInvokeMode
-from ..config import AsyncEndpointConfig
-from ..polling import AsyncInferencePoller, AsyncInferenceTimeoutError
+from ..async_app_config import AsyncEndpointConfig, AsyncServiceConfig
 from ..s3 import S3Manager, S3OperationError
+from ..api import ExtendedModelInvokeMode
+from ..polling import AsyncInferencePoller, AsyncInferenceTimeoutError
 from ..utils import CleanupPolicy, ResourceManager
 
 logger = logging.getLogger(__name__)
+
+S3_MANAGER = S3Manager()
 
 
 class AsyncSMDetector(SMDetector):
@@ -41,35 +41,20 @@ class AsyncSMDetector(SMDetector):
         self,
         endpoint: str,
         assumed_credentials: Optional[Dict[str, str]] = None,
-        async_config: Optional[AsyncEndpointConfig] = None,
     ) -> None:
         """
         Initializes the AsyncSMDetector with async endpoint capabilities.
 
         :param endpoint: str = The name of the SageMaker async endpoint to invoke.
         :param assumed_credentials: Optional[Dict[str, str]] = Optional credentials for invoking the SageMaker model.
-        :param async_config: Optional[AsyncEndpointConfig] = Configuration for async endpoint operations.
         """
 
         super().__init__(endpoint, assumed_credentials)  # type: ignore
 
         # Initialize async configuration
-        self.async_config = async_config or AsyncEndpointConfig()
-
-        # Initialize S3 client with same credentials as SageMaker client
-        if assumed_credentials is not None:
-            self.s3_client = boto3.client(
-                "s3",
-                config=BotoConfig.default,
-                aws_access_key_id=assumed_credentials.get("AccessKeyId"),
-                aws_secret_access_key=assumed_credentials.get("SecretAccessKey"),
-                aws_session_token=assumed_credentials.get("SessionToken"),
-            )
-        else:
-            self.s3_client = boto3.client("s3", config=BotoConfig.default)
+        self.async_config = AsyncServiceConfig.async_endpoint_config
 
         # Initialize S3 manager and poller
-        self.s3_manager = S3Manager(self.s3_client, self.async_config)
         self.poller = AsyncInferencePoller(self.sm_client, self.async_config)
 
         # Initialize resource manager for cleanup
@@ -80,7 +65,7 @@ class AsyncSMDetector(SMDetector):
 
         # Validate S3 bucket access during initialization
         try:
-            self.s3_manager.validate_bucket_access()
+            S3_MANAGER.validate_bucket_access()
         except S3OperationError as e:
             logger.warning(f"S3 bucket validation failed during initialization: {e}")
             # Don't fail initialization, but log the warning
@@ -133,15 +118,15 @@ class AsyncSMDetector(SMDetector):
                 metrics_logger=metrics,
             ):
                 # Step 1: Upload payload to S3
-                input_key = self.s3_manager.generate_unique_key("input")
-                input_s3_uri = self._upload_to_s3(payload, input_key, metrics)
+                input_key = S3_MANAGER.generate_unique_key("input")
+                input_s3_uri = AsyncServiceConfig._upload_to_s3(payload, input_key, metrics)
 
                 # Register S3 input object for managed cleanup
                 cleanup_policy = CleanupPolicy(self.async_config.cleanup_policy)
                 self.resource_manager.register_s3_object(input_s3_uri, cleanup_policy)
 
                 # Step 2: Generate output S3 URI
-                output_key = self.s3_manager.generate_unique_key("output")
+                output_key = S3_MANAGER.generate_unique_key("output")
                 output_s3_uri = self.async_config.get_output_s3_uri(output_key)
 
                 # Step 3: Invoke async endpoint
@@ -162,7 +147,7 @@ class AsyncSMDetector(SMDetector):
                 self.resource_manager.register_s3_object(completed_output_uri, cleanup_policy)
 
                 # Step 5: Download and parse results
-                feature_collection = self._download_from_s3(completed_output_uri, metrics)
+                feature_collection = AsyncServiceConfig._download_from_s3(completed_output_uri, metrics)
 
                 if isinstance(metrics, MetricsLogger):
                     metrics.put_metric("AsyncInferenceSuccess", 1, str(Unit.COUNT.value))
@@ -217,18 +202,6 @@ class AsyncSMDetector(SMDetector):
 
             raise
 
-    def _upload_to_s3(self, payload: BufferedReader, key: str, metrics: Optional[MetricsLogger]) -> str:
-        """
-        Upload payload to S3 input bucket with unique key generation.
-
-        :param payload: BufferedReader containing the data to upload
-        :param key: S3 key for the object
-        :param metrics: Optional metrics logger
-        :return: S3 URI of uploaded object
-        """
-        logger.debug("Uploading payload to S3 for async inference")
-        return self.s3_manager.upload_payload(payload, key, metrics)
-
     def _invoke_async_endpoint(self, input_s3_uri: str, output_s3_uri: str, metrics: Optional[MetricsLogger]) -> str:
         """
         Invoke SageMaker async endpoint with S3 input/output URIs.
@@ -278,42 +251,6 @@ class AsyncSMDetector(SMDetector):
         """
         logger.debug(f"Polling for completion of inference job: {inference_id}")
         return self.poller.poll_until_complete(inference_id, metrics)
-
-    def _download_from_s3(self, output_s3_uri: str, metrics: Optional[MetricsLogger]) -> FeatureCollection:
-        """
-        Download and parse results from S3 output location.
-
-        :param output_s3_uri: S3 URI of the output data
-        :param metrics: Optional metrics logger
-        :return: Parsed FeatureCollection
-        """
-        logger.debug(f"Downloading results from S3: {output_s3_uri}")
-
-        try:
-            # Download results
-            result_data = self.s3_manager.download_results(output_s3_uri, metrics)
-
-            # Parse as geojson FeatureCollection
-            feature_collection = geojson.loads(result_data.decode("utf-8"))
-
-            logger.debug(
-                f"Successfully parsed FeatureCollection with {len(feature_collection.get('features', []))} features"
-            )
-            return feature_collection
-
-        except (UnicodeDecodeError, JSONDecodeError) as e:
-            logger.error(f"Failed to parse async inference results: {str(e)}")
-            raise JSONDecodeError(f"Failed to parse async inference results: {str(e)}", "", 0)
-
-    def _cleanup_s3_objects(self, s3_uris: list) -> None:
-        """
-        Clean up temporary S3 objects.
-
-        :param s3_uris: List of S3 URIs to delete
-        """
-        if self.async_config.cleanup_enabled:
-            logger.debug(f"Cleaning up {len(s3_uris)} S3 objects")
-            self.s3_manager.cleanup_s3_objects(s3_uris)
 
     def cleanup_resources(self, force: bool = False) -> int:
         """
@@ -367,18 +304,16 @@ class AsyncSMDetectorBuilder:
         self,
         endpoint: str,
         assumed_credentials: Optional[Dict[str, str]] = None,
-        async_config: Optional[AsyncEndpointConfig] = None,
     ):
         """
         Initialize the AsyncSMDetectorBuilder with async configuration support.
 
         :param endpoint: The SageMaker async endpoint name
         :param assumed_credentials: Optional credentials for the endpoint
-        :param async_config: Optional async endpoint configuration
         """
         self.endpoint = endpoint
         self.assumed_credentials = assumed_credentials or {}
-        self.async_config = async_config
+        self.async_config = AsyncServiceConfig.async_endpoint_config
 
         logger.debug(f"AsyncSMDetectorBuilder initialized for endpoint: {endpoint}")
 
@@ -417,9 +352,7 @@ class AsyncSMDetectorBuilder:
             self._validate_parameters()
 
             # Create the detector with async configuration
-            detector = AsyncSMDetector(
-                endpoint=self.endpoint, assumed_credentials=self.assumed_credentials, async_config=self.async_config
-            )
+            detector = AsyncSMDetector(endpoint=self.endpoint, assumed_credentials=self.assumed_credentials)
 
             logger.info(f"Successfully created AsyncSMDetector for endpoint: {self.endpoint}")
             return detector
@@ -432,17 +365,3 @@ class AsyncSMDetectorBuilder:
             logger.error(f"Traceback: {traceback.format_exc()}")
             # Return None to allow fallback handling
             return None
-
-    @classmethod
-    def from_environment(
-        cls, endpoint: str, assumed_credentials: Optional[Dict[str, str]] = None
-    ) -> "AsyncSMDetectorBuilder":
-        """
-        Create builder with configuration loaded from environment variables.
-
-        :param endpoint: The SageMaker async endpoint name
-        :param assumed_credentials: Optional credentials for the endpoint
-        :return: AsyncSMDetectorBuilder instance with environment-based configuration
-        """
-        async_config = AsyncEndpointConfig.from_environment()
-        return cls(endpoint=endpoint, assumed_credentials=assumed_credentials, async_config=async_config)

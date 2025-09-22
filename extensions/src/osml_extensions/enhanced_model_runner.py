@@ -60,7 +60,8 @@ class EnhancedModelRunner(ModelRunner):
             region_handler_metadata, image_handler_metadata = handler_selector.select_handlers(request_type)
 
             # Create image request handler
-            # TODO: For now this assumes all image handlers and all region handlers have the same class signature, update this so this is configurable.
+            # TODO: For now this assumes all image handlers and all region handlers
+            # have the same class signature, update this so this is configurable.
             image_handler_args = []
             image_handler_kwargs = dict(
                 region_request_table=self.region_request_table,

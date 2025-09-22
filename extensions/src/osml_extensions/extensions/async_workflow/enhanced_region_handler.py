@@ -193,6 +193,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
             # Re-raise the original exception for fallback handling
             raise
 
+    @metric_scope
     def _process_tiles_with_async_pool(
         self,
         async_pool: AsyncTileWorkerPool,
@@ -200,7 +201,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
         region_request_item: RegionRequestItem,
         raster_dataset,
         sensor_model: Optional[SensorModel],
-        metrics: Optional[MetricsLogger] = None,
+        metrics: MetricsLogger,
     ) -> Tuple[int, int]:
         """
         Process tiles using the async worker pool optimization.

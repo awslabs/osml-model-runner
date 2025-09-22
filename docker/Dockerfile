@@ -59,12 +59,12 @@ RUN ${PYTHON_BINARY} -m pip install \
 COPY extensions/ /home/extensions/
 RUN python3 -m pip install \
     --no-cache-dir \
-    --index-url ${PIP_INDEX_URL} \ 
+    --index-url ${PIP_INDEX_URL} \
     --trusted-host https://mirrors.gs.mil \
     /home/extensions/
 
-# Resolve broken simlinks for gdal python header bindings after python installs. 
-RUN ldconfig 
+# Resolve broken simlinks for gdal python header bindings after python installs.
+RUN ldconfig
 # Clean up old python3.6 install
 USER root
 RUN rm -rf /usr/lib/python3.6/site-packages/urllib3* \
