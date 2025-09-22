@@ -17,9 +17,7 @@ class AsyncEndpointConfig:
 
     # S3 Configuration
     input_bucket: Optional[str] = None  # S3 bucket for input data
-    output_bucket: Optional[str] = None  # S3 bucket for output data
     input_prefix: str = "async-inference/input/"
-    output_prefix: str = "async-inference/output/"
 
     # Polling Configuration
     max_wait_time: int = 3600  # Maximum wait time in seconds
@@ -52,12 +50,8 @@ class AsyncEndpointConfig:
         if self.input_bucket is None:
             self.input_bucket = os.getenv("ASYNC_SM_INPUT_BUCKET")
 
-        if self.output_bucket is None:
-            self.output_bucket = os.getenv("ASYNC_SM_OUTPUT_BUCKET")
-
         # Load other environment variables with current values as defaults
         self.input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", self.input_prefix)
-        self.output_prefix = os.getenv("ASYNC_SM_OUTPUT_PREFIX", self.output_prefix)
         self.max_wait_time = int(os.getenv("ASYNC_SM_MAX_WAIT_TIME", str(self.max_wait_time)))
         self.polling_interval = int(os.getenv("ASYNC_SM_POLLING_INTERVAL", str(self.polling_interval)))
         self.max_polling_interval = int(os.getenv("ASYNC_SM_MAX_POLLING_INTERVAL", str(self.max_polling_interval)))
@@ -81,14 +75,8 @@ class AsyncEndpointConfig:
         if self.input_bucket is None:
             raise ExtensionConfigurationError("input_bucket is required for async endpoint configuration")
 
-        if self.output_bucket is None:
-            raise ExtensionConfigurationError("output_bucket is required for async endpoint configuration")
-
         if not isinstance(self.input_bucket, str) or not self.input_bucket.strip():
             raise ExtensionConfigurationError("input_bucket must be a non-empty string")
-
-        if not isinstance(self.output_bucket, str) or not self.output_bucket.strip():
-            raise ExtensionConfigurationError("output_bucket must be a non-empty string")
 
         if self.max_wait_time <= 0:
             raise ExtensionConfigurationError("max_wait_time must be positive")
@@ -126,10 +114,6 @@ class AsyncEndpointConfig:
     def get_input_s3_uri(self, key: str) -> str:
         """Generate input S3 URI for the given key."""
         return f"s3://{self.input_bucket}/{self.input_prefix}{key}"
-
-    def get_output_s3_uri(self, key: str) -> str:
-        """Generate output S3 URI for the given key."""
-        return f"s3://{self.output_bucket}/{self.output_prefix}{key}"
 
 @dataclass
 class AsyncServiceConfig(EnhancedServiceConfig):

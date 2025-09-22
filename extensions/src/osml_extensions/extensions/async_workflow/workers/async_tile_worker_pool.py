@@ -36,7 +36,7 @@ class AsyncInferenceJob:
     """
 
     def __init__(
-        self, inference_id: str, tile_info: Dict[str, Any], input_s3_uri: str, output_s3_uri: str, submitted_time: float
+        self, inference_id: str, tile_info: Dict[str, Any], input_s3_uri: str, submitted_time: float
     ):
         """
         Initialize AsyncInferenceJob.
@@ -44,13 +44,11 @@ class AsyncInferenceJob:
         :param inference_id: SageMaker inference job ID
         :param tile_info: Original tile information
         :param input_s3_uri: S3 URI of input data
-        :param output_s3_uri: S3 URI where output will be stored
         :param submitted_time: Timestamp when job was submitted
         """
         self.inference_id = inference_id
         self.tile_info = tile_info
         self.input_s3_uri = input_s3_uri
-        self.output_s3_uri = output_s3_uri
         self.submitted_time = submitted_time
         self.poll_count = 0
         self.last_poll_time = submitted_time
@@ -157,26 +155,21 @@ class AsyncSubmissionWorker(Thread):
             if self.metrics_tracker:
                 self.metrics_tracker.start_timer("AsyncSubmissionTime")
 
-            # Generate unique keys for S3
+            # Generate unique key for S3 input
             input_key = S3_MANAGER.generate_unique_key("input")
-            output_key = S3_MANAGER.generate_unique_key("output")
 
             # Upload tile to S3
             with open(tile_info["image_path"], "rb") as payload:
                 input_s3_uri = AsyncServiceConfig._upload_to_s3(payload, input_key, None)
 
-            # Generate output S3 URI
-            output_s3_uri = self.feature_detector.async_config.get_output_s3_uri(output_key)
-
             # Submit to async endpoint
-            inference_id = self.feature_detector._invoke_async_endpoint(input_s3_uri, output_s3_uri, None)
+            inference_id = self.feature_detector._invoke_async_endpoint(input_s3_uri, None)
 
             # Create job object and add to polling queue
             job = AsyncInferenceJob(
                 inference_id=inference_id,
                 tile_info=tile_info,
                 input_s3_uri=input_s3_uri,
-                output_s3_uri=output_s3_uri,
                 submitted_time=time.time(),
             )
 
@@ -401,7 +394,7 @@ class AsyncPollingWorker(TileWorker):
 
             # Cleanup S3 objects if configured
             if self.config.cleanup_enabled:
-                S3_MANAGER.cleanup_s3_objects([job.input_s3_uri, job.output_s3_uri])
+                S3_MANAGER.cleanup_s3_objects([job.input_s3_uri, output_location])
 
             if self.metrics_tracker:
                 self.metrics_tracker.increment_counter("JobCompletions")
@@ -428,7 +421,7 @@ class AsyncPollingWorker(TileWorker):
         # Cleanup S3 objects if configured
         if self.config.cleanup_enabled:
             try:
-                S3_MANAGER.cleanup_s3_objects([job.input_s3_uri, job.output_s3_uri])
+                S3_MANAGER.cleanup_s3_objects([job.input_s3_uri])
             except Exception as cleanup_error:
                 logger.warning(f"Failed to cleanup S3 objects for failed job {job.inference_id}: {cleanup_error}")
 

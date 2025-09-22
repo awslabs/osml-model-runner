@@ -125,28 +125,23 @@ class AsyncSMDetector(SMDetector):
                 cleanup_policy = CleanupPolicy(self.async_config.cleanup_policy)
                 self.resource_manager.register_s3_object(input_s3_uri, cleanup_policy)
 
-                # Step 2: Generate output S3 URI
-                output_key = S3_MANAGER.generate_unique_key("output")
-                output_s3_uri = self.async_config.get_output_s3_uri(output_key)
-
-                # Step 3: Invoke async endpoint
-                inference_id = self._invoke_async_endpoint(input_s3_uri, output_s3_uri, metrics)
+                # Step 2: Invoke async endpoint
+                inference_id = self._invoke_async_endpoint(input_s3_uri, metrics)
 
                 # Register inference job for comprehensive resource management
                 job_data = {
                     "input_s3_uri": input_s3_uri,
-                    "output_s3_uri": output_s3_uri,
                     "temp_files": [],  # Add any temp files created during processing
                 }
                 _ = self.resource_manager.register_inference_job(inference_id, job_data, cleanup_policy)  # job_resource_id
 
-                # Step 4: Poll for completion
+                # Step 3: Poll for completion
                 completed_output_uri = self._poll_for_completion(inference_id, metrics)
 
                 # Register output S3 object for cleanup
                 self.resource_manager.register_s3_object(completed_output_uri, cleanup_policy)
 
-                # Step 5: Download and parse results
+                # Step 4: Download and parse results
                 feature_collection = AsyncServiceConfig._download_from_s3(completed_output_uri, metrics)
 
                 if isinstance(metrics, MetricsLogger):
@@ -202,12 +197,11 @@ class AsyncSMDetector(SMDetector):
 
             raise
 
-    def _invoke_async_endpoint(self, input_s3_uri: str, output_s3_uri: str, metrics: Optional[MetricsLogger]) -> str:
+    def _invoke_async_endpoint(self, input_s3_uri: str, metrics: Optional[MetricsLogger]) -> str:
         """
-        Invoke SageMaker async endpoint with S3 input/output URIs.
+        Invoke SageMaker async endpoint with S3 input URI.
 
         :param input_s3_uri: S3 URI of input data
-        :param output_s3_uri: S3 URI where output should be stored
         :param metrics: Optional metrics logger
         :return: Inference job ID
         """
