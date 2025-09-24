@@ -16,3 +16,4 @@ unit-tests:
     COVERAGE_PACKAGE: "aws.osml.model_runner"  # Cover the model runner package
     PYTEST_ARGS: "--durations=10"  # Let the template handle coverage args
     PYTHON_BINARY: "python3.13"
+

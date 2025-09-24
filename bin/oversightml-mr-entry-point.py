@@ -38,7 +38,7 @@ def configure_logging(verbose: bool) -> None:
 
     ch = logging.StreamHandler()
     ch.setLevel(logging_level)
-    ch.addFilter(ThreadingLocalContextFilter(["job_id", "image_id"]))
+    ch.addFilter(ThreadingLocalContextFilter(["job_id", "image_id", "runner_type"]))
 
     formatter = jsonlogger.JsonFormatter(
         fmt="%(levelname)s %(message)s %(job_id)s %(image_id)s", datefmt="%Y-%m-%dT%H:%M:%S"
@@ -79,6 +79,8 @@ def main() -> int:
         
         # Create and configure model runner
         model_runner = ModelRunner()
+
+        logger.info(f"Running model runner version: {model_runner}")
 
         map_signals(model_runner)
         # setup_code_profiling()
