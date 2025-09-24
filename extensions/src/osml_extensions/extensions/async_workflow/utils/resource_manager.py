@@ -135,57 +135,57 @@ class ResourceManager:
             else:
                 logger.debug("Resource cleanup worker stopped")
 
-    def register_s3_object(self, s3_uri: str, cleanup_policy: Optional[CleanupPolicy] = None) -> str:
-        """
-        Register an S3 object for managed cleanup.
+    # def register_s3_object(self, s3_uri: str, cleanup_policy: Optional[CleanupPolicy] = None) -> str:
+    #     """
+    #     Register an S3 object for managed cleanup.
 
-        :param s3_uri: S3 URI of the object
-        :param cleanup_policy: Optional override for cleanup policy
-        :return: Resource ID for tracking
-        """
-        resource_id = f"s3_{hash(s3_uri)}"
+    #     :param s3_uri: S3 URI of the object
+    #     :param cleanup_policy: Optional override for cleanup policy
+    #     :return: Resource ID for tracking
+    #     """
+    #     resource_id = f"s3_{hash(s3_uri)}"
 
-        resource_data = {"s3_uri": s3_uri, "bucket": urlparse(s3_uri).netloc, "key": urlparse(s3_uri).path.lstrip("/")}
+    #     resource_data = {"s3_uri": s3_uri, "bucket": urlparse(s3_uri).netloc, "key": urlparse(s3_uri).path.lstrip("/")}
 
-        resource = ManagedResource(
-            resource_id=resource_id, resource_type=ResourceType.S3_OBJECT, resource_data=resource_data
-        )
+    #     resource = ManagedResource(
+    #         resource_id=resource_id, resource_type=ResourceType.S3_OBJECT, resource_data=resource_data
+    #     )
 
-        with self.resource_lock:
-            self.managed_resources[resource_id] = resource
+    #     with self.resource_lock:
+    #         self.managed_resources[resource_id] = resource
 
-        # Schedule cleanup based on policy
-        policy = cleanup_policy or self.cleanup_policies[ResourceType.S3_OBJECT]
-        self._schedule_cleanup(resource, policy)
+    #     # Schedule cleanup based on policy
+    #     policy = cleanup_policy or self.cleanup_policies[ResourceType.S3_OBJECT]
+    #     self._schedule_cleanup(resource, policy)
 
-        logger.debug(f"Registered S3 object for cleanup: {s3_uri} (policy: {policy.value})")
-        return resource_id
+    #     logger.debug(f"Registered S3 object for cleanup: {s3_uri} (policy: {policy.value})")
+    #     return resource_id
 
-    def register_temp_file(self, file_path: str, cleanup_policy: Optional[CleanupPolicy] = None) -> str:
-        """
-        Register a temporary file for managed cleanup.
+    # def register_temp_file(self, file_path: str, cleanup_policy: Optional[CleanupPolicy] = None) -> str:
+    #     """
+    #     Register a temporary file for managed cleanup.
 
-        :param file_path: Path to the temporary file
-        :param cleanup_policy: Optional override for cleanup policy
-        :return: Resource ID for tracking
-        """
-        resource_id = f"temp_{hash(file_path)}"
+    #     :param file_path: Path to the temporary file
+    #     :param cleanup_policy: Optional override for cleanup policy
+    #     :return: Resource ID for tracking
+    #     """
+    #     resource_id = f"temp_{hash(file_path)}"
 
-        resource_data = {"file_path": file_path}
+    #     resource_data = {"file_path": file_path}
 
-        resource = ManagedResource(
-            resource_id=resource_id, resource_type=ResourceType.TEMP_FILE, resource_data=resource_data
-        )
+    #     resource = ManagedResource(
+    #         resource_id=resource_id, resource_type=ResourceType.TEMP_FILE, resource_data=resource_data
+    #     )
 
-        with self.resource_lock:
-            self.managed_resources[resource_id] = resource
+    #     with self.resource_lock:
+    #         self.managed_resources[resource_id] = resource
 
-        # Schedule cleanup based on policy
-        policy = cleanup_policy or self.cleanup_policies[ResourceType.TEMP_FILE]
-        self._schedule_cleanup(resource, policy)
+    #     # Schedule cleanup based on policy
+    #     policy = cleanup_policy or self.cleanup_policies[ResourceType.TEMP_FILE]
+    #     self._schedule_cleanup(resource, policy)
 
-        logger.debug(f"Registered temp file for cleanup: {file_path} (policy: {policy.value})")
-        return resource_id
+    #     logger.debug(f"Registered temp file for cleanup: {file_path} (policy: {policy.value})")
+    #     return resource_id
 
     def register_inference_job(
         self, inference_id: str, job_data: Dict[str, Any], cleanup_policy: Optional[CleanupPolicy] = None
@@ -221,31 +221,32 @@ class ResourceManager:
         logger.debug(f"Registered inference job for cleanup: {inference_id} (policy: {policy.value})")
         return resource_id
 
-    def register_worker_thread(self, thread: Thread, cleanup_policy: Optional[CleanupPolicy] = None) -> str:
-        """
-        Register a worker thread for managed cleanup.
+    # def register_worker_thread(self, thread: Thread, cleanup_policy: Optional[CleanupPolicy] = None) -> str:
+    #     """
+    #     Register a worker thread for managed cleanup.
 
-        :param thread: Thread instance to manage
-        :param cleanup_policy: Optional override for cleanup policy
-        :return: Resource ID for tracking
-        """
-        resource_id = f"thread_{thread.name}_{id(thread)}"
+    #     :param thread: Thread instance to manage
+    #     :param cleanup_policy: Optional override for cleanup policy
+    #     :return: Resource ID for tracking
+    #     """
+    #     resource_id = f"thread_{thread.name}_{id(thread)}"
 
-        resource_data = {"thread": thread, "thread_name": thread.name}
+    #     resource_data = {"thread": thread, "thread_name": thread.name}
 
-        resource = ManagedResource(
-            resource_id=resource_id, resource_type=ResourceType.WORKER_THREAD, resource_data=resource_data
-        )
+    #     logger.info(f"Creating a manged resource for worker thread: {resource_id}")
+    #     resource = ManagedResource(
+    #         resource_id=resource_id, resource_type=ResourceType.WORKER_THREAD, resource_data=resource_data
+    #     )
 
-        with self.resource_lock:
-            self.managed_resources[resource_id] = resource
+    #     with self.resource_lock:
+    #         self.managed_resources[resource_id] = resource
 
-        # Schedule cleanup based on policy
-        policy = cleanup_policy or self.cleanup_policies[ResourceType.WORKER_THREAD]
-        self._schedule_cleanup(resource, policy)
+    #     # Schedule cleanup based on policy
+    #     policy = cleanup_policy or self.cleanup_policies[ResourceType.WORKER_THREAD]
+    #     self._schedule_cleanup(resource, policy)
 
-        logger.debug(f"Registered worker thread for cleanup: {thread.name} (policy: {policy.value})")
-        return resource_id
+    #     logger.info(f"Registered worker thread for cleanup: {thread.name} (policy: {policy.value})")
+    #     return resource_id
 
     def cleanup_resource(self, resource_id: str, force: bool = False) -> bool:
         """
@@ -440,7 +441,8 @@ class ResourceManager:
             elif resource.resource_type == ResourceType.INFERENCE_JOB:
                 success = self._cleanup_inference_job(resource)
             elif resource.resource_type == ResourceType.WORKER_THREAD:
-                success = self._cleanup_worker_thread(resource)
+                # success = self._cleanup_worker_thread(resource)
+                pass
             else:
                 logger.warning(f"Unknown resource type for cleanup: {resource.resource_type}")
                 success = False
@@ -549,38 +551,38 @@ class ResourceManager:
 
         return success
 
-    def _cleanup_worker_thread(self, resource: ManagedResource) -> bool:
-        """
-        Clean up a worker thread.
+    # def _cleanup_worker_thread(self, resource: ManagedResource) -> bool:
+    #     """
+    #     Clean up a worker thread.
 
-        :param resource: Worker thread resource
-        :return: True if cleanup was successful
-        """
-        try:
-            thread = resource.resource_data["thread"]
-            thread_name = resource.resource_data["thread_name"]
+    #     :param resource: Worker thread resource
+    #     :return: True if cleanup was successful
+    #     """
+    #     try:
+    #         thread = resource.resource_data["thread"]
+    #         thread_name = resource.resource_data["thread_name"]
 
-            if thread.is_alive():
-                # Signal thread to stop (implementation depends on thread type)
-                if hasattr(thread, "stop"):
-                    thread.stop()
+    #         if thread.is_alive():
+    #             # Signal thread to stop (implementation depends on thread type)
+    #             if hasattr(thread, "stop"):
+    #                 thread.stop()
 
-                # Wait for thread to finish
-                thread.join(timeout=10.0)
+    #             # Wait for thread to finish
+    #             thread.join(timeout=10.0)
 
-                if thread.is_alive():
-                    logger.warning(f"Worker thread did not stop gracefully: {thread_name}")
-                    return False
-                else:
-                    logger.debug(f"Worker thread stopped: {thread_name}")
-                    return True
-            else:
-                logger.debug(f"Worker thread already stopped: {thread_name}")
-                return True
+    #             if thread.is_alive():
+    #                 logger.warning(f"Worker thread did not stop gracefully: {thread_name}")
+    #                 return False
+    #             else:
+    #                 logger.debug(f"Worker thread stopped: {thread_name}")
+    #                 return True
+    #         else:
+    #             logger.debug(f"Worker thread already stopped: {thread_name}")
+    #             return True
 
-        except Exception as e:
-            logger.warning(f"Failed to cleanup worker thread: {e}")
-            return False
+    #     except Exception as e:
+    #         logger.warning(f"Failed to cleanup worker thread: {e}")
+    #         return False
 
     def __enter__(self):
         """Context manager entry."""

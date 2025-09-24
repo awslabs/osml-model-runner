@@ -32,3 +32,6 @@ class EnhancedServiceConfig(ServiceConfig):
 
     # Request type configuration
     request_type: str = os.getenv("REQUEST_TYPE", "async_sm_endpoint")
+
+    # tile tracking table
+    tile_request_table: str = os.environ["TILE_REQUEST_TABLE"]

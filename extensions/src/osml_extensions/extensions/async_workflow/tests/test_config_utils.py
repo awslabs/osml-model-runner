@@ -5,7 +5,6 @@ import unittest
 from unittest.mock import Mock, patch
 
 import boto3
-from botocore.exceptions import ClientError
 from moto import mock_s3, mock_sagemaker
 
 from ..src.osml_extensions.config import ConfigurationManager, ConfigurationValidator, EnvironmentConfigLoader

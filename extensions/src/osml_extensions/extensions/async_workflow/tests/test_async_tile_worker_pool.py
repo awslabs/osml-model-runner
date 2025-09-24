@@ -2,8 +2,8 @@
 
 import time
 import unittest
-from queue import Empty, Queue
-from unittest.mock import MagicMock, Mock, patch
+from queue import Queue
+from unittest.mock import Mock, patch
 
 from ..src.osml_extensions.config import AsyncEndpointConfig
 from ..src.osml_extensions.metrics import AsyncMetricsTracker

@@ -1,7 +1,8 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
+import asyncio
+import boto3
 import logging
-import threading
 import time
 from queue import Empty, Full, Queue
 from threading import Thread
@@ -15,13 +16,16 @@ from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
 from aws.osml.model_runner.common import TileState
 from aws.osml.model_runner.database import FeatureTable, RegionRequestTable
 from aws.osml.model_runner.tile_worker import TileWorker
+from aws.osml.model_runner.app_config import BotoConfig
 
 from ..async_app_config import AsyncEndpointConfig, AsyncServiceConfig
 from ..detectors.async_sm_detector import AsyncSMDetector
 from ..factory import EnhancedFeatureDetectorFactory
 from ..metrics import AsyncMetricsTracker
 from ..s3 import S3Manager
+from ..tile_request_table import TileRequestTable
 from ..utils import ResourceManager, ResourceType
+from ..polling import AsyncInferencePoller, AsyncInferenceTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -35,20 +39,20 @@ class AsyncInferenceJob:
     Represents an async inference job with metadata.
     """
 
-    def __init__(
-        self, inference_id: str, tile_info: Dict[str, Any], input_s3_uri: str, submitted_time: float
-    ):
+    def __init__(self, inference_id: str, tile_info: Dict[str, Any], input_s3_uri: str, output_s3_uri: str, submitted_time: float):
         """
         Initialize AsyncInferenceJob.
 
         :param inference_id: SageMaker inference job ID
         :param tile_info: Original tile information
         :param input_s3_uri: S3 URI of input data
+        :param output_s3_uri: S3 URI of output data
         :param submitted_time: Timestamp when job was submitted
         """
         self.inference_id = inference_id
         self.tile_info = tile_info
         self.input_s3_uri = input_s3_uri
+        self.output_s3_uri = output_s3_uri
         self.submitted_time = submitted_time
         self.poll_count = 0
         self.last_poll_time = submitted_time
@@ -71,6 +75,7 @@ class AsyncSubmissionWorker(Thread):
         feature_detector: AsyncSMDetector,
         config: AsyncEndpointConfig,
         metrics_tracker: Optional[AsyncMetricsTracker] = None,
+        tile_table: Optional[TileRequestTable] = None,
     ):
         """
         Initialize AsyncSubmissionWorker.
@@ -81,6 +86,7 @@ class AsyncSubmissionWorker(Thread):
         :param feature_detector: AsyncSMDetector instance for submissions
         :param config: AsyncEndpointConfig for settings
         :param metrics_tracker: Optional metrics tracker
+        :param tile_table: Optional TileRequestTable for tracking tile status
         """
         super().__init__(name=f"AsyncSubmissionWorker-{worker_id}")
         self.worker_id = worker_id
@@ -89,6 +95,7 @@ class AsyncSubmissionWorker(Thread):
         self.feature_detector = feature_detector
         self.config = config
         self.metrics_tracker = metrics_tracker
+        self.tile_table = tile_table
         self.failed_tile_count = 0
         self.processed_tile_count = 0
         self.running = True
@@ -97,17 +104,23 @@ class AsyncSubmissionWorker(Thread):
 
     def run(self) -> None:
         """Main worker loop for processing tile submissions."""
-        logger.info(f"AsyncSubmissionWorker-{self.worker_id} started")
+        logger.debug(f"AsyncSubmissionWorker-{self.worker_id} started")
 
         try:
+            thread_event_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(thread_event_loop)
+
+            logger.debug(f"Worker: {self.worker_id} staring while loop")
             while self.running:
                 try:
                     # Get tile from queue with timeout
                     tile_info = self.tile_queue.get(timeout=1.0)
 
+                    logger.info(f"Got tile: {tile_info}, on worker: {self.worker_id}")
+
                     # Check for shutdown signal
                     if tile_info is None:
-                        logger.debug(f"AsyncSubmissionWorker-{self.worker_id} received shutdown signal")
+                        logger.info(f"AsyncSubmissionWorker-{self.worker_id} received shutdown signal")
                         break
 
                     # Process tile submission
@@ -119,6 +132,7 @@ class AsyncSubmissionWorker(Thread):
                         self.failed_tile_count += 1
 
                     # Mark task as done
+                    logger.info(f"Completing task on worker: {self.worker_id}")
                     self.tile_queue.task_done()
 
                 except Empty:
@@ -131,9 +145,17 @@ class AsyncSubmissionWorker(Thread):
 
                     # Mark task as done if we got a tile
                     try:
+                        logger.info(f"Completing task on worker: {self.worker_id} on error")
                         self.tile_queue.task_done()
                     except ValueError:
                         pass  # task_done() called more times than get()
+
+            try:
+                thread_event_loop.stop()
+                thread_event_loop.close()
+            except Exception as e:
+                logger.warning("Failed to stop and close the thread event loop")
+                logging.exception(e)
 
         finally:
             logger.info(
@@ -141,7 +163,8 @@ class AsyncSubmissionWorker(Thread):
                 f"Processed: {self.processed_tile_count}, Failed: {self.failed_tile_count}"
             )
 
-    def process_tile_submission(self, tile_info: Dict[str, Any]) -> bool:
+    @metric_scope
+    def process_tile_submission(self, tile_info: Dict[str, Any], metrics) -> bool:
         """
         Process a single tile submission to async endpoint.
 
@@ -149,7 +172,18 @@ class AsyncSubmissionWorker(Thread):
         :return: True if submission successful, False otherwise
         """
         try:
-            logger.debug(f"AsyncSubmissionWorker-{self.worker_id} processing tile: {tile_info.get('region')}")
+            logger.info(f"AsyncSubmissionWorker-{self.worker_id} processing tile: {tile_info.get('region')}")
+
+            # Update tile status to PROCESSING
+            if self.tile_table and tile_info.get("tile_id") and tile_info.get("job_id"):
+                try:
+                    self.tile_table.update_tile_status(
+                        tile_info["tile_id"], 
+                        tile_info["job_id"], 
+                        "PROCESSING"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to update tile status to PROCESSING: {e}")
 
             # Track submission timing
             if self.metrics_tracker:
@@ -160,18 +194,21 @@ class AsyncSubmissionWorker(Thread):
 
             # Upload tile to S3
             with open(tile_info["image_path"], "rb") as payload:
-                input_s3_uri = AsyncServiceConfig._upload_to_s3(payload, input_key, None)
+                input_s3_uri = S3_MANAGER._upload_to_s3(payload, input_key)
 
             # Submit to async endpoint
-            inference_id = self.feature_detector._invoke_async_endpoint(input_s3_uri, None)
+            inference_id, output_location = self.feature_detector._invoke_async_endpoint(input_s3_uri, metrics)
 
             # Create job object and add to polling queue
             job = AsyncInferenceJob(
                 inference_id=inference_id,
                 tile_info=tile_info,
                 input_s3_uri=input_s3_uri,
+                output_s3_uri=output_location,
                 submitted_time=time.time(),
             )
+
+            logger.info(f"job info: {job}")
 
             # Add job to polling queue with timeout
             try:
@@ -186,10 +223,35 @@ class AsyncSubmissionWorker(Thread):
 
             except Full:
                 logger.error(f"AsyncSubmissionWorker-{self.worker_id} job queue full, dropping tile")
+                
+                # Update tile status to FAILED due to queue full
+                if self.tile_table and tile_info.get("tile_id") and tile_info.get("job_id"):
+                    try:
+                        self.tile_table.update_tile_status(
+                            tile_info["tile_id"], 
+                            tile_info["job_id"], 
+                            "FAILED",
+                            "Job queue full"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to update tile status to FAILED: {e}")
+                
                 return False
 
         except Exception as e:
             logger.error(f"AsyncSubmissionWorker-{self.worker_id} failed to submit tile: {e}")
+
+            # Update tile status to FAILED due to submission error
+            if self.tile_table and tile_info.get("tile_id") and tile_info.get("job_id"):
+                try:
+                    self.tile_table.update_tile_status(
+                        tile_info["tile_id"], 
+                        tile_info["job_id"], 
+                        "FAILED",
+                        f"Submission error: {str(e)}"
+                    )
+                except Exception as update_e:
+                    logger.warning(f"Failed to update tile status to FAILED: {update_e}")
 
             if self.metrics_tracker:
                 self.metrics_tracker.increment_counter("TileSubmissionFailures")
@@ -220,16 +282,22 @@ class AsyncPollingWorker(TileWorker):
         feature_detector: AsyncSMDetector,
         config: AsyncEndpointConfig,
         metrics_tracker: Optional[AsyncMetricsTracker] = None,
+        assumed_credentials: Optional[Dict[str, str]] = None,
+        tile_table: Optional[TileRequestTable] = None,
     ):
         """
         Initialize AsyncPollingWorker.
 
         :param worker_id: Unique identifier for this worker
-        :param job_queue: Queue containing submitted jobs to poll
+        :param feature_table: FeatureTable for storing detected features
+        :param geolocator: Optional geolocator for feature positioning
+        :param region_request_table: RegionRequestTable for tracking tile processing
+        :param in_queue: Queue containing submitted jobs to poll
         :param result_queue: Queue to place completed results
         :param feature_detector: AsyncSMDetector instance for polling
         :param config: AsyncEndpointConfig for settings
         :param metrics_tracker: Optional metrics tracker
+        :param tile_table: Optional TileRequestTable for tracking tile status
         """
 
         super().__init__(in_queue, feature_detector, geolocator, feature_table, region_request_table)
@@ -239,17 +307,38 @@ class AsyncPollingWorker(TileWorker):
         self.result_queue = result_queue
         self.config = config
         self.metrics_tracker = metrics_tracker
+        self.tile_table = tile_table
         self.active_jobs: Dict[str, AsyncInferenceJob] = {}
         self.completed_job_count = 0
         self.running = True
 
-        logger.debug(f"AsyncPollingWorker-{worker_id} initialized")
+        # Initialize async configuration
+
+        if assumed_credentials is not None:
+            # Use the provided credentials to invoke SageMaker endpoints in another AWS account.
+            self.sm_client = boto3.client(
+                "sagemaker-runtime",
+                config=BotoConfig.sagemaker,
+                aws_access_key_id=assumed_credentials.get("AccessKeyId"),
+                aws_secret_access_key=assumed_credentials.get("SecretAccessKey"),
+                aws_session_token=assumed_credentials.get("SessionToken"),
+            )
+        else:
+            # Use the default role for this container if no specific credentials are provided.
+            self.sm_client = boto3.client("sagemaker-runtime", config=BotoConfig.sagemaker)
+
+        self.async_config = AsyncServiceConfig.async_endpoint_config
+        self.poller = AsyncInferencePoller(self.sm_client, self.async_config)
+
+        logger.info(f"AsyncPollingWorker-{worker_id} initialized")
 
     def run(self) -> None:
         """Main worker loop for polling job completion."""
         logger.info(f"AsyncPollingWorker-{self.worker_id} started")
 
         try:
+            thread_event_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(thread_event_loop)
             while self.running:
                 try:
                     # Check for new jobs to monitor
@@ -264,6 +353,13 @@ class AsyncPollingWorker(TileWorker):
                 except Exception as e:
                     logger.error(f"AsyncPollingWorker-{self.worker_id} error: {e}")
 
+            try:
+                thread_event_loop.stop()
+                thread_event_loop.close()
+            except Exception as e:
+                logger.warning("Failed to stop and close the thread event loop")
+                logging.exception(e)
+
         finally:
             logger.info(
                 f"AsyncPollingWorker-{self.worker_id} finished. "
@@ -272,14 +368,17 @@ class AsyncPollingWorker(TileWorker):
 
     def _collect_new_jobs(self) -> None:
         """Collect new jobs from the job queue."""
+        # logger.info("Began job collection")
         while len(self.active_jobs) < self.config.max_concurrent_jobs:
             try:
                 job = self.in_queue.get_nowait()
+                logger.info(f"Poller got job: {job}")
                 self.active_jobs[job.inference_id] = job
-                logger.debug(f"AsyncPollingWorker-{self.worker_id} monitoring job: {job.inference_id}")
+                logger.info(f"AsyncPollingWorker-{self.worker_id} monitoring job: {job.inference_id}")
 
             except Empty:
                 break  # No more jobs available
+
 
     def _poll_active_jobs(self) -> None:
         """Poll all active jobs for completion."""
@@ -287,6 +386,7 @@ class AsyncPollingWorker(TileWorker):
 
         for inference_id, job in self.active_jobs.items():
             try:
+                logger.info(f"poller checking for {inference_id}, {job}")
                 # Check if enough time has passed since last poll
                 current_time = time.time()
                 time_since_last_poll = current_time - job.last_poll_time
@@ -297,17 +397,31 @@ class AsyncPollingWorker(TileWorker):
                 if time_since_last_poll < polling_interval:
                     continue  # Not time to poll this job yet
 
-                # Poll job status
-                job_status, output_location = self.feature_detector.poller.get_job_status(inference_id)
+                # Get job status from tile table instead of polling SageMaker
+                tile_id = job.tile_info.get("tile_id")
+                job_id = job.tile_info.get("job_id")
+                
+                if not tile_id or not job_id or not self.tile_table:
+                    logger.warning(f"Missing tile_id, job_id, or tile_table for job {inference_id}")
+                    continue
+
+                tile_item = self.tile_table.get_tile_request(tile_id, job_id)
+                if not tile_item:
+                    logger.warning(f"Could not find tile item for {tile_id}, {job_id}")
+                    continue
+
+                job_status = tile_item.status
                 job.poll_count += 1
                 job.last_poll_time = current_time
 
                 if self.metrics_tracker:
                     self.metrics_tracker.increment_counter("JobPolls")
 
-                logger.debug(f"AsyncPollingWorker-{self.worker_id} polled job {inference_id}: {job_status}")
+                logger.info(f"AsyncPollingWorker-{self.worker_id} polled job {inference_id}: {job_status}")
 
-                if job_status == "Completed":
+                if job_status == "COMPLETED":
+                    # Get output location from job's output_s3_uri
+                    output_location = getattr(job, 'output_s3_uri', None)
                     if output_location:
                         self._process_completed_job(job, output_location)
                         completed_jobs.append(inference_id)
@@ -318,8 +432,9 @@ class AsyncPollingWorker(TileWorker):
                         completed_jobs.append(inference_id)
                         self.failed_tile_count += 1
 
-                elif job_status == "Failed":
-                    self._handle_failed_job(job, "Job failed")
+                elif job_status == "FAILED":
+                    error_message = tile_item.error_message or "Job failed"
+                    self._handle_failed_job(job, error_message)
                     completed_jobs.append(inference_id)
                     self.failed_tile_count += 1
 
@@ -363,10 +478,10 @@ class AsyncPollingWorker(TileWorker):
         :param output_location: S3 URI of the output data
         """
         try:
-            logger.debug(f"AsyncPollingWorker-{self.worker_id} processing completed job: {job.inference_id}")
+            logger.info(f"AsyncPollingWorker-{self.worker_id} processing completed job: {job.inference_id}")
 
             # Download and parse results
-            feature_collection = AsyncServiceConfig._download_from_s3(output_location, None)
+            feature_collection = AsyncServiceConfig._download_from_s3(output_location)
 
             features = self._refine_features(feature_collection, job.tile_info)
 
@@ -401,6 +516,17 @@ class AsyncPollingWorker(TileWorker):
                 processing_time = time.time() - job.submitted_time
                 self.metrics_tracker.set_counter("JobProcessingTime", int(processing_time))
 
+            # Update tile status to COMPLETED
+            if self.tile_table and job.tile_info.get("tile_id") and job.tile_info.get("job_id"):
+                try:
+                    self.tile_table.update_tile_status(
+                        job.tile_info["tile_id"], 
+                        job.tile_info["job_id"], 
+                        "COMPLETED"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to update tile status to COMPLETED: {e}")
+
             logger.debug(f"AsyncPollingWorker-{self.worker_id} completed job: {job.inference_id}")
 
         except Exception as e:
@@ -415,6 +541,18 @@ class AsyncPollingWorker(TileWorker):
         :param reason: Reason for failure
         """
         logger.error(f"AsyncPollingWorker-{self.worker_id} job {job.inference_id} failed: {reason}")
+
+        # Update tile status to FAILED
+        if self.tile_table and job.tile_info.get("tile_id") and job.tile_info.get("job_id"):
+            try:
+                self.tile_table.update_tile_status(
+                    job.tile_info["tile_id"], 
+                    job.tile_info["job_id"], 
+                    "FAILED",
+                    reason
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update tile status to FAILED: {e}")
 
         assert isinstance(self.feature_detector, AsyncSMDetector)
 
@@ -443,18 +581,23 @@ class AsyncTileWorkerPool:
     """
 
     @metric_scope
-    def __init__(self, region_request, sensor_model, elevation_model, model_invocation_credentials, metrics: MetricsLogger):
+    def __init__(self, region_request, sensor_model, elevation_model, model_invocation_credentials, metrics: MetricsLogger, tile_table: Optional[TileRequestTable] = None):
         """
         Initialize AsyncTileWorkerPool.
 
-        :param feature_detector: AsyncSMDetector instance for processing
-        :param metrics_tracker: Optional metrics tracker
+        :param region_request: Region request configuration
+        :param sensor_model: Sensor model for geolocating features
+        :param elevation_model: Elevation model for geolocating features
+        :param model_invocation_credentials: Credentials for model invocation
+        :param metrics: MetricsLogger for tracking performance
+        :param tile_table: Optional TileRequestTable for tracking tile status
         """
 
         self.region_request = region_request
         self.sensor_model = sensor_model
         self.elevation_model = elevation_model
         self.model_invocation_credentials = model_invocation_credentials
+        self.tile_table = tile_table
 
         # Create async endpoint configuration
         self.config = AsyncServiceConfig.async_endpoint_config
@@ -469,11 +612,8 @@ class AsyncTileWorkerPool:
         self.submission_workers: List[AsyncSubmissionWorker] = []
         self.polling_workers: List[AsyncPollingWorker] = []
 
-        # Coordination
-        self.shutdown_event = threading.Event()
-
         # Resource management for worker threads
-        self.resource_manager = ResourceManager(self.config)
+        # self.resource_manager = ResourceManager(self.config)
 
         logger.debug(
             f"AsyncTileWorkerPool initialized with {self.config.submission_workers} submission workers "
@@ -517,17 +657,6 @@ class AsyncTileWorkerPool:
 
         # Start submission workers
         for i in range(self.config.submission_workers):
-
-            # Set up our feature table to work with the region quest
-            feature_table = FeatureTable(
-                EnhancedServiceConfig.feature_table,
-                self.region_request.tile_size,
-                self.region_request.tile_overlap,
-            )
-
-            # Set up our feature table to work with the region quest
-            region_request_table = RegionRequestTable(EnhancedServiceConfig.region_request_table)
-
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed
             feature_detector = EnhancedFeatureDetectorFactory(
@@ -536,16 +665,11 @@ class AsyncTileWorkerPool:
                 assumed_credentials=self.model_invocation_credentials,
             ).build()
 
+            logger.info(f"Got feature detector: {feature_detector}")
+
             if feature_detector is None:
                 logger.error("Failed to create feature detector")
                 return None
-
-            # Set up geolocator
-            geolocator = None
-            if self.sensor_model is not None:
-                geolocator = Geolocator(
-                    ImagedFeaturePropertyAccessor(), self.sensor_model, elevation_model=self.elevation_model
-                )
 
             worker = AsyncSubmissionWorker(
                 worker_id=i,
@@ -554,12 +678,16 @@ class AsyncTileWorkerPool:
                 feature_detector=feature_detector,
                 config=self.config,
                 metrics_tracker=self.metrics_tracker,
+                tile_table=self.tile_table,
             )
+            logger.debug(f"Starting worker thread: {worker}")
             worker.start()
+            logger.debug(f"Started worker thread: {worker}")
             self.submission_workers.append(worker)
 
             # Register worker thread for managed cleanup
-            self.resource_manager.register_worker_thread(worker)
+            # logger.debug(f"Registering worker thread: {worker}")
+            # self.resource_manager.register_worker_thread(worker)
 
         # Start polling workers
         for i in range(self.config.polling_workers):
@@ -602,12 +730,15 @@ class AsyncTileWorkerPool:
                 feature_detector=feature_detector,
                 config=self.config,
                 metrics_tracker=self.metrics_tracker,
+                tile_table=self.tile_table,
             )
+            logger.info("Created poller worker")
             worker.start()
+            logger.info("poller worker started")
             self.polling_workers.append(worker)
 
-            # Register worker thread for managed cleanup
-            self.resource_manager.register_worker_thread(worker)
+            # # Register worker thread for managed cleanup
+            # self.resource_manager.register_worker_thread(worker)
 
         logger.info(
             f"Started {len(self.submission_workers)} submission workers " f"and {len(self.polling_workers)} polling workers"
@@ -694,10 +825,10 @@ class AsyncTileWorkerPool:
             worker.stop()
 
         # Use resource manager to clean up worker threads
-        try:
-            self.resource_manager.cleanup_all_resources(ResourceType.WORKER_THREAD, force=True)
-        except Exception as e:
-            logger.warning(f"Error during worker thread cleanup: {e}")
+        # try:
+        #     self.resource_manager.cleanup_all_resources(ResourceType.WORKER_THREAD, force=True)
+        # except Exception as e:
+        #     logger.warning(f"Error during worker thread cleanup: {e}")
 
         # Wait for workers to finish as backup
         for worker in self.submission_workers:
@@ -710,8 +841,8 @@ class AsyncTileWorkerPool:
             if worker.is_alive():
                 logger.warning(f"Polling worker {worker.worker_id} did not stop gracefully")
 
-        # Stop resource manager cleanup worker
-        self.resource_manager.stop_cleanup_worker()
+        # # Stop resource manager cleanup worker
+        # self.resource_manager.stop_cleanup_worker()
 
         logger.debug("Async worker pool stopped")
 

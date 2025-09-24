@@ -2,6 +2,7 @@
 
 import logging
 import traceback
+import uuid
 from typing import Optional, Tuple
 
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
@@ -19,6 +20,7 @@ from aws.osml.model_runner.tile_worker.tile_worker_utils import _create_tile
 from aws.osml.photogrammetry import SensorModel
 
 from .errors import ExtensionRuntimeError
+from .tile_request_table import TileRequestItem, TileRequestTable
 from .workers import AsyncTileWorkerPool
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,57 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
     This class maintains full compatibility with the base RegionRequestHandler while adding
     enhanced features for improved performance and monitoring.
     """
+
+    def __init__(self, *args, **kwargs):
+        """Initialize the enhanced region request handler with tile tracking capabilities."""
+        super().__init__(*args, **kwargs)
+        
+        # Initialize tile tracking table
+        # Get table name from config or use default
+        config = EnhancedServiceConfig()
+        tile_table_name = getattr(config, 'tile_table_name', 'TileProcessingJobStatus')
+        self.tile_table = TileRequestTable(tile_table_name)
+        
+        logger.info(f"Initialized EnhancedRegionRequestHandler with tile table: {tile_table_name}")
+
+    def add_to_tile_tracker_ddb(self, image_info: dict) -> None:
+        """
+        Add tile information to the tile tracking DynamoDB table.
+        
+        :param image_info: Dictionary containing tile information
+        """
+        try:
+            # Extract tile bounds for storage
+            tile_bounds = image_info.get("region")
+            tile_bounds_list = None
+            if tile_bounds:
+                tile_bounds_list = [[tile_bounds[0][0], tile_bounds[0][1]], [tile_bounds[1][0], tile_bounds[1][1]]]
+            
+            tile_id = image_info.get("tile_id", "")
+            
+            # Create tile request item
+            tile_item = TileRequestItem(
+                tile_id=tile_id,
+                job_id=image_info.get("job_id", ""),
+                image_path=str(image_info.get("image_path", "")),
+                region=str(image_info.get("region", "")),
+                image_id=image_info.get("image_id"),
+                region_id=image_info.get("region_id"),
+                tile_bounds=tile_bounds_list,
+                # Additional fields can be populated as needed
+                model_name=getattr(self, 'model_name', None),
+                tile_size=getattr(self, 'tile_size', None)
+            )
+            
+            # Start the tile request in the tracking table
+            self.tile_table.start_tile_request(tile_item)
+            
+            logger.debug(f"Added tile {tile_id} to tracking table for job {image_info.get('job_id')}")
+            
+        except Exception as e:
+            logger.error(f"Failed to add tile to tracking table: {e}")
+            # Don't fail the entire process if tile tracking fails
+            pass
 
     @metric_scope
     def process_region_request(
@@ -60,7 +113,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
 
         :return: JobItem
         """
-        logger.debug(f"EnhancedRegionRequestHandler processing region: {region_request.region_id}")
+        logger.info(f"EnhancedRegionRequestHandler processing region: {region_request.region_id}")
 
         try:
             # Validate the enhanced region request
@@ -106,7 +159,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
                 logger.debug(f"Enhanced handler starting region request: region id: {region_request_item.region_id}")
 
                 # Set up async worker pool
-                worker_setup = self._setup_async_worker_pool(region_request, sensor_model, self.config.elevation_model)
+                worker_setup = self._setup_async_worker_pool(region_request, sensor_model, self.config.elevation_model, metrics)
 
                 # Process tiles using appropriate method
                 total_tile_count, failed_tile_count = self._process_tiles_with_async_pool(
@@ -261,6 +314,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
             # Create tile queue
             tile_queue = Queue()
 
+            logger.debug(f"Processing tiles with creds: {image_read_credentials}")
             with GDALConfigEnv().with_aws_credentials(image_read_credentials):
                 # Create GDAL tile factory
                 gdal_tile_factory = GDALTileFactory(
@@ -282,19 +336,23 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
                         tmp_image_path = Path(tmp, region_image_filename)
 
                         # Create tile
-                        absolute_tile_path = _create_tile(gdal_tile_factory, tile_bounds, tmp_image_path, metrics)
+                        absolute_tile_path = _create_tile(gdal_tile_factory, tile_bounds, tmp_image_path)
 
                         if not absolute_tile_path:
                             continue
 
                         # Create image info
                         image_info = {
+                            "tile_id": str(uuid.uuid4()), # Generate unique tile ID
                             "image_path": tmp_image_path,
                             "region": tile_bounds,
                             "image_id": region_request_item.image_id,
                             "job_id": region_request_item.job_id,
                             "region_id": region_request_item.region_id,
                         }
+
+                        # Add tile to tracking database
+                        self.add_to_tile_tracker_ddb(image_info)
 
                         tile_queue.put(image_info)
 
@@ -347,6 +405,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
         region_request: RegionRequest,
         sensor_model: Optional[SensorModel] = None,
         elevation_model=None,
+        metrics: MetricsLogger = None,
     ) -> AsyncTileWorkerPool:
         """
         Set up async worker pool for optimized async endpoint processing.
@@ -354,6 +413,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
         :param region_request: The region request being processed
         :param sensor_model: Optional sensor model for geolocating features
         :param elevation_model: Optional elevation model
+        :param metrics: MetricsLogger for tracking performance
         :return: AsyncTileWorkerPool instance
         """
         logger.debug("Setting up async worker pool for optimized processing")
@@ -367,7 +427,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
                 model_invocation_credentials = get_credentials_for_assumed_role(region_request.model_invocation_role)
 
             # Create and return async worker pool
-            return AsyncTileWorkerPool(region_request, sensor_model, elevation_model, model_invocation_credentials)
+            return AsyncTileWorkerPool(region_request, sensor_model, elevation_model, model_invocation_credentials, metrics, tile_table=self.tile_table)
 
         except Exception as e:
             logger.error(f"Failed to setup async worker pool: {e}")

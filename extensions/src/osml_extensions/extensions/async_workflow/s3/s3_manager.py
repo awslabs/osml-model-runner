@@ -44,7 +44,7 @@ class S3Manager:
         """
         Initialize S3Manager with client and configuration.
 
-        :param s3_client: Boto3 S3 client instance
+        :param assumed_credentials: Optional AWS credentials for S3 client
         """
 
         # Initialize S3 client with same credentials as SageMaker client
@@ -60,9 +60,7 @@ class S3Manager:
             self.s3_client = boto3.client("s3", config=BotoConfig.default)
 
         self.config = AsyncServiceConfig.async_endpoint_config
-        logger.debug(
-            f"S3Manager initialized with buckets: input={self.config.input_bucket}, output={self.config.output_bucket}"
-        )
+        logger.debug(f"S3Manager initialized with input bucket: {self.config.input_bucket}")
 
     @metric_scope
     def upload_payload(self, payload: BufferedReader, key: str, metrics: MetricsLogger) -> str:
@@ -75,7 +73,7 @@ class S3Manager:
         :return: S3 URI of the uploaded object
         :raises S3OperationError: If upload fails after all retries
         """
-        s3_uri = self.config.get_input_s3_uri(key)
+        s3_uri = self.config.get_input_s3_uri(self.config.input_bucket, self.config.input_prefix, key)
         logger.debug(f"Uploading payload to S3: {s3_uri}")
 
         if isinstance(metrics, MetricsLogger):
@@ -273,9 +271,9 @@ class S3Manager:
 
     def validate_bucket_access(self) -> None:
         """
-        Validate that the configured S3 buckets are accessible.
+        Validate that the configured S3 input bucket is accessible.
 
-        :raises S3OperationError: If buckets are not accessible
+        :raises S3OperationError: If bucket is not accessible
         """
         logger.debug("Validating S3 bucket access")
 
@@ -283,10 +281,6 @@ class S3Manager:
             # Check input bucket
             self.s3_client.head_bucket(Bucket=self.config.input_bucket)
             logger.debug(f"Input bucket {self.config.input_bucket} is accessible")
-
-            # Check output bucket
-            self.s3_client.head_bucket(Bucket=self.config.output_bucket)
-            logger.debug(f"Output bucket {self.config.output_bucket} is accessible")
 
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
@@ -299,7 +293,7 @@ class S3Manager:
             logger.error(error_msg)
             raise S3OperationError(error_msg) from e
 
-    def _upload_to_s3(self, payload: BufferedReader, key: str, metrics: Optional[MetricsLogger]) -> str:
+    def _upload_to_s3(self, payload: BufferedReader, key: str) -> str:
         """
         Upload payload to S3 input bucket with unique key generation.
 
@@ -309,21 +303,20 @@ class S3Manager:
         :return: S3 URI of uploaded object
         """
         logger.debug("Uploading payload to S3 for async inference")
-        return self.upload_payload(payload, key, metrics)
+        return self.upload_payload(payload, key)
 
-    def _download_from_s3(self, output_s3_uri: str, metrics: Optional[MetricsLogger]) -> FeatureCollection:
+    def _download_from_s3(self, output_s3_uri: str) -> FeatureCollection:
         """
         Download and parse results from S3 output location.
 
         :param output_s3_uri: S3 URI of the output data
-        :param metrics: Optional metrics logger
         :return: Parsed FeatureCollection
         """
         logger.debug(f"Downloading results from S3: {output_s3_uri}")
 
         try:
             # Download results
-            result_data = self.download_results(output_s3_uri, metrics)
+            result_data = self.download_results(output_s3_uri)
 
             # Parse as geojson FeatureCollection
             feature_collection = geojson.loads(result_data.decode("utf-8"))
@@ -336,13 +329,3 @@ class S3Manager:
         except (UnicodeDecodeError, JSONDecodeError) as e:
             logger.error(f"Failed to parse async inference results: {str(e)}")
             raise JSONDecodeError(f"Failed to parse async inference results: {str(e)}", "", 0)
-
-    # def _cleanup_s3_objects(self, s3_uris: list) -> None:
-    #     """
-    #     Clean up temporary S3 objects.
-
-    #     :param s3_uris: List of S3 URIs to delete
-    #     """
-    #     if self.async_config.cleanup_enabled:
-    #         logger.debug(f"Cleaning up {len(s3_uris)} S3 objects")
-    #         self.cleanup_s3_objects(s3_uris)

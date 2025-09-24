@@ -92,13 +92,12 @@ class EnhancedFeatureDetectorFactory(FeatureDetectorFactory):
         :raises: ExtensionRuntimeError if enhanced detector creation fails
         """
         try:
-            if isinstance(self.original_endpoint_mode, ExtendedModelInvokeMode):
-                if self.original_endpoint_mode == ExtendedModelInvokeMode.SM_ENDPOINT_ASYNC:
-                    # Import here to avoid circular imports
-                    builder = AsyncSMDetectorBuilder(endpoint=self.endpoint, assumed_credentials=self.assumed_credentials)
-                    return builder.build()
-
-            return None
+            # Import here to avoid circular imports
+            builder = AsyncSMDetectorBuilder(endpoint=self.endpoint, assumed_credentials=self.assumed_credentials)
+            logger.debug(f"Got builder: {builder}")
+            detector = builder.build()
+            logger.debug(f"Detector built: {detector} with builder: {builder}")
+            return detector
 
         except ImportError as e:
             logger.warning(f"Enhanced detector components not available: {e}")
@@ -122,25 +121,29 @@ class EnhancedFeatureDetectorFactory(FeatureDetectorFactory):
 
         # Check if we should use extensions
         if not self._should_use_extensions():
-            logger.debug("Extensions disabled, using base factory")
+            logger.warning("Extensions disabled, using base factory")
             return super().build()
 
         # Try to build enhanced detector for extended modes
-        if isinstance(self.original_endpoint_mode, ExtendedModelInvokeMode):
+        logger.debug(f"original endpoint mode: {self.original_endpoint_mode}, type: {type(self.original_endpoint_mode)}")
+        logger.debug(f"ExtendedModelInvokeMode.SM_ENDPOINT_ASYNC.name: {ExtendedModelInvokeMode.SM_ENDPOINT_ASYNC.name}, type: {type(ExtendedModelInvokeMode.SM_ENDPOINT_ASYNC.name)}")
+        # if not isinstance(self.original_endpoint_mode, ExtendedModelInvokeMode):
+        #     raise ValueError("Wrong type of class")
+        if self.original_endpoint_mode == ExtendedModelInvokeMode.SM_ENDPOINT_ASYNC.name:
             try:
                 enhanced_detector = self._build_enhanced_detector()
                 if enhanced_detector is not None:
-                    logger.info(f"Successfully created enhanced detector for mode {self.original_endpoint_mode}")
+                    logger.debug(f"Successfully created enhanced detector for mode {self.original_endpoint_mode}")
                     return enhanced_detector
                 else:
-                    logger.debug("Enhanced detector returned None, falling back to base")
+                    logger.warning("Enhanced detector returned None, falling back to base")
             except ExtensionRuntimeError as e:
                 logger.warning(f"Enhanced detector creation failed: {e}, falling back to base")
-                logger.debug(f"Traceback: {traceback.format_exc()}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 # Check if fallback is enabled
                 if not self.config.extension_fallback_enabled:
                     raise e
 
         # Fall back to parent implementation for base modes or when enhanced fails
-        logger.debug("Using base factory implementation")
+        logger.warning("Using base factory implementation")
         return super().build()

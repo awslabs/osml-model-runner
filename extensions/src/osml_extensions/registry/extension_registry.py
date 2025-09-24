@@ -54,7 +54,7 @@ class ExtensionRegistry:
                 )
 
             self._handlers[request_type][handler_type] = metadata
-            logger.info(
+            logger.debug(
                 f"Registered handler '{metadata.name}' for request_type='{request_type}', "
                 f"handler_type='{handler_type.value}'"
             )

@@ -7,6 +7,7 @@ from json import JSONDecodeError
 from typing import Dict, Optional
 
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
 from botocore.exceptions import ClientError
 from geojson import FeatureCollection
@@ -20,7 +21,7 @@ from ...errors import ExtensionConfigurationError
 from ..async_app_config import AsyncEndpointConfig, AsyncServiceConfig
 from ..s3 import S3Manager, S3OperationError
 from ..api import ExtendedModelInvokeMode
-from ..polling import AsyncInferencePoller, AsyncInferenceTimeoutError
+# from ..polling import AsyncInferencePoller, AsyncInferenceTimeoutError
 from ..utils import CleanupPolicy, ResourceManager
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,8 @@ class AsyncSMDetector(SMDetector):
     polling for completion, and comprehensive error management while maintaining full
     compatibility with the base SMDetector interface.
     """
+
+    model_invoke_mode = ExtendedModelInvokeMode.SM_ENDPOINT_ASYNC
 
     def __init__(
         self,
@@ -54,12 +57,12 @@ class AsyncSMDetector(SMDetector):
         # Initialize async configuration
         self.async_config = AsyncServiceConfig.async_endpoint_config
 
-        # Initialize S3 manager and poller
-        self.poller = AsyncInferencePoller(self.sm_client, self.async_config)
+        # # Initialize S3 manager and poller
+        # self.poller = AsyncInferencePoller(self.sm_client, self.async_config)
 
         # Initialize resource manager for cleanup
-        self.resource_manager = ResourceManager(self.async_config)
-        self.resource_manager.start_cleanup_worker()
+        # self.resource_manager = ResourceManager(self.async_config)
+        # self.resource_manager.start_cleanup_worker()
 
         logger.debug(f"AsyncSMDetector initialized for endpoint: {endpoint}")
 
@@ -70,10 +73,7 @@ class AsyncSMDetector(SMDetector):
             logger.warning(f"S3 bucket validation failed during initialization: {e}")
             # Don't fail initialization, but log the warning
 
-    @property
-    def mode(self) -> ExtendedModelInvokeMode:  # type: ignore
-        return ExtendedModelInvokeMode.SM_ENDPOINT_ASYNC
-
+    @metric_scope
     def find_features(self, payload: BufferedReader, metrics: MetricsLogger = None) -> FeatureCollection:
         """
         Async feature detection using SageMaker async endpoints with S3-based input/output.
@@ -92,110 +92,113 @@ class AsyncSMDetector(SMDetector):
         :raises S3OperationError: Raised if S3 upload/download operations fail.
         :raises AsyncInferenceTimeoutError: Raised if async inference exceeds maximum wait time.
         """
-        logger.debug(f"AsyncSMDetector processing async request for endpoint: {self.endpoint}")
+        # not used here. Use _invoke_async_endpoint directly from AsyncSubmissionWorker.process_tile_submission
 
-        if isinstance(metrics, MetricsLogger):
-            metrics.set_dimensions()
-            metrics.put_dimensions(
-                {
-                    MetricLabels.OPERATION_DIMENSION: MetricLabels.MODEL_INVOCATION_OPERATION,
-                    MetricLabels.MODEL_NAME_DIMENSION: self.endpoint,
-                }
-            )
+        raise NotImplementedError()
+        # logger.debug(f"AsyncSMDetector processing async request for endpoint: {self.endpoint}")
 
-        inference_id = None
-        # job_resource_id = None
+        # if isinstance(metrics, MetricsLogger):
+        #     metrics.set_dimensions()
+        #     metrics.put_dimensions(
+        #         {
+        #             MetricLabels.OPERATION_DIMENSION: MetricLabels.MODEL_INVOCATION_OPERATION,
+        #             MetricLabels.MODEL_NAME_DIMENSION: self.endpoint,
+        #         }
+        #     )
 
-        try:
-            self.request_count += 1
-            if isinstance(metrics, MetricsLogger):
-                metrics.put_metric(MetricLabels.INVOCATIONS, 1, str(Unit.COUNT.value))
+        # inference_id = None
+        # # job_resource_id = None
 
-            with Timer(
-                task_str="Async SM Endpoint Processing",
-                metric_name="TotalAsyncDuration",
-                logger=logger,
-                metrics_logger=metrics,
-            ):
-                # Step 1: Upload payload to S3
-                input_key = S3_MANAGER.generate_unique_key("input")
-                input_s3_uri = AsyncServiceConfig._upload_to_s3(payload, input_key, metrics)
+        # try:
+        #     self.request_count += 1
+        #     if isinstance(metrics, MetricsLogger):
+        #         metrics.put_metric(MetricLabels.INVOCATIONS, 1, str(Unit.COUNT.value))
 
-                # Register S3 input object for managed cleanup
-                cleanup_policy = CleanupPolicy(self.async_config.cleanup_policy)
-                self.resource_manager.register_s3_object(input_s3_uri, cleanup_policy)
+        #     with Timer(
+        #         task_str="Async SM Endpoint Processing",
+        #         metric_name="TotalAsyncDuration",
+        #         logger=logger,
+        #         metrics_logger=metrics,
+        #     ):
+        #         # Step 1: Upload payload to S3
+        #         input_key = S3_MANAGER.generate_unique_key("input")
+        #         input_s3_uri = S3_MANAGER._upload_to_s3(payload, input_key)
 
-                # Step 2: Invoke async endpoint
-                inference_id = self._invoke_async_endpoint(input_s3_uri, metrics)
+        #         # Register S3 input object for managed cleanup
+        #         cleanup_policy = CleanupPolicy(self.async_config.cleanup_policy)
+        #         # self.resource_manager.register_s3_object(input_s3_uri, cleanup_policy)
 
-                # Register inference job for comprehensive resource management
-                job_data = {
-                    "input_s3_uri": input_s3_uri,
-                    "temp_files": [],  # Add any temp files created during processing
-                }
-                _ = self.resource_manager.register_inference_job(inference_id, job_data, cleanup_policy)  # job_resource_id
+        #         # Step 2: Invoke async endpoint
+        #         inference_id = self._invoke_async_endpoint(input_s3_uri, metrics)
 
-                # Step 3: Poll for completion
-                completed_output_uri = self._poll_for_completion(inference_id, metrics)
+        #         # Register inference job for comprehensive resource management
+        #         job_data = {
+        #             "input_s3_uri": input_s3_uri,
+        #             "temp_files": [],  # Add any temp files created during processing
+        #         }
+        #         # _ = self.resource_manager.register_inference_job(inference_id, job_data, cleanup_policy)  # job_resource_id
 
-                # Register output S3 object for cleanup
-                self.resource_manager.register_s3_object(completed_output_uri, cleanup_policy)
+        #         # Step 3: Poll for completion
+        #         completed_output_uri = self._poll_for_completion(inference_id, metrics)
 
-                # Step 4: Download and parse results
-                feature_collection = AsyncServiceConfig._download_from_s3(completed_output_uri, metrics)
+        #         # Register output S3 object for cleanup
+        #         # self.resource_manager.register_s3_object(completed_output_uri, cleanup_policy)
 
-                if isinstance(metrics, MetricsLogger):
-                    metrics.put_metric("AsyncInferenceSuccess", 1, str(Unit.COUNT.value))
+        #         # Step 4: Download and parse results
+        #         feature_collection = AsyncServiceConfig._download_from_s3(completed_output_uri)
 
-                logger.info(f"AsyncSMDetector completed successfully for endpoint: {self.endpoint}")
-                return feature_collection
+        #         if isinstance(metrics, MetricsLogger):
+        #             metrics.put_metric("AsyncInferenceSuccess", 1, str(Unit.COUNT.value))
 
-        except (ClientError, S3OperationError, AsyncInferenceTimeoutError) as e:
-            if isinstance(metrics, MetricsLogger):
-                metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+        #         logger.info(f"AsyncSMDetector completed successfully for endpoint: {self.endpoint}")
+        #         return feature_collection
 
-            logger.error(f"AsyncSMDetector error for endpoint {self.endpoint}: {str(e)}")
-            logger.exception(e)
+        # except (ClientError, S3OperationError, AsyncInferenceTimeoutError) as e:
+        #     if isinstance(metrics, MetricsLogger):
+        #         metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
 
-            # Clean up resources for failed job
-            if inference_id:
-                try:
-                    self.resource_manager.cleanup_failed_job_resources(inference_id)
-                except Exception as cleanup_error:
-                    logger.warning(f"Failed to cleanup resources for failed job {inference_id}: {cleanup_error}")
+        #     logger.error(f"AsyncSMDetector error for endpoint {self.endpoint}: {str(e)}")
+        #     logger.exception(e)
 
-            raise
+        #     # Clean up resources for failed job
+        #     # if inference_id:
+        #     #     try:
+        #     #         self.resource_manager.cleanup_failed_job_resources(inference_id)
+        #     #     except Exception as cleanup_error:
+        #     #         logger.warning(f"Failed to cleanup resources for failed job {inference_id}: {cleanup_error}")
 
-        except JSONDecodeError as de:
-            if isinstance(metrics, MetricsLogger):
-                metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
-            logger.error("Unable to decode async response from model.")
-            logger.exception(de)
+        #     raise
 
-            # Clean up resources for failed job
-            if inference_id:
-                try:
-                    self.resource_manager.cleanup_failed_job_resources(inference_id)
-                except Exception as cleanup_error:
-                    logger.warning(f"Failed to cleanup resources for failed job {inference_id}: {cleanup_error}")
+        # except JSONDecodeError as de:
+        #     if isinstance(metrics, MetricsLogger):
+        #         metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+        #     logger.error("Unable to decode async response from model.")
+        #     logger.exception(de)
 
-            raise de
+        #     # Clean up resources for failed job
+        #     # if inference_id:
+        #     #     try:
+        #     #         self.resource_manager.cleanup_failed_job_resources(inference_id)
+        #     #     except Exception as cleanup_error:
+        #     #         logger.warning(f"Failed to cleanup resources for failed job {inference_id}: {cleanup_error}")
 
-        except Exception as e:
-            if isinstance(metrics, MetricsLogger):
-                metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+        #     raise de
 
-            logger.error(f"Unexpected error in AsyncSMDetector: {str(e)}")
-            logger.exception(e)
+        # except Exception as e:
+        #     if isinstance(metrics, MetricsLogger):
+        #         metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
 
-            # Clean up resources for failed job
-            if inference_id:
-                try:
-                    self.resource_manager.cleanup_failed_job_resources(inference_id)
-                except Exception as cleanup_error:
-                    logger.warning(f"Failed to cleanup resources for failed job {inference_id}: {cleanup_error}")
+        #     logger.error(f"Unexpected error in AsyncSMDetector: {str(e)}")
+        #     logger.exception(e)
 
-            raise
+        #     # Clean up resources for failed job
+        #     # if inference_id:
+        #     #     try:
+        #     #         self.resource_manager.cleanup_failed_job_resources(inference_id)
+        #     #     except Exception as cleanup_error:
+        #     #         logger.warning(f"Failed to cleanup resources for failed job {inference_id}: {cleanup_error}")
+
+        #     raise
 
     def _invoke_async_endpoint(self, input_s3_uri: str, metrics: Optional[MetricsLogger]) -> str:
         """
@@ -205,7 +208,7 @@ class AsyncSMDetector(SMDetector):
         :param metrics: Optional metrics logger
         :return: Inference job ID
         """
-        logger.debug(f"Invoking async endpoint: {self.endpoint}")
+        logger.info(f"Invoking async endpoint: {self.endpoint} for object: {input_s3_uri}")
 
         try:
             with Timer(
@@ -217,60 +220,62 @@ class AsyncSMDetector(SMDetector):
                 # Invoke async endpoint
                 response = self.sm_client.invoke_endpoint_async(
                     EndpointName=self.endpoint,
-                    InputLocation=input_s3_uri,
                     ContentType="application/json",
                     Accept="application/json",
-                    InvocationTimeoutInSeconds=self.async_config.max_wait_time,
+                    InputLocation=input_s3_uri,
+                    InvocationTimeoutSeconds=self.async_config.max_wait_time,
                 )
 
             inference_id = response.get("InferenceId")
+            output_location = response.get("OutputLocation")
             if not inference_id:
                 raise ExtensionConfigurationError("No inference ID returned from async endpoint")
 
-            logger.debug(f"Async inference submitted with ID: {inference_id}")
-            return inference_id
+            logger.info(f"Async inference submitted with ID: {inference_id}")
+            return inference_id, output_location
 
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")
             logger.error(f"Failed to invoke async endpoint {self.endpoint}: {error_code} - {str(e)}")
             raise
 
-    def _poll_for_completion(self, inference_id: str, metrics: Optional[MetricsLogger]) -> str:
-        """
-        Poll for async inference completion.
+    # def _poll_for_completion(self, inference_id: str) -> str:
+    #     """
+    #     Poll for async inference completion.
 
-        :param inference_id: The inference job ID to poll
-        :param metrics: Optional metrics logger
-        :return: Output S3 URI when job completes
-        """
-        logger.debug(f"Polling for completion of inference job: {inference_id}")
-        return self.poller.poll_until_complete(inference_id, metrics)
+    #     :param inference_id: The inference job ID to poll
+    #     :param metrics: Optional metrics logger
+    #     :return: Output S3 URI when job completes
+    #     """
+    #     logger.debug(f"Polling for completion of inference job: {inference_id}")
+    #     return self.poller.poll_until_complete(inference_id)
 
-    def cleanup_resources(self, force: bool = False) -> int:
-        """
-        Clean up all managed resources.
+    # def cleanup_resources(self, force: bool = False) -> int:
+    #     """
+    #     Clean up all managed resources.
 
-        :param force: Force cleanup even if policy is disabled
-        :return: Number of resources successfully cleaned up
-        """
-        logger.info("Cleaning up AsyncSMDetector resources")
-        return self.resource_manager.cleanup_all_resources(force=force)
+    #     :param force: Force cleanup even if policy is disabled
+    #     :return: Number of resources successfully cleaned up
+    #     """
+    #     logger.debug("Cleaning up AsyncSMDetector resources")
+    #     return self.resource_manager.cleanup_all_resources(force=force)
 
-    def get_resource_stats(self) -> Dict:
-        """
-        Get statistics about managed resources.
+    # def get_resource_stats(self) -> Dict:
+    #     """
+    #     Get statistics about managed resources.
 
-        :return: Dictionary of resource statistics
-        """
-        return self.resource_manager.get_resource_stats()
+    #     :return: Dictionary of resource statistics
+    #     """
+    #     return self.resource_manager.get_resource_stats()
 
     def __del__(self):
         """Destructor to ensure resource cleanup."""
         try:
-            if hasattr(self, "resource_manager"):
-                # Clean up all resources and stop the cleanup worker
-                self.resource_manager.cleanup_all_resources(force=True)
-                self.resource_manager.stop_cleanup_worker(timeout=5.0)
+            pass
+            # if hasattr(self, "resource_manager"):
+            #     # Clean up all resources and stop the cleanup worker
+            #     self.resource_manager.cleanup_all_resources(force=True)
+            #     self.resource_manager.stop_cleanup_worker(timeout=5.0)
         except Exception as e:
             # Don't raise exceptions in destructor
             logger.warning(f"Error during AsyncSMDetector cleanup: {e}")
@@ -281,9 +286,9 @@ class AsyncSMDetector(SMDetector):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit with cleanup."""
-        self.cleanup_resources(force=True)
-        self.resource_manager.stop_cleanup_worker()
-
+        # self.cleanup_resources(force=True)
+        # self.resource_manager.stop_cleanup_worker()
+        pass
 
 class AsyncSMDetectorBuilder:
     """
@@ -326,9 +331,9 @@ class AsyncSMDetectorBuilder:
         if self.assumed_credentials is not None and not isinstance(self.assumed_credentials, dict):
             raise ExtensionConfigurationError("Assumed credentials must be a dictionary")
 
-        # Validate async configuration if provided
-        if self.async_config is not None and not isinstance(self.async_config, AsyncEndpointConfig):
-            raise ExtensionConfigurationError("async_config must be an AsyncEndpointConfig instance")
+        # # Validate async configuration if provided
+        # if self.async_config is not None and not isinstance(self.async_config, AsyncEndpointConfig):
+        #     raise ExtensionConfigurationError("async_config must be an AsyncEndpointConfig instance")
 
         logger.debug("AsyncSMDetectorBuilder parameters validated successfully")
 
@@ -348,7 +353,7 @@ class AsyncSMDetectorBuilder:
             # Create the detector with async configuration
             detector = AsyncSMDetector(endpoint=self.endpoint, assumed_credentials=self.assumed_credentials)
 
-            logger.info(f"Successfully created AsyncSMDetector for endpoint: {self.endpoint}")
+            logger.debug(f"Successfully created AsyncSMDetector for endpoint: {self.endpoint}")
             return detector
 
         except ExtensionConfigurationError:

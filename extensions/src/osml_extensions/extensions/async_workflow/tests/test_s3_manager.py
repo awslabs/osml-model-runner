@@ -2,10 +2,10 @@
 
 import unittest
 from io import BytesIO
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import boto3
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import ClientError
 from moto import mock_s3
 
 from ..src.osml_extensions.config import AsyncEndpointConfig

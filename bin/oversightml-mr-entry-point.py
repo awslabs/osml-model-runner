@@ -21,6 +21,7 @@ EXTENSIONS_AVAILABLE = False
 try:
     # import osml_extensions
     from osml_extensions.enhanced_model_runner import EnhancedModelRunner
+    # from osml_extensions.extensions.async_workflow.async_app_config import AsyncServiceConfig
 
     EXTENSIONS_AVAILABLE = True
     logger.info("Extensions package found and imported successfully")
@@ -41,14 +42,17 @@ def configure_logging(verbose: bool) -> None:
     :param verbose: if true the logging level will be set to DEBUG, otherwise it will be set to INFO.
     """
 
-    logging_level = logging.DEBUG if verbose else logging.INFO
+
+    logging_level = os.getenv("LOG_LEVEL") or (logging.DEBUG if verbose else logging.INFO)
+    logging_level = "DEBUG" # TODO: Get from env vars
+    logging_level = "INFO" # TODO: Get from env vars
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging_level)
 
     ch = logging.StreamHandler()
     ch.setLevel(logging_level)
-    ch.addFilter(ThreadingLocalContextFilter(["job_id", "image_id"]))
+    ch.addFilter(ThreadingLocalContextFilter(["job_id", "image_id", "runner_type"]))
 
     formatter = jsonlogger.JsonFormatter(
         fmt="%(levelname)s %(message)s %(job_id)s %(image_id)s", datefmt="%Y-%m-%dT%H:%M:%S"
@@ -142,6 +146,8 @@ def main() -> int:
 
         # Create and configure model runner
         model_runner = create_model_runner(use_enhanced)
+
+        logger.info(f"Running model runner version: {model_runner}")
 
         map_signals(model_runner)
         # setup_code_profiling()

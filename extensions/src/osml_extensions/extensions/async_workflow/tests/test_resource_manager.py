@@ -2,14 +2,12 @@
 
 import os
 import tempfile
-import threading
 import time
 import unittest
 from threading import Thread
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import boto3
-import pytest
 from botocore.exceptions import ClientError
 
 try:

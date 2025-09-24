@@ -48,7 +48,7 @@ def register_base_handlers():
             description="Base image request handler from aws.osml.model_runner",
         )(ImageRequestHandler)
 
-        logger.info("Successfully registered base handlers for 'sm_endpoint' request type")
+        logger.debug("Successfully registered base handlers for 'sm_endpoint' request type")
 
     except Exception as e:
         logger.error(f"Failed to register base handlers: {e}")

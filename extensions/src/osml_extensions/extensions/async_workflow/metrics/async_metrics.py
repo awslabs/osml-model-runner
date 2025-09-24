@@ -38,6 +38,7 @@ class AsyncMetricsTracker:
             "QueueTime",
             "TotalAsyncDuration",
             "PollingDuration",
+            "AsyncSubmissionTime"
         ]
 
         # Initialize counter categories
@@ -49,6 +50,9 @@ class AsyncMetricsTracker:
             "AsyncInferenceFailures",
             "S3UploadSize",
             "S3DownloadSize",
+            "TileSubmissionFailures",
+            "TileSubmissions",
+            "JobFailures"
         ]
 
         # Initialize all metrics

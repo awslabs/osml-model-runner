@@ -3,7 +3,7 @@
 import os
 import unittest
 from io import BufferedReader, BytesIO
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 

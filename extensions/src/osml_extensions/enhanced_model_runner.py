@@ -40,7 +40,7 @@ class EnhancedModelRunner(ModelRunner):
         # Override handlers with enhanced versions if extensions are enabled
         self._setup_enhanced_components()
 
-        logger.info(f"EnhancedModelRunner initialized with factory: {type(self.region_request_handler).__name__}")
+        logger.debug(f"EnhancedModelRunner initialized with factory: {type(self.region_request_handler).__name__}")
 
     def _setup_enhanced_components(self) -> None:
         """
@@ -55,7 +55,7 @@ class EnhancedModelRunner(ModelRunner):
             # Determine request type from environment or configuration
             request_type = EnhancedServiceConfig.request_type  # ['sm_endpoint', 'async_sm_endpoint']
 
-            logger.info(f"Setting up components for request_type='{request_type}'")
+            logger.debug(f"Setting up components for request_type='{request_type}'")
 
             region_handler_metadata, image_handler_metadata = handler_selector.select_handlers(request_type)
 
@@ -64,17 +64,6 @@ class EnhancedModelRunner(ModelRunner):
             # have the same class signature, update this so this is configurable.
             image_handler_args = []
             image_handler_kwargs = dict(
-                region_request_table=self.region_request_table,
-                job_table=self.job_table,
-                region_status_monitor=self.region_status_monitor,
-                endpoint_statistics_table=self.endpoint_statistics_table,
-                tiling_strategy=self.tiling_strategy,
-                endpoint_utils=self.endpoint_utils,
-                config=self.config,
-            )
-
-            region_handler_args = []
-            region_handler_kwargs = dict(
                 job_table=self.job_table,
                 image_status_monitor=self.image_status_monitor,
                 endpoint_statistics_table=self.endpoint_statistics_table,
@@ -86,12 +75,23 @@ class EnhancedModelRunner(ModelRunner):
                 region_request_handler=self.region_request_handler,
             )
 
+            region_handler_args = []
+            region_handler_kwargs = dict(
+                region_request_table=self.region_request_table,
+                job_table=self.job_table,
+                region_status_monitor=self.region_status_monitor,
+                endpoint_statistics_table=self.endpoint_statistics_table,
+                tiling_strategy=self.tiling_strategy,
+                endpoint_utils=self.endpoint_utils,
+                config=self.config,
+            )
+
             self.image_request_handler = image_handler_metadata.handler_class(*image_handler_args, **image_handler_kwargs)
             self.region_request_handler = region_handler_metadata.handler_class(
                 *region_handler_args, **region_handler_kwargs
             )
 
-            logger.info(
+            logger.debug(
                 f"Successfully configured handlers: region='{region_handler_metadata.name}', "
                 f"image='{image_handler_metadata.name}'"
             )

@@ -4,15 +4,12 @@ import time
 import unittest
 from io import BytesIO
 from queue import Queue
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import boto3
 import geojson
-from moto import mock_s3, mock_sagemaker
+from moto import mock_s3
 
-from aws.osml.model_runner.api import RegionRequest
-
-from ..src.osml_extensions.api import ExtendedModelInvokeMode
 from ..src.osml_extensions.config import AsyncEndpointConfig
 from ..src.osml_extensions.detectors.async_sm_detector import AsyncSMDetector, AsyncSMDetectorBuilder
 from ..src.osml_extensions.metrics import AsyncMetricsTracker

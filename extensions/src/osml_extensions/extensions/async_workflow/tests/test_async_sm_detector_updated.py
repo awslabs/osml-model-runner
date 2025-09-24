@@ -2,11 +2,10 @@
 
 import unittest
 from io import BytesIO
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import geojson
 from botocore.exceptions import ClientError
-from moto import mock_s3, mock_sagemaker
 
 from ..src.osml_extensions.config import AsyncEndpointConfig
 from ..src.osml_extensions.detectors.async_sm_detector import AsyncSMDetector, AsyncSMDetectorBuilder
@@ -172,7 +171,7 @@ class TestAsyncSMDetectorUpdated(unittest.TestCase):
                 mock_sm_client.invoke_endpoint_async.return_value = {"InferenceId": "test-inference-123"}
 
                 detector = AsyncSMDetector(endpoint=self.endpoint, async_config=self.async_config)
-                result = detector.find_features(self.test_payload, mock_metrics)
+                _ = detector.find_features(self.test_payload, mock_metrics)
 
                 # Verify metrics were used
                 mock_metrics.set_dimensions.assert_called()

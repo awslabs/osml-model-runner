@@ -33,7 +33,7 @@ class HandlerSelector:
         :raises HandlerSelectionError: If no suitable handlers can be found
         """
         try:
-            logger.info(f"Selecting handlers for request_type='{request_type}'")
+            logger.debug(f"Selecting handlers for request_type='{request_type}'")
 
             # Validate request type is supported
             if not self._validate_request_type_support(request_type):
@@ -58,7 +58,7 @@ class HandlerSelector:
             if not image_handler:
                 raise HandlerSelectionError(f"No image request handler found for request_type='{request_type}'")
 
-            logger.info(
+            logger.debug(
                 f"Selected handlers for request_type='{request_type}': "
                 f"region='{region_handler.name}', image='{image_handler.name}'"
             )

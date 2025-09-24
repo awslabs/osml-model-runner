@@ -21,14 +21,15 @@ repos:
         files: ^extensions/
         exclude: ^extensions/tests/|^extensions/docs/
 
-  - repo: https://github.com/PyCQA/isort
-    rev: 6.0.1
-    hooks:
-      - id: isort
-        args: ["--line-length=125", "--profile=black"]
-        types: [file, python]
-        files: ^extensions/
-        exclude: ^extensions/tests/|^extensions/docs/
+  # - repo: https://github.com/PyCQA/isort
+  #   rev: 6.0.1
+  #   hooks:
+  #     - id: isort
+  #       args: ["--line-length=125", "--profile=black"]
+  #       types: [file, python]
+  #       files: ^extensions/
+  #       exclude: ^extensions/tests/|^extensions/docs/
+  #       skip_glob: ["**/__init__.py"] 
 
   - repo: https://github.com/PyCQA/flake8
     rev: 7.3.0
