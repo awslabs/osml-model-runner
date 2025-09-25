@@ -3,6 +3,7 @@
 import logging
 import os
 from dataclasses import dataclass
+from typing import Optional
 
 from aws.osml.model_runner.app_config import ServiceConfig
 
@@ -35,3 +36,6 @@ class EnhancedServiceConfig(ServiceConfig):
 
     # tile tracking table
     tile_request_table: str = os.environ["TILE_REQUEST_TABLE"]
+
+    # Optional
+    region_status_topic: Optional[str] = os.getenv("TILE_STATUS_TOPIC")

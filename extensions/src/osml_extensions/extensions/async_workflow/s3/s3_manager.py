@@ -60,6 +60,8 @@ class S3Manager:
             self.s3_client = boto3.client("s3", config=BotoConfig.default)
 
         self.config = AsyncServiceConfig.async_endpoint_config
+        if not self.config.input_bucket:
+            raise ValueError("Input (artifact) bucket is mandatory for async processing")
         logger.debug(f"S3Manager initialized with input bucket: {self.config.input_bucket}")
 
     @metric_scope

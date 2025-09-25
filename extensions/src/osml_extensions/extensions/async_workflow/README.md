@@ -60,7 +60,7 @@ print(f"Found {len(feature_collection['features'])} features")
 
 ```bash
 # S3 Configuration
-export ASYNC_SM_INPUT_BUCKET="my-async-input-bucket"
+export ARTIFACT_BUCKET="my-async-input-bucket"
 export ASYNC_SM_OUTPUT_BUCKET="my-async-output-bucket"
 
 # Performance Configuration
@@ -179,17 +179,12 @@ Comprehensive error handling for various scenarios:
 ```python
 from osml_extensions.errors import ExtensionRuntimeError
 from osml_extensions.s3 import S3OperationError
-from osml_extensions.polling import AsyncInferenceTimeoutError
 
 try:
     result = detector.find_features(payload)
 except S3OperationError as e:
     print(f"S3 operation failed: {e}")
     # Handle S3 permission or connectivity issues
-
-except AsyncInferenceTimeoutError as e:
-    print(f"Inference timed out: {e}")
-    # Handle long-running inference jobs
 
 except ExtensionRuntimeError as e:
     print(f"Runtime error: {e}")

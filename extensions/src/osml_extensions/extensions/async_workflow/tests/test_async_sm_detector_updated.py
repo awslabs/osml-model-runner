@@ -10,7 +10,6 @@ from botocore.exceptions import ClientError
 from ..src.osml_extensions.config import AsyncEndpointConfig
 from ..src.osml_extensions.detectors.async_sm_detector import AsyncSMDetector, AsyncSMDetectorBuilder
 from ..src.osml_extensions.errors import ExtensionConfigurationError
-from ..src.osml_extensions.polling import AsyncInferenceTimeoutError
 from ..src.osml_extensions.s3 import S3OperationError
 
 

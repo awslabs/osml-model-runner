@@ -73,7 +73,7 @@ All configuration options can be set via environment variables:
 
 ```bash
 # S3 Configuration
-export ASYNC_SM_INPUT_BUCKET="my-async-input-bucket"
+export ARTIFACT_BUCKET="my-async-input-bucket"
 export ASYNC_SM_INPUT_PREFIX="async-inference/input/"
 export ASYNC_SM_OUTPUT_PREFIX="async-inference/output/"
 
@@ -212,7 +212,6 @@ from osml_extensions.errors import (
     AsyncInferenceTimeoutError
 )
 from osml_extensions.s3 import S3OperationError
-from osml_extensions.polling import AsyncInferenceTimeoutError
 
 try:
     result = detector.find_features(payload)
@@ -220,7 +219,6 @@ except S3OperationError as e:
     print(f"S3 operation failed: {e}")
     # Handle S3 permission or connectivity issues
 
-except AsyncInferenceTimeoutError as e:
     print(f"Inference timed out: {e}")
     # Handle long-running inference jobs
 

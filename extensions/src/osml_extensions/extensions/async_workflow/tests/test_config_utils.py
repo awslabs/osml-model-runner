@@ -232,7 +232,7 @@ class TestEnvironmentConfigLoader(unittest.TestCase):
 
     def test_load_config_dict(self):
         """Test loading configuration dictionary from environment."""
-        os.environ["ASYNC_SM_INPUT_BUCKET"] = "test-input-bucket"
+        os.environ["ARTIFACT_BUCKET"] = "test-input-bucket"
         os.environ["ASYNC_SM_OUTPUT_BUCKET"] = "test-output-bucket"
         os.environ["ASYNC_SM_MAX_WAIT_TIME"] = "3600"
         os.environ["OTHER_VAR"] = "should_not_be_included"
@@ -325,7 +325,7 @@ class TestConfigurationIntegration(unittest.TestCase):
     @patch.dict(
         os.environ,
         {
-            "ASYNC_SM_INPUT_BUCKET": "env-input-bucket",
+            "ARTIFACT_BUCKET": "env-input-bucket",
             "ASYNC_SM_OUTPUT_BUCKET": "env-output-bucket",
             "ASYNC_SM_MAX_WAIT_TIME": "7200",
             "ASYNC_SM_POLLING_INTERVAL": "60",

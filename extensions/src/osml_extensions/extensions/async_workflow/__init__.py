@@ -18,9 +18,8 @@ from .detectors import AsyncSMDetector, AsyncSMDetectorBuilder
 from .enhanced_image_handler import EnhancedImageRequestHandler
 from .enhanced_region_handler import EnhancedRegionRequestHandler
 from .metrics import AsyncMetricsTracker
-from .polling import AsyncInferencePoller, AsyncInferenceTimeoutError
-from .tile_request_table import TileRequestItem, TileRequestTable
-from .utils import CleanupPolicy, ResourceManager, ResourceType
+
+from .database import TileRequestItem, TileRequestTable
 from .workers import AsyncPollingWorker, AsyncSubmissionWorker, AsyncTileWorkerPool
 
 __all__ = [
@@ -31,7 +30,7 @@ __all__ = [
     "S3Manager",
     "S3OperationError",
     # Polling
-    "AsyncInferencePoller",
+    # "AsyncInferencePoller",
     "AsyncInferenceTimeoutError",
     # Worker Pool
     "AsyncTileWorkerPool",

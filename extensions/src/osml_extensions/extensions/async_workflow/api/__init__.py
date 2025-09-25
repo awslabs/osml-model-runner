@@ -8,5 +8,4 @@ API extensions for the OSML Model Runner.
 """
 
 from .model_mode import ExtendedModelInvokeMode
-
-__all__ = ["ExtendedModelInvokeMode"]
+from .tile_request import TileRequest

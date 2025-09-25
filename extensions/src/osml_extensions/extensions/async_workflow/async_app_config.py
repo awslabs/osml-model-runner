@@ -14,10 +14,8 @@ class AsyncEndpointConfig:
     including S3 bucket settings, polling parameters, and worker pool optimization.
     """
 
-    # TODO: Pass from IPCDK
-    input_bucket = os.getenv("ASYNC_SM_INPUT_BUCKET", "modelrunner-infra-mrartifactbucketf483353e-3emwxr2rvykc")
-
     # Load other environment variables with current values as defaults
+    input_bucket = os.getenv("ARTIFACT_BUCKET")
     input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", "async-inference/input/")
     max_wait_time = int(os.getenv("ASYNC_SM_MAX_WAIT_TIME", 3600))  # Maximum wait time in seconds
     polling_interval = int(os.getenv("ASYNC_SM_POLLING_INTERVAL", 30))  # Initial polling interval in seconds

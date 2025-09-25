@@ -3,7 +3,6 @@
 import logging
 from typing import List, Optional
 
-from aws_embedded_metrics import MetricsLogger
 from geojson import Feature
 from osgeo import gdal
 from osgeo.gdal import Dataset
@@ -16,7 +15,7 @@ from aws.osml.photogrammetry import SensorModel
 from aws.osml.model_runner.common import ImageRegion
 from aws.osml.model_runner.api import ImageRequest
 
-from .detectors import AsyncSMDetector
+# from .detectors import AsyncSMDetector
 from .api import ExtendedModelInvokeMode
 
 
@@ -56,12 +55,12 @@ class EnhancedImageRequestHandler(ImageRequestHandler):
         logger.info(f"image_request: {image_request}")
 
         super().queue_region_request(
-                    all_regions=all_regions,
-                    image_request=image_request,
-                    raster_dataset=raster_dataset,
-                    sensor_model=sensor_model,
-                    image_extension=image_extension,
-                    )
+            all_regions=all_regions,
+            image_request=image_request,
+            raster_dataset=raster_dataset,
+            sensor_model=sensor_model,
+            image_extension=image_extension,
+        )
 
     def deduplicate(
         self,

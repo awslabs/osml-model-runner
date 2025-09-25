@@ -7,6 +7,7 @@ import signal
 import sys
 from types import FrameType
 from typing import Optional
+import traceback
 
 # from codeguru_profiler_agent import Profiler
 from pythonjsonlogger import jsonlogger
@@ -28,6 +29,7 @@ try:
 except ImportError as e:
     EXTENSIONS_AVAILABLE = False
     logger.info(f"Extensions package not available: {e}")
+    logger.error(f"Traceback: {traceback.format_exc()}")
 
 
 def handler_stop_signals(signal_num: int, frame: Optional[FrameType], model_runner: ModelRunner) -> None:
@@ -52,7 +54,7 @@ def configure_logging(verbose: bool) -> None:
 
     ch = logging.StreamHandler()
     ch.setLevel(logging_level)
-    ch.addFilter(ThreadingLocalContextFilter(["job_id", "image_id", "runner_type"]))
+    ch.addFilter(ThreadingLocalContextFilter(["job_id", "image_id"]))
 
     formatter = jsonlogger.JsonFormatter(
         fmt="%(levelname)s %(message)s %(job_id)s %(image_id)s", datefmt="%Y-%m-%dT%H:%M:%S"

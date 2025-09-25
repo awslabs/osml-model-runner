@@ -8,6 +8,7 @@ from aws.osml.model_runner.api import VALID_MODEL_HOSTING_OPTIONS
 
 logger = logging.getLogger(__name__)
 
+
 class ExtendedModelInvokeMode(str, AutoStringEnum):
     """
     Extended model invocation modes for enhanced detectors.
@@ -19,6 +20,7 @@ class ExtendedModelInvokeMode(str, AutoStringEnum):
     SM_ENDPOINT_ASYNC = auto()
     # Future extension modes can be added here
     # HTTP_ENDPOINT_ASYNC = "HTTP_ENDPOINT_ASYNC"  # Example future extension
+
 
 VALID_MODEL_HOSTING_OPTIONS.extend([item.value for item in ExtendedModelInvokeMode])
 logger.info(f"valid hosting options: {VALID_MODEL_HOSTING_OPTIONS}")

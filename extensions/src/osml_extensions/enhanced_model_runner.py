@@ -5,9 +5,14 @@ import traceback
 
 from aws.osml.model_runner import ModelRunner
 from aws.osml.model_runner.tile_worker import TilingStrategy, VariableOverlapTilingStrategy
+from aws.osml.model_runner.queue import RequestQueue
 
 from .enhanced_app_config import EnhancedServiceConfig
 from .registry import DependencyInjectionError, HandlerSelectionError, HandlerSelector
+from osml_extensions.extensions.async_workflow.api import TileRequest
+from osml_extensions.extensions.async_workflow.database import TileRequestItem, TileRequestTable
+from osml_extensions.extensions.async_workflow.enhanced_tile_handler import TileRequestHandler
+
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +54,17 @@ class EnhancedModelRunner(ModelRunner):
         :return: None
         """
         try:
+
+            # TODO: The registry mechanism is now broken. Update to get the handlers from the registry itself.
+
+            self.tile_request_queue = RequestQueue(self.config.tile_queue, wait_seconds=0)
+            self.tile_requests_iter = iter(self.tile_requests_queue)
+
+            self.tile_request_table = TileRequestTable(self.config.tile_table_name)
+            self.tile_status_monitor = TileStatusMonitor(self.config.tile_status_topic)
+
             # Initialize handler selector and dependency injector
-            handler_selector = HandlerSelector()
+            handler_selector = HandlerSelector()  # TODO: REMOVE THIS AND JUST USE THE ASYNC HANDLERS
 
             # Determine request type from environment or configuration
             request_type = EnhancedServiceConfig.request_type  # ['sm_endpoint', 'async_sm_endpoint']
@@ -77,6 +91,8 @@ class EnhancedModelRunner(ModelRunner):
 
             region_handler_args = []
             region_handler_kwargs = dict(
+                tile_request_table=self.tile_request_table,
+                tile_request_queue=self.tile_request.queue,
                 region_request_table=self.region_request_table,
                 job_table=self.job_table,
                 region_status_monitor=self.region_status_monitor,
@@ -89,6 +105,9 @@ class EnhancedModelRunner(ModelRunner):
             self.image_request_handler = image_handler_metadata.handler_class(*image_handler_args, **image_handler_kwargs)
             self.region_request_handler = region_handler_metadata.handler_class(
                 *region_handler_args, **region_handler_kwargs
+            )
+            self.tile_request_handler = TileRequestHandler(
+                tile_request_table=self.tile_request_table, job_table=self.job_table, config=self.config
             )
 
             logger.debug(
@@ -106,3 +125,72 @@ class EnhancedModelRunner(ModelRunner):
             logger.debug(f"Traceback: {traceback.format_exc()}")
             if hasattr(self.config, "extension_fallback_enabled") and not self.config.extension_fallback_enabled:
                 raise
+
+    def monitor_work_queues(self) -> None:
+        """
+        Continuously monitors the SQS queues for RegionRequest and ImageRequest.
+        :return: None
+        """
+        set_gdal_default_configuration()
+        logger.info("Beginning monitoring request queues")
+        while self.running:
+            try:
+                # If there are no tiles to process
+                if not self._process_tile_requests():
+                    # If there are regions to process
+                    if not self._process_region_requests():
+                        # Move along to the next image request if present
+                        self._process_image_requests()
+            except Exception as err:
+                logger.error(f"Unexpected error in monitor_work_queues: {err}")
+                self.running = False
+        logger.info("Stopped monitoring request queues")
+
+    def _process_tile_requests(self) -> bool:
+        try:
+            receipt_handle, tile_request_attributes = next(self.tile_requests_iter)
+        except StopIteration:
+            # No tiles to process
+            logger.debug("No tiles requests available to process")
+            return False
+
+        if tile_request_attributes:
+            ThreadingLocalContextFilter.set_context(region_request_attributes)
+            try:
+                tile_request = TileRequest(tile_request_attributes)
+                tile_request_item = self._get_or_create_tile_request_item(tile_request)
+                region_request = self.tile_request_handler.process_tile_request(tile_request)
+
+                # check if the region is done
+                if self.job_table.is_region_request_complete(region_request):
+                    self.region_request_handler.complete_region_request(tile_request)
+
+                # Check if the whole image is done
+                if self.job_table.is_image_request_complete(image_request_item):
+                    self.image_request_handler.complete_image_request(
+                        region_request, str(raster_dataset.GetDriver().ShortName).upper(), raster_dataset, sensor_model
+                    )
+                # finish the current request
+                self.tile_request_queue.finish_request(receipt_handle)
+            except RetryableJobException as err:
+                logger.warning(f"Retrying tile request due to: {err}")
+                self.tile_request_queue.reset_request(receipt_handle, visibility_timeout=0)
+            except SelfThrottledTileException as err:
+                logger.warning(f"Retrying tile request due to: {err}")
+                self.tile_request_queue.reset_request(
+                    receipt_handle, visibility_timeout=int(self.config.throttling_retry_timeout)
+                )
+            except Exception as err:
+                logger.exception(f"Error processing tile request: {err}")
+                self.tile_request_queue.finish_request(receipt_handle)
+            finally:
+                return True
+        else:
+            return False
+
+    def _get_or_create_tile_request_item(self, tile_request: TileRequest) -> TileRequestItem:
+        tile_request_item = self.tile_request_table.get_tile_request(tile_request.tile_id)
+        if tile_request_item is None:
+            tile_request_item = TileRequestItem.from_tile_request(tile_request)
+            self.tile_request_table.start_tile_request(tile_request_item)
+        return tile_request_item

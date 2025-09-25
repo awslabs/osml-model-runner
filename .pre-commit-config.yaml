@@ -76,7 +76,8 @@ repos:
             setup.py|
             py.typed|
             docs/|
-            tests/
+            tests/|
+            test/
           )$
       - id: copyright-required
         name: require copyright
@@ -93,5 +94,6 @@ repos:
             setup.py|
             py.typed|
             docs/|
-            tests/
+            tests/|
+            test/
           )$

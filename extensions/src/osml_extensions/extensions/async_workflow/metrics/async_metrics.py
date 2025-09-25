@@ -6,6 +6,7 @@ from typing import Dict
 
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.unit import Unit
+from aws_embedded_metrics.logger.metrics_logger_factory import create_metrics_logger
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +20,12 @@ class AsyncMetricsTracker:
     polling, and overall request duration.
     """
 
-    def __init__(self, metrics_logger: MetricsLogger):
+    def __init__(self):
         """
         Initialize AsyncMetricsTracker.
 
-        :param metrics_logger: MetricsLogger instance for emitting metrics
         """
-        self.metrics_logger = metrics_logger
+        self.metrics = create_metrics_logger()  # this is what @metric_scope does
         self.timings: Dict[str, float] = {}
         self.counters: Dict[str, int] = {}
         self.start_times: Dict[str, float] = {}
@@ -38,7 +38,7 @@ class AsyncMetricsTracker:
             "QueueTime",
             "TotalAsyncDuration",
             "PollingDuration",
-            "AsyncSubmissionTime"
+            "AsyncSubmissionTime",
         ]
 
         # Initialize counter categories
@@ -52,7 +52,8 @@ class AsyncMetricsTracker:
             "S3DownloadSize",
             "TileSubmissionFailures",
             "TileSubmissions",
-            "JobFailures"
+            "JobFailures",
+            "JobPolls",
         ]
 
         # Initialize all metrics
@@ -94,8 +95,8 @@ class AsyncMetricsTracker:
         self.timings[category] = elapsed_time
 
         # Emit metric if logger is available
-        if isinstance(self.metrics_logger, MetricsLogger):
-            self.metrics_logger.put_metric(category, elapsed_time, str(Unit.SECONDS.value))
+        if isinstance(self.metrics, MetricsLogger):
+            self.metrics.put_metric(category, elapsed_time, str(Unit.SECONDS.value))
 
         logger.debug(f"Stopped timer for {category}: {elapsed_time:.3f}s")
         return elapsed_time
@@ -114,9 +115,9 @@ class AsyncMetricsTracker:
         self.counters[category] += value
 
         # Emit metric if logger is available
-        if isinstance(self.metrics_logger, MetricsLogger):
+        if isinstance(self.metrics, MetricsLogger):
             unit = Unit.BYTES.value if "Size" in category else Unit.COUNT.value
-            self.metrics_logger.put_metric(category, value, str(unit))
+            self.metrics.put_metric(category, value, str(unit))
 
         logger.debug(f"Incremented {category} by {value} (total: {self.counters[category]})")
 
@@ -134,9 +135,9 @@ class AsyncMetricsTracker:
         self.counters[category] = value
 
         # Emit metric if logger is available
-        if isinstance(self.metrics_logger, MetricsLogger):
+        if isinstance(self.metrics, MetricsLogger):
             unit = Unit.BYTES.value if "Size" in category else Unit.COUNT.value
-            self.metrics_logger.put_metric(category, value, str(unit))
+            self.metrics.put_metric(category, value, str(unit))
 
         logger.debug(f"Set {category} to {value}")
 
@@ -176,9 +177,9 @@ class AsyncMetricsTracker:
 
     def emit_summary_metrics(self) -> None:
         """
-        Emit summary metrics for the entire async operation.
+        Emit summary self.metrics for the entire async operation.
         """
-        if not isinstance(self.metrics_logger, MetricsLogger):
+        if not isinstance(self.metrics, MetricsLogger):
             return
 
         # Emit timing breakdown metrics
@@ -188,14 +189,14 @@ class AsyncMetricsTracker:
             for category in ["S3Upload", "S3Download", "QueueTime"]:
                 category_time = self.timings.get(category, 0.0)
                 percentage = (category_time / total_time) * 100
-                self.metrics_logger.put_metric(f"{category}Percentage", percentage, str(Unit.PERCENT.value))
+                self.metrics.put_metric(f"{category}Percentage", percentage, str(Unit.PERCENT.value))
 
         # Emit efficiency metrics
         polling_attempts = self.counters.get("PollingAttempts", 0)
         if polling_attempts > 0:
             queue_time = self.timings.get("QueueTime", 0.0)
             avg_poll_interval = queue_time / polling_attempts if polling_attempts > 0 else 0
-            self.metrics_logger.put_metric("AveragePollingInterval", avg_poll_interval, str(Unit.SECONDS.value))
+            self.metrics.put_metric("AveragePollingInterval", avg_poll_interval, str(Unit.SECONDS.value))
 
         # Emit throughput metrics
         upload_size = self.counters.get("S3UploadSize", 0)
@@ -205,11 +206,11 @@ class AsyncMetricsTracker:
 
         if upload_size > 0 and upload_time > 0:
             upload_throughput = upload_size / upload_time  # bytes per second
-            self.metrics_logger.put_metric("S3UploadThroughput", upload_throughput, str(Unit.BYTES_SECOND.value))
+            self.metrics.put_metric("S3UploadThroughput", upload_throughput, str(Unit.BYTES_SECOND.value))
 
         if download_size > 0 and download_time > 0:
             download_throughput = download_size / download_time  # bytes per second
-            self.metrics_logger.put_metric("S3DownloadThroughput", download_throughput, str(Unit.BYTES_SECOND.value))
+            self.metrics.put_metric("S3DownloadThroughput", download_throughput, str(Unit.BYTES_SECOND.value))
 
         logger.debug("Emitted summary metrics for async operation")
 

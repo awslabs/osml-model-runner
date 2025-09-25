@@ -8,7 +8,6 @@ from botocore.exceptions import ClientError
 
 from ..src.osml_extensions.config import AsyncEndpointConfig
 from ..src.osml_extensions.errors import ExtensionRuntimeError
-from ..src.osml_extensions.polling import AsyncInferencePoller, AsyncInferenceTimeoutError
 
 
 class TestAsyncInferencePoller(unittest.TestCase):

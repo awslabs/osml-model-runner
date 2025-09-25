@@ -112,7 +112,9 @@ class TileRequestTable(DDBHelper):
         except Exception as err:
             raise StartRegionException("Failed to add tile request to the table!") from err
 
-    def update_tile_status(self, tile_id: str, job_id: str, status: str, error_message: Optional[str] = None) -> TileRequestItem:
+    def update_tile_status(
+        self, tile_id: str, job_id: str, status: str, error_message: Optional[str] = None
+    ) -> TileRequestItem:
         """
         Update the status of a tile processing request.
 
@@ -125,16 +127,13 @@ class TileRequestTable(DDBHelper):
         """
         try:
             current_time = int(time.time() * 1000)
-            
+
             # Create a minimal item for the update
             tile_item = TileRequestItem(tile_id=tile_id, job_id=job_id)
-            
+
             # Build update expression
             update_expr = "SET #status = :status, last_updated_time = :current_time"
-            update_attr = {
-                ":status": status,
-                ":current_time": current_time
-            }
+            update_attr = {":status": status, ":current_time": current_time}
             expr_attr_names = {"#status": "status"}
 
             # Add start_time when status changes to PROCESSING
@@ -146,7 +145,7 @@ class TileRequestTable(DDBHelper):
             if status in ["COMPLETED", "FAILED"]:
                 update_expr += ", end_time = :end_time"
                 update_attr[":end_time"] = current_time
-                
+
                 # Calculate processing duration if start_time exists
                 existing_item = self.get_tile_request(tile_id, job_id)
                 if existing_item and existing_item.start_time:
@@ -160,12 +159,14 @@ class TileRequestTable(DDBHelper):
                 update_attr[":error_message"] = error_message
 
             updated_item = self.update_ddb_item(tile_item, update_expr, update_attr, expr_attr_names)
-            
+
             return from_dict(TileRequestItem, updated_item)
         except Exception as e:
             raise UpdateRegionException("Failed to update tile status!") from e
 
-    def complete_tile_request(self, tile_request_item: TileRequestItem, status: str, error_message: Optional[str] = None) -> TileRequestItem:
+    def complete_tile_request(
+        self, tile_request_item: TileRequestItem, status: str, error_message: Optional[str] = None
+    ) -> TileRequestItem:
         """
         Complete a tile processing request with final status.
 
@@ -177,13 +178,13 @@ class TileRequestTable(DDBHelper):
         """
         try:
             current_time = int(time.time() * 1000)
-            
+
             tile_request_item.end_time = current_time
             tile_request_item.status = status
-            
+
             if tile_request_item.start_time:
                 tile_request_item.processing_duration = current_time - tile_request_item.start_time
-            
+
             if error_message:
                 tile_request_item.error_message = error_message
 
@@ -244,24 +245,24 @@ class TileRequestTable(DDBHelper):
         try:
             # Query the GSI using job_id as partition key
             query_kwargs = {
-                'IndexName': 'JobIdIndex',
-                'KeyConditionExpression': 'job_id = :job_id',
-                'ExpressionAttributeValues': {':job_id': job_id}
+                "IndexName": "JobIdIndex",
+                "KeyConditionExpression": "job_id = :job_id",
+                "ExpressionAttributeValues": {":job_id": job_id},
             }
-            
+
             # Add status filter if provided
             if status_filter:
-                query_kwargs['FilterExpression'] = '#status = :status'
-                query_kwargs['ExpressionAttributeNames'] = {'#status': 'status'}
-                query_kwargs['ExpressionAttributeValues'][':status'] = status_filter
+                query_kwargs["FilterExpression"] = "#status = :status"
+                query_kwargs["ExpressionAttributeNames"] = {"#status": "status"}
+                query_kwargs["ExpressionAttributeValues"][":status"] = status_filter
 
             response = self.table.query(**query_kwargs)
-            
+
             tiles = []
-            for item in response.get('Items', []):
+            for item in response.get("Items", []):
                 converted_item = self.convert_decimal(item)
                 tiles.append(from_dict(TileRequestItem, converted_item))
-            
+
             return tiles
         except Exception as err:
             logger.error(f"Failed to get tiles for job_id={job_id}: {err}")
@@ -278,12 +279,12 @@ class TileRequestTable(DDBHelper):
         """
         try:
             tile_item = TileRequestItem(tile_id=tile_id, job_id=job_id)
-            
+
             update_expr = "ADD retry_count :increment"
             update_attr = {":increment": 1}
-            
+
             updated_item = self.update_ddb_item(tile_item, update_expr, update_attr)
-            
+
             return from_dict(TileRequestItem, updated_item)
         except Exception as e:
             raise UpdateRegionException("Failed to increment retry count!") from e

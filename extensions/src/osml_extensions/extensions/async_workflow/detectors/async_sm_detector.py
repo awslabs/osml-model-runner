@@ -1,28 +1,28 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
+import json
 import logging
 import traceback
 from io import BufferedReader
-from json import JSONDecodeError
+
 from typing import Dict, Optional
 
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.metric_scope import metric_scope
-from aws_embedded_metrics.unit import Unit
+
+# from aws_embedded_metrics.unit import Unit
 from botocore.exceptions import ClientError
 from geojson import FeatureCollection
 
-from aws.osml.model_runner.app_config import MetricLabels
+# from aws.osml.model_runner.app_config import MetricLabels
 from aws.osml.model_runner.common import Timer
 from aws.osml.model_runner.inference.detector import Detector
 from aws.osml.model_runner.inference.sm_detector import SMDetector
 
 from ...errors import ExtensionConfigurationError
-from ..async_app_config import AsyncEndpointConfig, AsyncServiceConfig
+from ..async_app_config import AsyncServiceConfig
 from ..s3 import S3Manager, S3OperationError
 from ..api import ExtendedModelInvokeMode
-# from ..polling import AsyncInferencePoller, AsyncInferenceTimeoutError
-from ..utils import CleanupPolicy, ResourceManager
 
 logger = logging.getLogger(__name__)
 
@@ -56,13 +56,6 @@ class AsyncSMDetector(SMDetector):
 
         # Initialize async configuration
         self.async_config = AsyncServiceConfig.async_endpoint_config
-
-        # # Initialize S3 manager and poller
-        # self.poller = AsyncInferencePoller(self.sm_client, self.async_config)
-
-        # Initialize resource manager for cleanup
-        # self.resource_manager = ResourceManager(self.async_config)
-        # self.resource_manager.start_cleanup_worker()
 
         logger.debug(f"AsyncSMDetector initialized for endpoint: {endpoint}")
 
@@ -200,7 +193,9 @@ class AsyncSMDetector(SMDetector):
 
         #     raise
 
-    def _invoke_async_endpoint(self, input_s3_uri: str, metrics: Optional[MetricsLogger]) -> str:
+    def _invoke_async_endpoint(
+        self, input_s3_uri: str, metrics: Optional[MetricsLogger], custom_attributes: Optional[Dict[str, Any]]
+    ) -> str:
         """
         Invoke SageMaker async endpoint with S3 input URI.
 
@@ -222,6 +217,7 @@ class AsyncSMDetector(SMDetector):
                     EndpointName=self.endpoint,
                     ContentType="application/json",
                     Accept="application/json",
+                    CustomAttributes=json.dumps(custom_attributes or {}),
                     InputLocation=input_s3_uri,
                     InvocationTimeoutSeconds=self.async_config.max_wait_time,
                 )
@@ -239,56 +235,6 @@ class AsyncSMDetector(SMDetector):
             logger.error(f"Failed to invoke async endpoint {self.endpoint}: {error_code} - {str(e)}")
             raise
 
-    # def _poll_for_completion(self, inference_id: str) -> str:
-    #     """
-    #     Poll for async inference completion.
-
-    #     :param inference_id: The inference job ID to poll
-    #     :param metrics: Optional metrics logger
-    #     :return: Output S3 URI when job completes
-    #     """
-    #     logger.debug(f"Polling for completion of inference job: {inference_id}")
-    #     return self.poller.poll_until_complete(inference_id)
-
-    # def cleanup_resources(self, force: bool = False) -> int:
-    #     """
-    #     Clean up all managed resources.
-
-    #     :param force: Force cleanup even if policy is disabled
-    #     :return: Number of resources successfully cleaned up
-    #     """
-    #     logger.debug("Cleaning up AsyncSMDetector resources")
-    #     return self.resource_manager.cleanup_all_resources(force=force)
-
-    # def get_resource_stats(self) -> Dict:
-    #     """
-    #     Get statistics about managed resources.
-
-    #     :return: Dictionary of resource statistics
-    #     """
-    #     return self.resource_manager.get_resource_stats()
-
-    def __del__(self):
-        """Destructor to ensure resource cleanup."""
-        try:
-            pass
-            # if hasattr(self, "resource_manager"):
-            #     # Clean up all resources and stop the cleanup worker
-            #     self.resource_manager.cleanup_all_resources(force=True)
-            #     self.resource_manager.stop_cleanup_worker(timeout=5.0)
-        except Exception as e:
-            # Don't raise exceptions in destructor
-            logger.warning(f"Error during AsyncSMDetector cleanup: {e}")
-
-    def __enter__(self):
-        """Context manager entry."""
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit with cleanup."""
-        # self.cleanup_resources(force=True)
-        # self.resource_manager.stop_cleanup_worker()
-        pass
 
 class AsyncSMDetectorBuilder:
     """
@@ -330,10 +276,6 @@ class AsyncSMDetectorBuilder:
 
         if self.assumed_credentials is not None and not isinstance(self.assumed_credentials, dict):
             raise ExtensionConfigurationError("Assumed credentials must be a dictionary")
-
-        # # Validate async configuration if provided
-        # if self.async_config is not None and not isinstance(self.async_config, AsyncEndpointConfig):
-        #     raise ExtensionConfigurationError("async_config must be an AsyncEndpointConfig instance")
 
         logger.debug("AsyncSMDetectorBuilder parameters validated successfully")
 

@@ -15,7 +15,7 @@ class TestAsyncEndpointConfig(unittest.TestCase):
         """Set up test fixtures."""
         # Clear environment variables that might affect tests
         env_vars_to_clear = [
-            "ASYNC_SM_INPUT_BUCKET",
+            "ARTIFACT_BUCKET",
             "ASYNC_SM_OUTPUT_BUCKET",
             "ASYNC_SM_INPUT_PREFIX",
             "ASYNC_SM_OUTPUT_PREFIX",
@@ -129,7 +129,7 @@ class TestAsyncEndpointConfig(unittest.TestCase):
     @patch.dict(
         os.environ,
         {
-            "ASYNC_SM_INPUT_BUCKET": "env-input-bucket",
+            "ARTIFACT_BUCKET": "env-input-bucket",
             "ASYNC_SM_OUTPUT_BUCKET": "env-output-bucket",
             "ASYNC_SM_MAX_WAIT_TIME": "7200",
             "ASYNC_SM_POLLING_INTERVAL": "60",
@@ -148,7 +148,7 @@ class TestAsyncEndpointConfig(unittest.TestCase):
         self.assertFalse(config.cleanup_enabled)
         self.assertEqual(config.submission_workers, 8)
 
-    @patch.dict(os.environ, {"ASYNC_SM_INPUT_BUCKET": "env-input-bucket", "ASYNC_SM_OUTPUT_BUCKET": "env-output-bucket"})
+    @patch.dict(os.environ, {"ARTIFACT_BUCKET": "env-input-bucket", "ASYNC_SM_OUTPUT_BUCKET": "env-output-bucket"})
     def test_constructor_overrides_environment(self):
         """Test that constructor parameters override environment variables."""
         config = AsyncEndpointConfig(input_bucket="constructor-input-bucket", output_bucket="constructor-output-bucket")
@@ -157,7 +157,7 @@ class TestAsyncEndpointConfig(unittest.TestCase):
         self.assertEqual(config.input_bucket, "constructor-input-bucket")
         self.assertEqual(config.output_bucket, "constructor-output-bucket")
 
-    @patch.dict(os.environ, {"ASYNC_SM_INPUT_BUCKET": "env-input-bucket", "ASYNC_SM_OUTPUT_BUCKET": "env-output-bucket"})
+    @patch.dict(os.environ, {"ARTIFACT_BUCKET": "env-input-bucket", "ASYNC_SM_OUTPUT_BUCKET": "env-output-bucket"})
     def test_from_environment_class_method(self):
         """Test creating configuration from environment variables only."""
         config = AsyncEndpointConfig.from_environment()
@@ -211,7 +211,7 @@ class TestAsyncEndpointConfig(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "ASYNC_SM_INPUT_BUCKET": "env-input-bucket",
+                "ARTIFACT_BUCKET": "env-input-bucket",
                 "ASYNC_SM_OUTPUT_BUCKET": "env-output-bucket",
                 "ASYNC_SM_CLEANUP_POLICY": "delayed",
                 "ASYNC_SM_CLEANUP_DELAY_SECONDS": "900",
