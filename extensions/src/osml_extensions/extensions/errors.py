@@ -5,6 +5,10 @@ Minimal error classes for OSML Model Runner Extensions.
 """
 
 
+class SelfThrottledTileException(Exception):
+    pass
+
+
 class ExtensionError(Exception):
     """Base exception for extension-related errors."""
 

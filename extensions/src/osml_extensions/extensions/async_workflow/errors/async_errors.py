@@ -14,6 +14,10 @@ from .extension_errors import ExtensionRuntimeError
 logger = logging.getLogger(__name__)
 
 
+class ProcessTileException(Exception):
+    pass
+
+
 class AsyncInferenceError(ExtensionRuntimeError):
     """Base class for async inference-related errors."""
 

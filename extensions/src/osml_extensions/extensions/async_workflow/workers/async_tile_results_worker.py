@@ -1,9 +1,37 @@
+import boto3
+from typing import Dict, Optional, Any
+import logging
+from queue import Queue
+import time
 
-class AsyncPollingWorker(TileWorker):
+from aws.osml.features import Geolocator
+from aws.osml.model_runner.database import FeatureTable, RegionRequestTable
+from aws.osml.model_runner.app_config import MetricLabels
+from aws.osml.model_runner.app_config import BotoConfig
+from aws.osml.model_runner.tile_worker import TileWorker
+from aws.osml.model_runner.common import TileState
+
+from aws_embedded_metrics.metric_scope import metric_scope
+from aws_embedded_metrics.unit import Unit
+from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+
+from ..s3 import S3Manager
+from ..database import TileRequestTable
+from ..detectors import AsyncSMDetector
+from ..async_app_config import AsyncServiceConfig
+from ..metrics import AsyncMetricsTracker
+
+# Set up logging configuration
+logger = logging.getLogger(__name__)
+
+S3_MANAGER = S3Manager()
+
+
+class AsyncResultsWorker(TileWorker):
     """
-    Worker thread that polls for async inference completion and processes results.
+    Worker thread for async inference completion and processes results.
 
-    This worker monitors submitted jobs, polls for their completion, downloads results,
+    This worker monitors submitted jobs, waits for their completion, downloads results,
     and processes them when ready. It operates independently of submission workers.
     """
 
@@ -13,40 +41,31 @@ class AsyncPollingWorker(TileWorker):
         feature_table: FeatureTable,
         geolocator: Optional[Geolocator],
         region_request_table: RegionRequestTable,
-        in_queue: Queue,
-        result_queue: Queue,
-        feature_detector: AsyncSMDetector,
-        config: AsyncEndpointConfig,
+        tile_queue: Queue,
+        feature_detector: AsyncSMDetector,  # TODO: Is this needed here?
         metrics_tracker: Optional[AsyncMetricsTracker] = None,
         assumed_credentials: Optional[Dict[str, str]] = None,
-        tile_table: Optional[TileRequestTable] = None,
     ):
         """
-        Initialize AsyncPollingWorker.
+        Initialize AsyncResultsWorker.
 
         :param worker_id: Unique identifier for this worker
         :param feature_table: FeatureTable for storing detected features
         :param geolocator: Optional geolocator for feature positioning
         :param region_request_table: RegionRequestTable for tracking tile processing
-        :param in_queue: Queue containing submitted jobs to poll
-        :param result_queue: Queue to place completed results
-        :param feature_detector: AsyncSMDetector instance for polling
-        :param config: AsyncEndpointConfig for settings
+        :param tile_queue: Queue containing submitted jobs
+        :param feature_detector: AsyncSMDetector instance
         :param metrics_tracker: Optional metrics tracker
-        :param tile_table: Optional TileRequestTable for tracking tile status
         """
 
-        super().__init__(in_queue, feature_detector, geolocator, feature_table, region_request_table)
+        super().__init__(tile_queue, feature_detector, geolocator, feature_table, region_request_table)
 
-        self.name = f"AsyncPollingWorker-{worker_id}"
+        self.name = f"AsyncResultsWorker-{worker_id}"
         self.worker_id = worker_id
-        self.result_queue = result_queue
-        self.config = config
         self.metrics_tracker = metrics_tracker
-        self.tile_table = tile_table
-        self.active_jobs: Dict[str, AsyncInferenceJob] = {}
-        self.completed_job_count = 0
         self.running = True
+
+        self.tile_request_table = TileRequestTable(AsyncServiceConfig.tile_table_name)
 
         # Initialize async configuration
 
@@ -64,237 +83,127 @@ class AsyncPollingWorker(TileWorker):
             self.sm_client = boto3.client("sagemaker-runtime", config=BotoConfig.sagemaker)
 
         self.async_config = AsyncServiceConfig.async_endpoint_config
-        # self.poller = AsyncInferencePoller(self.sm_client, self.async_config)
 
-        logger.info(f"AsyncPollingWorker-{worker_id} initialized")
+        logger.info(f"AsyncResultsWorker-{worker_id} initialized")
 
-    def run(self) -> None:
-        """Main worker loop for polling job completion."""
-        logger.info(f"AsyncPollingWorker-{self.worker_id} started")
+    @metric_scope
+    def process_tile(self, image_info: Dict, metrics: MetricsLogger = None) -> None:
+        """
+        This method handles the processing of a single tile by invoking the ML model, geolocating the detections to
+        create features and finally storing the features in the database.
+
+        :param image_info: description of the tile to be processed
+        :param metrics: the current metric scope
+        """
+        if isinstance(metrics, MetricsLogger):
+            metrics.set_dimensions()
+            metrics.put_dimensions(
+                {
+                    MetricLabels.OPERATION_DIMENSION: MetricLabels.TILE_PROCESSING_OPERATION,
+                    MetricLabels.MODEL_NAME_DIMENSION: self.feature_detector.endpoint,
+                }
+            )
+            metrics.put_metric(MetricLabels.INVOCATIONS, 1, str(Unit.COUNT.value))
 
         try:
-            thread_event_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(thread_event_loop)
-            while self.running:
-                try:
-                    # Check for new jobs to monitor
-                    self._collect_new_jobs()
 
-                    # Poll active jobs for completion
-                    self._poll_active_jobs()
+            # Get image_info status from tile table
+            tile_id = image_info.get("tile_id")
+            job_id = image_info.get("job_id")
 
-                    # Sleep briefly to avoid overwhelming the API
-                    time.sleep(1.0)
+            current_time = time.time()
 
-                except Exception as e:
-                    logger.error(f"AsyncPollingWorker-{self.worker_id} error: {e}")
+            tile_item = self.tile_request_table.get_tile_request(tile_id, job_id)
+            if not tile_item:
+                logger.warning(f"Could not find tile item for {tile_id}, {job_id}")
+                return
 
-            try:
-                thread_event_loop.stop()
-                thread_event_loop.close()
-            except Exception as e:
-                logger.warning("Failed to stop and close the thread event loop")
-                logging.exception(e)
+            job_status = tile_item.status
 
-        finally:
-            logger.info(
-                f"AsyncPollingWorker-{self.worker_id} finished. "
-                f"Completed: {self.completed_job_count}, Failed: {self.failed_tile_count}"
-            )
+            logger.debug(f"AsyncResultsWorker-{self.worker_id} image_info: {tile_item}")
 
-    def _collect_new_jobs(self) -> None:
-        """Collect new jobs from the job queue."""
-        # logger.info("Began job collection")
-        while len(self.active_jobs) < self.config.max_concurrent_jobs:
-            try:
-                job = self.in_queue.get_nowait()
-                logger.debug(f"Poller got job: {job}")
-                self.active_jobs[job.inference_id] = job
-                logger.debug(f"AsyncPollingWorker-{self.worker_id} monitoring job: {job.inference_id}")
+            if job_status == "COMPLETED":
+                # Get output location from image_info's output_s3_uri
+                output_location = getattr(image_info, "output_s3_uri", None)
+                if output_location:
+                    self._process_completed_job(image_info, output_location)
+                else:
+                    logger.error(f"Job {image_info} completed but no output location")
+                    self._handle_failed_job(image_info, "No output location")
 
-            except Empty:
-                break  # No more jobs available
+            elif job_status == "FAILED":
+                error_message = tile_item.error_message or "Job failed"
+                self._handle_failed_job(image_info, error_message)
 
-    def _poll_active_jobs(self) -> None:
-        """Poll all active jobs for completion."""
-        completed_jobs = []
+            # Check for timeout
+            elif current_time - image_info["submitted_time"] > AsyncServiceConfig.async_endpoint_config.max_wait_time:
+                self._handle_failed_job(image_info, "Job timed out")
 
-        for inference_id, job in self.active_jobs.items():
-            try:
-                logger.debug(f"poller checking for {inference_id}, {job}")
-                # Check if enough time has passed since last poll
-                current_time = time.time()
-                time_since_last_poll = current_time - job.last_poll_time
+        except Exception as e:
+            logger.error(f"AsyncResultsWorker-{self.worker_id} error image_info {image_info}: {e}")
+            self._handle_failed_job(image_info, f"error: {e}")
 
-                # Calculate appropriate polling interval based on job age and attempts
-                polling_interval = self._calculate_polling_interval(job)
-
-                if time_since_last_poll < polling_interval:
-                    continue  # Not time to poll this job yet
-
-                # Get job status from tile table instead of polling SageMaker
-                tile_id = job.tile_info.get("tile_id")
-                job_id = job.tile_info.get("job_id")
-
-                if not tile_id or not job_id or not self.tile_table:
-                    logger.warning(f"Missing tile_id, job_id, or tile_table for job {inference_id}")
-                    continue
-
-                tile_item = self.tile_table.get_tile_request(tile_id, job_id)
-                if not tile_item:
-                    logger.warning(f"Could not find tile item for {tile_id}, {job_id}")
-                    continue
-
-                job_status = tile_item.status
-                job.poll_count += 1
-                job.last_poll_time = current_time
-
-                if self.metrics_tracker:
-                    self.metrics_tracker.increment_counter("JobPolls")
-
-                logger.debug(f"AsyncPollingWorker-{self.worker_id} polled job {inference_id}: {job_status}")
-
-                if job_status == "COMPLETED":
-                    # Get output location from job's output_s3_uri
-                    logger.info(f"AsyncPollingWorker-{self.worker_id} polled job {inference_id}: {job_status}. job: {job}")
-
-                    output_location = getattr(job, "output_s3_uri", None)
-                    if output_location:
-                        self._process_completed_job(job, output_location)
-                        completed_jobs.append(inference_id)
-                        self.completed_job_count += 1
-                    else:
-                        logger.error(f"Job {inference_id} completed but no output location")
-                        self._handle_failed_job(job, "No output location")
-                        completed_jobs.append(inference_id)
-                        self.failed_tile_count += 1
-
-                elif job_status == "FAILED":
-                    error_message = tile_item.error_message or "Job failed"
-                    self._handle_failed_job(job, error_message)
-                    completed_jobs.append(inference_id)
-                    self.failed_tile_count += 1
-
-                # Check for timeout
-                elif current_time - job.submitted_time > self.config.max_wait_time:
-                    self._handle_failed_job(job, "Job timed out")
-                    completed_jobs.append(inference_id)
-                    self.failed_tile_count += 1
-
-            except Exception as e:
-                logger.error(f"AsyncPollingWorker-{self.worker_id} error polling job {inference_id}: {e}")
-                self._handle_failed_job(job, f"Polling error: {e}")
-                completed_jobs.append(inference_id)
-                self.failed_tile_count += 1
-
-        # Remove completed jobs from active list
-        for inference_id in completed_jobs:
-            del self.active_jobs[inference_id]
-
-    def _calculate_polling_interval(self, job: AsyncInferenceJob) -> float:
+    def _process_completed_job(self, image_info: Dict[str, Any], output_location: str) -> None:
         """
-        Calculate appropriate polling interval based on job age and poll count.
+        Process a completed image_info by downloading results and storing them.
 
-        :param job: AsyncInferenceJob to calculate interval for
-        :return: Polling interval in seconds
-        """
-        base_interval = self.config.polling_interval
-        multiplier = self.config.exponential_backoff_multiplier
-
-        # Apply exponential backoff based on poll count
-        interval = base_interval * (multiplier**job.poll_count)
-
-        # Cap at maximum interval
-        return min(interval, self.config.max_polling_interval)
-
-    def _process_completed_job(self, job: AsyncInferenceJob, output_location: str) -> None:
-        """
-        Process a completed job by downloading results and storing them.
-
-        :param job: Completed AsyncInferenceJob
+        :param image_info: Completed
         :param output_location: S3 URI of the output data
         """
         try:
-            logger.info(f"AsyncPollingWorker-{self.worker_id} processing completed job: {job.inference_id}")
+            logger.info(f"AsyncResultsWorker-{self.worker_id} processing completed image_info: {image_info}")
 
             # Download and parse results
             feature_collection = AsyncServiceConfig._download_from_s3(output_location)
 
-            features = self._refine_features(feature_collection, job.tile_info)
+            features = self._refine_features(feature_collection, image_info.tile_info)
 
             if len(features) > 0:
                 self.feature_table.add_features(features)
 
             self.region_request_table.add_tile(
-                job.tile_info.get("image_id"),
-                job.tile_info.get("region_id"),
-                job.tile_info.get("region"),
+                image_info.tile_info.get("image_id"),
+                image_info.tile_info.get("region_id"),
+                image_info.tile_info.get("region"),
                 TileState.SUCCEEDED,
             )
 
-            # Create result object
-            result = {
-                "tile_info": job.tile_info,
-                "feature_collection": feature_collection,
-                "inference_id": job.inference_id,
-                "processing_time": time.time() - job.submitted_time,
-                "poll_count": job.poll_count,
-            }
-
-            # Add to result queue
-            self.result_queue.put(result)
-
-            # Cleanup S3 objects if configured
-            if self.config.cleanup_enabled:
-                S3_MANAGER.cleanup_s3_objects([job.input_s3_uri, output_location])
-
             if self.metrics_tracker:
                 self.metrics_tracker.increment_counter("JobCompletions")
-                processing_time = time.time() - job.submitted_time
+                processing_time = time.time() - image_info.submitted_time
                 self.metrics_tracker.set_counter("JobProcessingTime", int(processing_time))
 
             # Update tile status to COMPLETED
-            if self.tile_table and job.tile_info.get("tile_id") and job.tile_info.get("job_id"):
+            if self.tile_request_table and image_info.tile_info.get("tile_id") and image_info.tile_info.get("job_id"):
                 try:
-                    self.tile_table.update_tile_status(job.tile_info["tile_id"], job.tile_info["job_id"], "COMPLETED")
+                    self.tile_request_table.update_tile_status(
+                        image_info.tile_info["tile_id"], image_info.tile_info["job_id"], "COMPLETED"
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to update tile status to COMPLETED: {e}")
 
-            logger.debug(f"AsyncPollingWorker-{self.worker_id} completed job: {job.inference_id}")
+            logger.debug(f"AsyncResultsWorker-{self.worker_id} completed image_info: {image_info}")
 
         except Exception as e:
-            logger.error(f"AsyncPollingWorker-{self.worker_id} error processing completed job {job.inference_id}: {e}")
-            self._handle_failed_job(job, f"Result processing error: {e}")
+            logger.error(f"AsyncResultsWorker-{self.worker_id} error processing completed image_info {image_info}: {e}")
+            self._handle_failed_job(image_info, f"Result processing error: {e}")
 
-    def _handle_failed_job(self, job: AsyncInferenceJob, reason: str) -> None:
+    def _handle_failed_job(self, image_info: Dict[str, Any], reason: str) -> None:
         """
-        Handle a failed job by logging and cleaning up resources.
-
-        :param job: Failed AsyncInferenceJob
-        :param reason: Reason for failure
+        Handle a failure by logging and cleaning up resources.
         """
-        logger.error(f"AsyncPollingWorker-{self.worker_id} job {job.inference_id} failed: {reason}")
+        logger.error(f"AsyncResultsWorker-{self.worker_id} image_info {image_info} failed: {reason}")
 
         # Update tile status to FAILED
-        if self.tile_table and job.tile_info.get("tile_id") and job.tile_info.get("job_id"):
+        if self.tile_request_table and image_info.tile_info.get("tile_id") and image_info.tile_info.get("job_id"):
             try:
-                self.tile_table.update_tile_status(job.tile_info["tile_id"], job.tile_info["job_id"], "FAILED", reason)
+                self.tile_request_table.update_tile_status(
+                    image_info.tile_info["tile_id"], image_info.tile_info["job_id"], "FAILED", reason
+                )
             except Exception as e:
                 logger.warning(f"Failed to update tile status to FAILED: {e}")
 
         assert isinstance(self.feature_detector, AsyncSMDetector)
 
-        # Cleanup S3 objects if configured
-        if self.config.cleanup_enabled:
-            try:
-                S3_MANAGER.cleanup_s3_objects([job.input_s3_uri])
-            except Exception as cleanup_error:
-                logger.warning(f"Failed to cleanup S3 objects for failed job {job.inference_id}: {cleanup_error}")
-
         if self.metrics_tracker:
             self.metrics_tracker.increment_counter("JobFailures")
-
-    def stop(self) -> None:
-        """Signal the worker to stop processing."""
-        self.running = False
-

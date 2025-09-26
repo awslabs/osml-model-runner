@@ -1,5 +1,21 @@
+import asyncio
+import logging
 from threading import Thread
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
+from queue import Empty, Queue
+
+from aws_embedded_metrics.metric_scope import metric_scope
+
+from ..s3 import S3Manager
+from ..database import TileRequestTable
+from ..detectors import AsyncSMDetector
+from ..metrics import AsyncMetricsTracker
+from ..async_app_config import AsyncServiceConfig
+
+# Set up logging configuration
+logger = logging.getLogger(__name__)
+
+S3_MANAGER = S3Manager()
 
 
 class AsyncSubmissionWorker(Thread):
@@ -33,10 +49,11 @@ class AsyncSubmissionWorker(Thread):
         self.tile_queue = tile_queue
         self.feature_detector = feature_detector
         self.metrics_tracker = metrics_tracker
-        self.tile_request_table = tile_request_table
         self.failed_tile_count = 0
         self.processed_tile_count = 0
         self.running = True
+
+        self.tile_request_table = TileRequestTable(AsyncServiceConfig.tile_table_name)
 
         logger.debug(f"AsyncSubmissionWorker-{worker_id} initialized")
 
@@ -155,4 +172,3 @@ class AsyncSubmissionWorker(Thread):
     def stop(self) -> None:
         """Signal the worker to stop processing."""
         self.running = False
-

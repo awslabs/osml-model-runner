@@ -88,7 +88,7 @@ The async endpoint integration consists of several key components:
 ### Worker Pool Architecture
 
 - **AsyncSubmissionWorker**: Quickly submits tiles to async endpoints
-- **AsyncPollingWorker**: Independently monitors job completion
+- **AsyncResultsWorker**: Independently monitors job completion
 - **AsyncTileWorkerPool**: Coordinates workers for optimal throughput
 
 ## Performance Benefits

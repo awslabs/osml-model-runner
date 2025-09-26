@@ -14,16 +14,6 @@ from .async_errors import (
     AsyncInferenceTimeoutError,
     S3OperationError,
     WorkerPoolError,
+    ProcessTileException,
 )
 from .extension_errors import ExtensionConfigurationError, ExtensionRuntimeError
-
-__all__ = [
-    "ExtensionConfigurationError",
-    "ExtensionRuntimeError",
-    "AsyncInferenceError",
-    "AsyncInferenceTimeoutError",
-    "S3OperationError",
-    "AsyncEndpointError",
-    "WorkerPoolError",
-    "AsyncErrorHandler",
-]

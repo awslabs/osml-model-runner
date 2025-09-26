@@ -1,62 +1,88 @@
-from .async_tile_submission_worker import AsyncSubmissionWorker
-from .async_tile_results_worker import AsyncPollingWorker
-from ..async_app_config import EnhancedServiceConfig
+import logging
+from typing import Optional, Tuple, List
+from queue import Queue
 
-def setup_polling_tile_workers(
+from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
+from aws.osml.model_runner.exceptions import SetupTileWorkersException
+from aws.osml.model_runner.database import FeatureTable, RegionRequestTable
+from aws.osml.model_runner.api import RegionRequest
+from aws.osml.photogrammetry import ElevationModel, SensorModel
+from aws.osml.model_runner.tile_worker import TileWorker
+from aws.osml.model_runner.common import get_credentials_for_assumed_role
+
+from .async_tile_submission_worker import AsyncSubmissionWorker
+from .async_tile_results_worker import AsyncResultsWorker
+from ..async_app_config import EnhancedServiceConfig
+from ..factory import EnhancedFeatureDetectorFactory
+
+# Set up logging configuration
+logger = logging.getLogger(__name__)
+
+
+def setup_result_tile_workers(
     region_request: RegionRequest,
     sensor_model: Optional[SensorModel] = None,
     elevation_model: Optional[ElevationModel] = None,
 ) -> Tuple[Queue, List[TileWorker]]:
 
+    try:
+        model_invocation_credentials = None
+        if region_request.model_invocation_role:
+            model_invocation_credentials = get_credentials_for_assumed_role(region_request.model_invocation_role)
 
-    # Start polling workers
-    for i in range(EnhancedServiceConfig.polling_workers):
+        tile_queue: Queue = Queue()
+        tile_workers = []
 
-        # Set up our feature table to work with the region quest
-        feature_table = FeatureTable(
-            EnhancedServiceConfig.feature_table,
-            region_request.tile_size,
-            region_request.tile_overlap,
-        )
+        # Start polling workers
+        for i in range(EnhancedServiceConfig.polling_workers):
 
-        # Set up our feature table to work with the region quest
-        region_request_table = RegionRequestTable(EnhancedServiceConfig.region_request_table)
-
-        # Ignoring mypy error - if model_name was None the call to validate the region
-        # request at the start of this function would have failed
-        feature_detector = EnhancedFeatureDetectorFactory(
-            endpoint=self.region_request.model_name,
-            endpoint_mode=self.region_request.model_invoke_mode,
-            assumed_credentials=self.model_invocation_credentials,
-        ).build()
-
-        if feature_detector is None:
-            logger.error("Failed to create feature detector")
-            return None
-
-        # Set up geolocator
-        geolocator = None
-        if self.sensor_model is not None:
-            geolocator = Geolocator(
-                ImagedFeaturePropertyAccessor(), self.sensor_model, elevation_model=self.elevation_model
+            # Set up our feature table to work with the region quest
+            feature_table = FeatureTable(
+                EnhancedServiceConfig.feature_table,
+                region_request.tile_size,
+                region_request.tile_overlap,
             )
-        worker = AsyncPollingWorker(
-            worker_id=i,
-            feature_table=feature_table,
-            geolocator=geolocator,
-            region_request_table=region_request_table,
-            in_queue=self.job_queue,
-            result_queue=self.result_queue,
-            feature_detector=feature_detector,
-            config=self.config,
-            metrics_tracker=self.metrics_tracker,
-            tile_table=self.tile_table,
-        )
-        logger.info("Created poller worker")
-        worker.start()
-        logger.info("poller worker started")
 
-def setup_async_tile_workers(
+            # Set up our feature table to work with the region quest
+            region_request_table = RegionRequestTable(EnhancedServiceConfig.region_request_table)
+
+            # Ignoring mypy error - if model_name was None the call to validate the region
+            # request at the start of this function would have failed
+            feature_detector = EnhancedFeatureDetectorFactory(
+                endpoint=region_request.model_name,
+                endpoint_mode=region_request.model_invoke_mode,
+                assumed_credentials=model_invocation_credentials,
+            ).build()
+
+            if feature_detector is None:
+                logger.error("Failed to create feature detector")
+                return None
+
+            # Set up geolocator
+            geolocator = None
+            if sensor_model is not None:
+                geolocator = Geolocator(ImagedFeaturePropertyAccessor(), sensor_model, elevation_model=elevation_model)
+            worker = AsyncResultsWorker(
+                worker_id=i,
+                feature_table=feature_table,
+                geolocator=geolocator,
+                region_request_table=region_request_table,
+                tile_queue=tile_queue,
+                feature_detector=feature_detector,
+            )
+            logger.info("Created poller worker")
+            worker.start()
+            logger.info("poller worker started")
+            tile_workers.append(worker)
+
+        return tile_queue, tile_workers
+
+    except Exception as err:
+        logger.exception(f"Failed to setup tile workers!: {err}")
+        raise SetupTileWorkersException("Failed to setup tile workers!") from err
+
+
+def setup_submission_tile_workers(
     region_request: RegionRequest,
     sensor_model: Optional[SensorModel] = None,
     elevation_model: Optional[ElevationModel] = None,
@@ -79,16 +105,16 @@ def setup_async_tile_workers(
         tile_queue: Queue = Queue()
         tile_workers = []
 
-        for i in range(int(ServiceConfig.workers)):
+        for i in range(int(EnhancedServiceConfig.workers)):
             # Set up our feature table to work with the region quest
-            feature_table = FeatureTable(
-                ServiceConfig.feature_table,
-                region_request.tile_size,
-                region_request.tile_overlap,
-            )
+            # feature_table = FeatureTable(
+            #     EnhancedServiceConfig.feature_table,
+            #     region_request.tile_size,
+            #     region_request.tile_overlap,
+            # )
 
             # Set up our feature table to work with the region quest
-            region_request_table = RegionRequestTable(ServiceConfig.region_request_table)
+            # region_request_table = RegionRequestTable(EnhancedServiceConfig.region_request_table)
 
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed
@@ -98,16 +124,7 @@ def setup_async_tile_workers(
                 assumed_credentials=model_invocation_credentials,
             ).build()
 
-            worker = AsyncSubmissionWorker(
-                worker_id=i,
-                tile_queue=tile_queue,
-                job_queue=self.job_queue,
-                feature_detector=feature_detector,
-                config=self.config,
-                metrics_tracker=self.metrics_tracker,
-                tile_table=self.tile_table,
-            )
-
+            worker = AsyncSubmissionWorker(worker_id=i, tile_queue=tile_queue, feature_detector=feature_detector)
 
             # geolocator = None
             # if sensor_model is not None:

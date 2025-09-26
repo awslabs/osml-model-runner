@@ -288,3 +288,7 @@ class TileRequestTable(DDBHelper):
             return from_dict(TileRequestItem, updated_item)
         except Exception as e:
             raise UpdateRegionException("Failed to increment retry count!") from e
+
+    def get_region_request(self, tile_id: str):
+        # TODO: FILL OUT THIS FUNCTION
+        pass

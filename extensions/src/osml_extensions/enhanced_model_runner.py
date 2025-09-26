@@ -3,16 +3,19 @@
 import logging
 import traceback
 
+from aws.osml.gdal import set_gdal_default_configuration, load_gdal_dataset
 from aws.osml.model_runner import ModelRunner
 from aws.osml.model_runner.tile_worker import TilingStrategy, VariableOverlapTilingStrategy
 from aws.osml.model_runner.queue import RequestQueue
+from aws.osml.model_runner.common import ThreadingLocalContextFilter
 
 from .enhanced_app_config import EnhancedServiceConfig
 from .registry import DependencyInjectionError, HandlerSelectionError, HandlerSelector
 from osml_extensions.extensions.async_workflow.api import TileRequest
 from osml_extensions.extensions.async_workflow.database import TileRequestItem, TileRequestTable
 from osml_extensions.extensions.async_workflow.enhanced_tile_handler import TileRequestHandler
-
+from osml_extensions.extensions.async_workflow.status import TileStatusMonitor
+from osml_extensions.extensions.errors import SelfThrottledTileException, RetryableJobException
 
 logger = logging.getLogger(__name__)
 
@@ -155,18 +158,23 @@ class EnhancedModelRunner(ModelRunner):
             return False
 
         if tile_request_attributes:
-            ThreadingLocalContextFilter.set_context(region_request_attributes)
+            ThreadingLocalContextFilter.set_context(tile_request_attributes)
             try:
                 tile_request = TileRequest(tile_request_attributes)
                 tile_request_item = self._get_or_create_tile_request_item(tile_request)
-                region_request = self.tile_request_handler.process_tile_request(tile_request)
+                region_request, region_request_item, image_request, image_request_item = (
+                    self.tile_request_handler.process_tile_request(tile_request, tile_request_item)
+                )
 
                 # check if the region is done
-                if self.job_table.is_region_request_complete(region_request):
+                if self.job_table.is_region_request_complete(region_request_item):
                     self.region_request_handler.complete_region_request(tile_request)
 
                 # Check if the whole image is done
                 if self.job_table.is_image_request_complete(image_request_item):
+
+                    raster_dataset, sensor_model = load_gdal_dataset(tile_request.image_path)
+
                     self.image_request_handler.complete_image_request(
                         region_request, str(raster_dataset.GetDriver().ShortName).upper(), raster_dataset, sensor_model
                     )

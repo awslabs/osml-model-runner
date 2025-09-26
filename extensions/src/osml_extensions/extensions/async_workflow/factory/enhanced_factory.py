@@ -125,9 +125,6 @@ class EnhancedFeatureDetectorFactory(FeatureDetectorFactory):
 
         # Try to build enhanced detector for extended modes
         logger.debug(f"original endpoint mode: {self.original_endpoint_mode}, type: {type(self.original_endpoint_mode)}")
-        logger.debug(
-            f"ExtendedModelInvokeMode.SM_ENDPOINT_ASYNC.name: {ExtendedModelInvokeMode.SM_ENDPOINT_ASYNC.name}, type: {type(ExtendedModelInvokeMode.SM_ENDPOINT_ASYNC.name)}"
-        )
         # if not isinstance(self.original_endpoint_mode, ExtendedModelInvokeMode):
         #     raise ValueError("Wrong type of class")
         if self.original_endpoint_mode == ExtendedModelInvokeMode.SM_ENDPOINT_ASYNC.name:
