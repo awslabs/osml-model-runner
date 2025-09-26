@@ -65,7 +65,7 @@ class AsyncResultsWorker(TileWorker):
         self.metrics_tracker = metrics_tracker
         self.running = True
 
-        self.tile_request_table = TileRequestTable(AsyncServiceConfig.tile_table_name)
+        self.tile_request_table = TileRequestTable(AsyncServiceConfig.tile_request_table)
 
         # Initialize async configuration
 

@@ -15,9 +15,10 @@ from .s3 import S3Manager, S3OperationError
 
 # Import all main components
 from .detectors import AsyncSMDetector, AsyncSMDetectorBuilder
+from .factory import EnhancedFeatureDetectorFactory
 from .enhanced_image_handler import EnhancedImageRequestHandler
 from .enhanced_region_handler import EnhancedRegionRequestHandler
 from .metrics import AsyncMetricsTracker
 
 from .database import TileRequestItem, TileRequestTable
-from .workers import AsyncResultsWorker, AsyncSubmissionWorker, AsyncTileWorkerPool
+from .workers import AsyncResultsWorker, AsyncSubmissionWorker

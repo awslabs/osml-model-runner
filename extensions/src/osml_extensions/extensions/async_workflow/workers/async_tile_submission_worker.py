@@ -53,7 +53,7 @@ class AsyncSubmissionWorker(Thread):
         self.processed_tile_count = 0
         self.running = True
 
-        self.tile_request_table = TileRequestTable(AsyncServiceConfig.tile_table_name)
+        self.tile_request_table = TileRequestTable(AsyncServiceConfig.tile_request_table)
 
         logger.debug(f"AsyncSubmissionWorker-{worker_id} initialized")
 

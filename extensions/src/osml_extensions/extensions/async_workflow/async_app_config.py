@@ -2,7 +2,16 @@
 import os
 from dataclasses import dataclass, field
 
-from osml_extensions.enhanced_app_config import EnhancedServiceConfig
+import logging
+from typing import Optional
+
+from aws.osml.model_runner.app_config import ServiceConfig
+
+logger = logging.getLogger(__name__)
+
+
+def var_to_bool(var_name):
+    return os.getenv(var_name, "false").lower() in ("true", "1")
 
 
 @dataclass
@@ -42,7 +51,7 @@ class AsyncEndpointConfig:
 
 
 @dataclass
-class AsyncServiceConfig(EnhancedServiceConfig):
+class AsyncServiceConfig(ServiceConfig):
     """
     Async ServiceConfig
 
@@ -50,4 +59,24 @@ class AsyncServiceConfig(EnhancedServiceConfig):
     while maintaining full compatibility with the base model runner.
     """
 
+    # Extension configuration
+    use_extensions: bool = var_to_bool("USE_EXTENSIONS")
+    async_detector_enabled: bool = var_to_bool("ASYNC_DETECTOR_ENABLED")
+    enhanced_monitoring_enabled: bool = var_to_bool("ENHANCED_MONITORING_ENABLED")
+    extension_fallback_enabled: bool = var_to_bool("EXTENSION_FALLBACK_ENABLED")
+    enable_async_processing: bool = var_to_bool("ENABLE_ASYNC_PROCESSING")
+    max_concurrent_regions: int = int(os.getenv("MAX_CONCURRENT_REGIONS", "100"))
+
+    # Request type configuration
+    request_type: str = os.getenv("REQUEST_TYPE", "async_sm_endpoint")
+
+    # tile tracking table
+    tile_request_table: str = os.environ["TILE_REQUEST_TABLE"]
+    tile_queue: str = os.environ.get("TILE_QUEUE")
+
+    # async endpoint config
     async_endpoint_config: AsyncEndpointConfig = field(default=AsyncEndpointConfig)
+
+    # Optional
+    region_status_topic: Optional[str] = os.getenv("TILE_STATUS_TOPIC")
+    tile_status_topic: Optional[str] = os.getenv("TILE_STATUS_TOPIC")

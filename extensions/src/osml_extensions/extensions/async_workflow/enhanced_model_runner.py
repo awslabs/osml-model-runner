@@ -9,13 +9,14 @@ from aws.osml.model_runner.tile_worker import TilingStrategy, VariableOverlapTil
 from aws.osml.model_runner.queue import RequestQueue
 from aws.osml.model_runner.common import ThreadingLocalContextFilter
 
-from .enhanced_app_config import EnhancedServiceConfig
-from .registry import DependencyInjectionError, HandlerSelectionError, HandlerSelector
-from osml_extensions.extensions.async_workflow.api import TileRequest
-from osml_extensions.extensions.async_workflow.database import TileRequestItem, TileRequestTable
-from osml_extensions.extensions.async_workflow.enhanced_tile_handler import TileRequestHandler
-from osml_extensions.extensions.async_workflow.status import TileStatusMonitor
-from osml_extensions.extensions.errors import SelfThrottledTileException, RetryableJobException
+from osml_extensions.registry import DependencyInjectionError, HandlerSelectionError, HandlerSelector
+
+from .async_app_config import AsyncServiceConfig
+from .api import TileRequest
+from .database import TileRequestItem, TileRequestTable
+from .enhanced_tile_handler import TileRequestHandler
+from .status import TileStatusMonitor
+from .errors import SelfThrottledTileException, RetryableJobException
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +43,6 @@ class EnhancedModelRunner(ModelRunner):
         # Call parent constructor to set up base functionality
         super().__init__(tiling_strategy)
 
-        # Use EnhancedServiceConfig instead of base ServiceConfig
-        self.config = EnhancedServiceConfig()
-
         # Override handlers with enhanced versions if extensions are enabled
         self._setup_enhanced_components()
 
@@ -60,17 +58,17 @@ class EnhancedModelRunner(ModelRunner):
 
             # TODO: The registry mechanism is now broken. Update to get the handlers from the registry itself.
 
-            self.tile_request_queue = RequestQueue(self.config.tile_queue, wait_seconds=0)
-            self.tile_requests_iter = iter(self.tile_requests_queue)
+            self.tile_request_queue = RequestQueue(AsyncServiceConfig.tile_queue, wait_seconds=0)
+            self.tile_requests_iter = iter(self.tile_request_queue)
 
-            self.tile_request_table = TileRequestTable(self.config.tile_table_name)
-            self.tile_status_monitor = TileStatusMonitor(self.config.tile_status_topic)
+            self.tile_request_table = TileRequestTable(AsyncServiceConfig.tile_request_table)
+            self.tile_status_monitor = TileStatusMonitor(AsyncServiceConfig.tile_status_topic)
 
             # Initialize handler selector and dependency injector
             handler_selector = HandlerSelector()  # TODO: REMOVE THIS AND JUST USE THE ASYNC HANDLERS
 
             # Determine request type from environment or configuration
-            request_type = EnhancedServiceConfig.request_type  # ['sm_endpoint', 'async_sm_endpoint']
+            request_type = AsyncServiceConfig.request_type  # ['sm_endpoint', 'async_sm_endpoint']
 
             logger.debug(f"Setting up components for request_type='{request_type}'")
 
@@ -88,21 +86,21 @@ class EnhancedModelRunner(ModelRunner):
                 region_request_queue=self.region_request_queue,
                 region_request_table=self.region_request_table,
                 endpoint_utils=self.endpoint_utils,
-                config=self.config,
+                config=AsyncServiceConfig,
                 region_request_handler=self.region_request_handler,
             )
 
             region_handler_args = []
             region_handler_kwargs = dict(
                 tile_request_table=self.tile_request_table,
-                tile_request_queue=self.tile_request.queue,
+                tile_request_queue=self.tile_request_queue,
                 region_request_table=self.region_request_table,
                 job_table=self.job_table,
                 region_status_monitor=self.region_status_monitor,
                 endpoint_statistics_table=self.endpoint_statistics_table,
                 tiling_strategy=self.tiling_strategy,
                 endpoint_utils=self.endpoint_utils,
-                config=self.config,
+                config=AsyncServiceConfig,
             )
 
             self.image_request_handler = image_handler_metadata.handler_class(*image_handler_args, **image_handler_kwargs)
@@ -110,7 +108,9 @@ class EnhancedModelRunner(ModelRunner):
                 *region_handler_args, **region_handler_kwargs
             )
             self.tile_request_handler = TileRequestHandler(
-                tile_request_table=self.tile_request_table, job_table=self.job_table, config=self.config
+                tile_request_table=self.tile_request_table, 
+                job_table=self.job_table, 
+                tile_status_monitor=self.tile_status_monitor
             )
 
             logger.debug(
@@ -120,13 +120,19 @@ class EnhancedModelRunner(ModelRunner):
 
         except (HandlerSelectionError, DependencyInjectionError) as e:
             logger.error(f"Failed to set up enhanced components: {e}")
-            if hasattr(self.config, "extension_fallback_enabled") and not self.config.extension_fallback_enabled:
+            if (
+                hasattr(AsyncServiceConfig, "extension_fallback_enabled")
+                and not AsyncServiceConfig.extension_fallback_enabled
+            ):
                 raise
 
         except Exception as e:
             logger.error(f"Unexpected error setting up enhanced components: {e}")
             logger.debug(f"Traceback: {traceback.format_exc()}")
-            if hasattr(self.config, "extension_fallback_enabled") and not self.config.extension_fallback_enabled:
+            if (
+                hasattr(AsyncServiceConfig, "extension_fallback_enabled")
+                and not AsyncServiceConfig.extension_fallback_enabled
+            ):
                 raise
 
     def monitor_work_queues(self) -> None:
@@ -186,7 +192,7 @@ class EnhancedModelRunner(ModelRunner):
             except SelfThrottledTileException as err:
                 logger.warning(f"Retrying tile request due to: {err}")
                 self.tile_request_queue.reset_request(
-                    receipt_handle, visibility_timeout=int(self.config.throttling_retry_timeout)
+                    receipt_handle, visibility_timeout=int(AsyncServiceConfig.throttling_retry_timeout)
                 )
             except Exception as err:
                 logger.exception(f"Error processing tile request: {err}")

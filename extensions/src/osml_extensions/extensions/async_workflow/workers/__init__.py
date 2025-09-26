@@ -7,5 +7,6 @@
 Worker extensions for the OSML Model Runner.
 """
 
-# from .async_tile_worker_pool import AsyncInferenceJob, AsyncResultsWorker, AsyncSubmissionWorker, AsyncTileWorkerPool
+from .async_tile_results_worker import AsyncResultsWorker
+from .async_tile_submission_worker import AsyncSubmissionWorker
 from .utils import setup_submission_tile_workers, setup_result_tile_workers

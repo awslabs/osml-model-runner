@@ -11,7 +11,7 @@ from aws.osml.model_runner.app_config import MetricLabels
 from aws.osml.model_runner.common import RequestStatus
 
 from .database import TileRequestTable, TileRequestItem
-from .async_app_config import EnhancedServiceConfig
+from .async_app_config import AsyncServiceConfig
 from .api import TileRequest
 from .status import TileStatusMonitor
 from .workers import setup_result_tile_workers
@@ -27,10 +27,8 @@ class TileRequestHandler:
         tile_request_table: TileRequestTable,
         job_table: JobTable,
         tile_status_monitor: TileStatusMonitor,
-        config: EnhancedServiceConfig,
     ):
         self.tile_request_table = tile_request_table
-        self.config = config
         self.job_table = job_table
 
     @metric_scope
@@ -53,7 +51,9 @@ class TileRequestHandler:
             # Set up our threaded tile worker pool
             raster_dataset, sensor_model = load_gdal_dataset(tile_request.image_path)
             region_request = self.tile_request_table.get_region_request(tile_request.tile_id)
-            tile_queue, tile_workers = setup_result_tile_workers(region_request, sensor_model, self.config.elevation_model)
+            tile_queue, tile_workers = setup_result_tile_workers(
+                region_request, sensor_model, AsyncServiceConfig.elevation_model
+            )
 
             # Process all our tiles
             _ = self.process_tiles(tile_request_item, tile_queue)

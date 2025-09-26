@@ -21,8 +21,9 @@ logger = logging.getLogger(__name__)
 EXTENSIONS_AVAILABLE = False
 try:
     # import osml_extensions
-    from osml_extensions.enhanced_model_runner import EnhancedModelRunner
-    # from osml_extensions.extensions.async_workflow.async_app_config import AsyncServiceConfig
+    # TODO: Make the model runner discoverable by the registry. 
+    # Or just hardcode it in with build in logic for async and live endpoints.
+    from osml_extensions.extensions.async_workflow.enhanced_model_runner import EnhancedModelRunner
 
     EXTENSIONS_AVAILABLE = True
     logger.info("Extensions package found and imported successfully")

@@ -33,14 +33,13 @@ from aws.osml.model_runner.tile_worker import TilingStrategy
 from aws.osml.model_runner.tile_worker.tile_worker_utils import _create_tile
 from aws.osml.photogrammetry import SensorModel
 
-from osml_extensions import EnhancedServiceConfig
 from osml_extensions.registry import HandlerType, register_handler
 
+from .async_app_config import AsyncServiceConfig
 from .errors import ExtensionRuntimeError
 from .database import TileRequestTable
 from .api import TileRequest
 from .workers import setup_submission_tile_workers
-from .async_app_config import AsyncServiceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +129,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
                 )
 
             # Handle self-throttling with enhanced monitoring
-            if self.config.self_throttling:
+            if AsyncServiceConfig.self_throttling:
                 max_regions = self.endpoint_utils.calculate_max_regions(
                     region_request.model_name, region_request.model_invocation_role
                 )
@@ -156,12 +155,12 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
 
                 # # Set up async worker pool
                 # worker_setup = self._setup_async_worker_pool(
-                #     region_request, sensor_model, self.config.elevation_model, metrics
+                #     region_request, sensor_model, AsyncServiceConfig.elevation_model, metrics
                 # )
 
                 # Set up our threaded tile worker pool
                 tile_queue, tile_workers = setup_submission_tile_workers(
-                    region_request, sensor_model, self.config.elevation_model
+                    region_request, sensor_model, AsyncServiceConfig.elevation_model
                 )
 
                 # Process tiles using appropriate method
@@ -189,7 +188,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
 
             finally:
                 # Decrement the endpoint region counter
-                if self.config.self_throttling:
+                if AsyncServiceConfig.self_throttling:
                     self.endpoint_statistics_table.decrement_region_count(region_request.model_name)
 
         except Exception as e:
@@ -201,7 +200,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
 
             # Check if we should fallback or re-raise
             # Check if we should fallback or re-raise
-            if isinstance(self.config, EnhancedServiceConfig) and not self.config.extension_fallback_enabled:
+            if isinstance(AsyncServiceConfig, AsyncServiceConfig) and not AsyncServiceConfig.extension_fallback_enabled:
                 raise ExtensionRuntimeError(f"Enhanced region processing failed: {e}") from e
 
             region_request_item.message = failed_msg
@@ -327,6 +326,40 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
             if isinstance(metrics, MetricsLogger):
                 metrics.put_metric("AsyncWorkerPool.ProcessingErrors", 1, str(Unit.COUNT.value))
             raise
+
+    def check_done(self, tile_request):
+        """
+        Check if all tiles for a region are done processing.
+
+        :param tile_request: TileRequest to check
+        :return: Tuple of (all_done, total_tile_count, failed_tile_count, region_request, region_request_item)
+        """
+        try:
+            # Get all tiles for this job
+            tiles = self.tile_request_table.get_tiles_for_job(tile_request.job_id)
+
+            total_tile_count = len(tiles)
+            failed_tile_count = 0
+            completed_count = 0
+
+            for tile in tiles:
+                if tile.status == "COMPLETED":
+                    completed_count += 1
+                elif tile.status == "FAILED":
+                    failed_tile_count += 1
+
+            all_done = (completed_count + failed_tile_count) == total_tile_count
+
+            # Get region request and region request item
+            region_request = self.tile_request_table.get_region_request(tile_request.tile_id)
+            region_request_item = self.region_request_table.get_region_request(tile_request.region_id)
+
+            return all_done, total_tile_count, failed_tile_count, region_request, region_request_item
+
+        except Exception as e:
+            logger.error(f"Error checking if region is done: {e}")
+            # Return safe defaults
+            return False, 0, 0, None, None
 
     @metric_scope
     def complete_region_request(self, tile_request: TileRequest, metrics):

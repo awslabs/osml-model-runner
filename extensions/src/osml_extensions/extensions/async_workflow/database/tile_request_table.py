@@ -14,6 +14,9 @@ from aws.osml.model_runner.database.exceptions import (
     UpdateRegionException,
     CompleteRegionException,
 )
+from aws.osml.model_runner.database import RegionRequestTable
+
+from ..async_app_config import AsyncServiceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +68,53 @@ class TileRequestItem(DDBItem):
             hash_value=self.tile_id,
             range_key="job_id",
             range_value=self.job_id,
+        )
+
+    @classmethod
+    def from_tile_request(cls, tile_request) -> "TileRequestItem":
+        """
+        Create a TileRequestItem from a TileRequest.
+
+        :param tile_request: TileRequest object to convert
+        :return: TileRequestItem instance
+        """
+        # Convert region bounds from List format to List[List[int]] format for tile_bounds
+        tile_bounds = None
+        if hasattr(tile_request, "region") and tile_request.region:
+            try:
+                # Convert region coordinates to integer bounds if they're numeric
+                if (
+                    isinstance(tile_request.region, list)
+                    and len(tile_request.region) == 2
+                    and all(isinstance(coord_pair, list) and len(coord_pair) == 2 for coord_pair in tile_request.region)
+                ):
+
+                    tile_bounds = [
+                        [int(tile_request.region[0][0]), int(tile_request.region[0][1])],
+                        [int(tile_request.region[1][0]), int(tile_request.region[1][1])],
+                    ]
+            except (ValueError, TypeError, IndexError) as e:
+                logger.warning(f"Could not convert region bounds to tile_bounds: {e}")
+                tile_bounds = None
+
+        return cls(
+            tile_id=tile_request.tile_id,
+            job_id=tile_request.job_id,
+            image_path=tile_request.image_path,
+            region=str(tile_request.region) if tile_request.region else None,
+            image_id=tile_request.image_id,
+            region_id=tile_request.region_id,
+            tile_bounds=tile_bounds,
+            # Set default values for optional fields
+            ttl=None,  # Will be set when starting the request
+            model_name=None,  # Can be set later if needed
+            tile_size=None,  # Can be derived from tile_bounds if needed
+            start_time=None,  # Will be set when starting processing
+            end_time=None,
+            status=None,  # Will be set to PENDING when starting
+            processing_duration=None,
+            retry_count=None,  # Will be set to 0 when starting
+            error_message=None,
         )
 
 
@@ -289,6 +339,70 @@ class TileRequestTable(DDBHelper):
         except Exception as e:
             raise UpdateRegionException("Failed to increment retry count!") from e
 
-    def get_region_request(self, tile_id: str):
-        # TODO: FILL OUT THIS FUNCTION
-        pass
+    def get_region_request(self, tile_id: str, region_request_table=None):
+        """
+        Get the region request associated with a tile ID by querying the RegionRequestTable.
+
+        :param tile_id: str = the unique identifier for the tile
+        :param region_request_table: Optional RegionRequestTable instance to use for lookup
+        :return: RegionRequest object or None
+        """
+        try:
+            # Since we don't have job_id, we need to scan the table to find the tile
+            # This is less efficient but necessary for this lookup pattern
+            response = self.table.scan(
+                FilterExpression="tile_id = :tile_id",
+                ExpressionAttributeValues={":tile_id": tile_id},
+                Limit=1,  # We only need one result
+            )
+
+            items = response.get("Items", [])
+            if not items:
+                logger.warning(f"No tile request found for tile_id: {tile_id}")
+                return None
+
+            # Convert the first item to TileRequestItem
+            tile_item_data = self.convert_decimal(items[0])
+            tile_item = from_dict(TileRequestItem, tile_item_data)
+
+            # Get the region_id from the tile item
+            region_id = tile_item.region_id
+            if not region_id:
+                logger.warning(f"No region_id found in tile item for tile_id: {tile_id}")
+                return None
+
+            # Use RegionRequestTable to get the actual region request
+            if region_request_table is None:
+                config = AsyncServiceConfig()
+                region_request_table = RegionRequestTable(config.region_request_table)
+
+            # Get the region request from the table
+            region_request_item = region_request_table.get_region_request(region_id)
+
+            if not region_request_item:
+                logger.warning(f"No region request found for region_id: {region_id}")
+                return None
+
+            # Convert RegionRequestItem to RegionRequest
+            from aws.osml.model_runner.api import RegionRequest
+
+            region_request = RegionRequest()
+            region_request.region_id = region_request_item.region_id
+            region_request.image_id = region_request_item.image_id
+            region_request.job_id = region_request_item.job_id
+            region_request.image_url = region_request_item.image_url
+            region_request.image_read_role = region_request_item.image_read_role
+            region_request.model_name = region_request_item.model_name
+            region_request.model_invoke_mode = region_request_item.model_invoke_mode
+            region_request.model_invocation_role = region_request_item.model_invocation_role
+            region_request.tile_size = region_request_item.tile_size
+            region_request.tile_overlap = region_request_item.tile_overlap
+            region_request.tile_format = region_request_item.tile_format
+            region_request.tile_compression = region_request_item.tile_compression
+            region_request.region_bounds = region_request_item.region_bounds
+
+            return region_request
+
+        except Exception as err:
+            logger.error(f"Failed to get region request for tile_id {tile_id}: {err}")
+            return None

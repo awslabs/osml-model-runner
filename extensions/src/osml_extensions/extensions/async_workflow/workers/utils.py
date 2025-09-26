@@ -3,7 +3,7 @@ from typing import Optional, Tuple, List
 from queue import Queue
 
 from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
-from aws.osml.model_runner.exceptions import SetupTileWorkersException
+from aws.osml.model_runner.tile_worker.exceptions import SetupTileWorkersException
 from aws.osml.model_runner.database import FeatureTable, RegionRequestTable
 from aws.osml.model_runner.api import RegionRequest
 from aws.osml.photogrammetry import ElevationModel, SensorModel
@@ -12,7 +12,7 @@ from aws.osml.model_runner.common import get_credentials_for_assumed_role
 
 from .async_tile_submission_worker import AsyncSubmissionWorker
 from .async_tile_results_worker import AsyncResultsWorker
-from ..async_app_config import EnhancedServiceConfig
+from ..async_app_config import AsyncServiceConfig
 from ..factory import EnhancedFeatureDetectorFactory
 
 # Set up logging configuration
@@ -34,17 +34,17 @@ def setup_result_tile_workers(
         tile_workers = []
 
         # Start polling workers
-        for i in range(EnhancedServiceConfig.polling_workers):
+        for i in range(AsyncServiceConfig.polling_workers):
 
             # Set up our feature table to work with the region quest
             feature_table = FeatureTable(
-                EnhancedServiceConfig.feature_table,
+                AsyncServiceConfig.feature_table,
                 region_request.tile_size,
                 region_request.tile_overlap,
             )
 
             # Set up our feature table to work with the region quest
-            region_request_table = RegionRequestTable(EnhancedServiceConfig.region_request_table)
+            region_request_table = RegionRequestTable(AsyncServiceConfig.region_request_table)
 
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed
@@ -105,16 +105,16 @@ def setup_submission_tile_workers(
         tile_queue: Queue = Queue()
         tile_workers = []
 
-        for i in range(int(EnhancedServiceConfig.workers)):
+        for i in range(int(AsyncServiceConfig.workers)):
             # Set up our feature table to work with the region quest
             # feature_table = FeatureTable(
-            #     EnhancedServiceConfig.feature_table,
+            #     AsyncServiceConfig.feature_table,
             #     region_request.tile_size,
             #     region_request.tile_overlap,
             # )
 
             # Set up our feature table to work with the region quest
-            # region_request_table = RegionRequestTable(EnhancedServiceConfig.region_request_table)
+            # region_request_table = RegionRequestTable(AsyncServiceConfig.region_request_table)
 
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed

@@ -16,4 +16,10 @@ from .async_errors import (
     WorkerPoolError,
     ProcessTileException,
 )
-from .extension_errors import ExtensionConfigurationError, ExtensionRuntimeError
+from .extension_errors import (
+    SelfThrottledTileException,
+    RetryableJobException,
+    ExtensionError,
+    ExtensionRuntimeError,
+    ExtensionConfigurationError,
+)

@@ -19,7 +19,7 @@ from aws.osml.model_runner.common import Timer
 from aws.osml.model_runner.inference.detector import Detector
 from aws.osml.model_runner.inference.sm_detector import SMDetector
 
-from ...errors import ExtensionConfigurationError
+from ..errors import ExtensionConfigurationError
 from ..async_app_config import AsyncServiceConfig
 from ..s3 import S3Manager, S3OperationError
 from ..api import ExtendedModelInvokeMode

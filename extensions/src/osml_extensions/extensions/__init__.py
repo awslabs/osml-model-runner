@@ -12,9 +12,6 @@ Importing this package will trigger registration of all available extensions.
 
 from . import async_workflow
 
-# Import all extension modules to trigger handler registration
-from .errors import *
-
 __all__ = [
     "async_workflow",
 ]

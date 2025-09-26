@@ -4,11 +4,11 @@ import logging
 import traceback
 from typing import Dict, Optional, Union
 
-from osml_extensions import EnhancedServiceConfig
 
 from aws.osml.model_runner.api import ModelInvokeMode
 from aws.osml.model_runner.inference.endpoint_factory import FeatureDetectorFactory
 
+from ..async_app_config import AsyncServiceConfig
 from ..api import ExtendedModelInvokeMode
 from ..detectors import AsyncSMDetectorBuilder
 from ..detectors.async_sm_detector import AsyncSMDetector
@@ -32,7 +32,7 @@ class EnhancedFeatureDetectorFactory(FeatureDetectorFactory):
         endpoint_mode: Union[ModelInvokeMode, ExtendedModelInvokeMode],
         assumed_credentials: Optional[Dict[str, str]] = None,
         use_extensions: Optional[bool] = None,
-        config: Optional[EnhancedServiceConfig] = None,
+        config: Optional[AsyncServiceConfig] = None,
     ):
         """
         Initialize the enhanced factory with extension support.
@@ -41,12 +41,12 @@ class EnhancedFeatureDetectorFactory(FeatureDetectorFactory):
         :param endpoint_mode: the type of endpoint (HTTP, SageMaker, or extended modes)
         :param assumed_credentials: optional credentials to use with the model
         :param use_extensions: override for extension usage (defaults to config)
-        :param config: EnhancedServiceConfig instance (defaults to new instance)
+        :param config: AsyncServiceConfig instance (defaults to new instance)
         """
         # Store the original mode for our enhanced logic
         self.original_endpoint_mode = endpoint_mode
         self.use_extensions = use_extensions
-        self.config = config or EnhancedServiceConfig()
+        self.config = config or AsyncServiceConfig()
 
         # Convert to base mode for parent class if needed
         if isinstance(endpoint_mode, ExtendedModelInvokeMode):
