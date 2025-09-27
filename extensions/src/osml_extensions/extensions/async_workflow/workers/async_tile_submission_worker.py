@@ -71,7 +71,9 @@ class AsyncSubmissionWorker(Thread):
                     # Get tile from queue with timeout
                     tile_info = self.tile_queue.get(timeout=1.0)
 
-                    logger.info(f"Got tile: {tile_info}, on worker: {self.worker_id}")
+                    logger.info(
+                        f"Got tile in submission worker from region handler: {tile_info}, on worker: {self.worker_id}"
+                    )
 
                     # Check for shutdown signal
                     if tile_info is None:
@@ -158,6 +160,7 @@ class AsyncSubmissionWorker(Thread):
             # Update tile status to FAILED due to submission error
             if self.tile_request_table and tile_info.get("tile_id") and tile_info.get("job_id"):
                 try:
+                    logger.info(f"Updating status for {tile_info=}")
                     self.tile_request_table.update_tile_status(
                         tile_info["tile_id"], tile_info["job_id"], "FAILED", f"Submission error: {str(e)}"
                     )

@@ -166,7 +166,7 @@ class EnhancedModelRunner(ModelRunner):
         if tile_request_attributes:
             ThreadingLocalContextFilter.set_context(tile_request_attributes)
             try:
-                logger.info(f"process file requests. {tile_request_attributes=}")
+                logger.info(f"process tile requests. {tile_request_attributes=}")
                 tile_request = TileRequest(tile_request_attributes)
                 tile_request_item = self._get_or_create_tile_request_item(tile_request)
                 image_request_item = self.tile_request_handler.process_tile_request(tile_request, tile_request_item)

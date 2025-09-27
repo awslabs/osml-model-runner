@@ -1,22 +1,24 @@
 import boto3
 from typing import Dict, Optional, Any
 import logging
-from queue import Queue
+from queue import Queue, Empty
 import time
+import asyncio
 
-from aws.osml.features import Geolocator
+from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
 from aws.osml.model_runner.database import FeatureTable, RegionRequestTable, JobTable
 from aws.osml.model_runner.app_config import MetricLabels
 from aws.osml.model_runner.app_config import BotoConfig
 from aws.osml.model_runner.tile_worker import TileWorker
 from aws.osml.model_runner.common import TileState
+from aws.osml.photogrammetry import SensorModel, ElevationModel
 
 from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 
 from ..s3 import S3Manager
-from .api import TileRequest
+from ..api import TileRequest
 from ..database import TileRequestTable, TileRequestItem
 from ..detectors import AsyncSMDetector
 from ..async_app_config import AsyncServiceConfig
@@ -43,28 +45,35 @@ class AsyncResultsWorker(TileWorker):
         geolocator: Optional[Geolocator],
         region_request_table: RegionRequestTable,
         tile_queue: Queue,
-        feature_detector: AsyncSMDetector,  # TODO: Is this needed here?
+        feature_detector: AsyncSMDetector,
         metrics_tracker: Optional[AsyncMetricsTracker] = None,
         assumed_credentials: Optional[Dict[str, str]] = None,
+        completion_queue: Optional[Queue] = None,
     ):
         """
         Initialize AsyncResultsWorker.
 
         :param worker_id: Unique identifier for this worker
         :param feature_table: FeatureTable for storing detected features
-        :param geolocator: Optional geolocator for feature positioning
+        :param geolocator: Optional geolocator for feature positioning (will be None for persistent workers)
         :param region_request_table: RegionRequestTable for tracking tile processing
         :param tile_queue: Queue containing submitted jobs
         :param feature_detector: AsyncSMDetector instance
         :param metrics_tracker: Optional metrics tracker
+        :param completion_queue: Optional queue for completion notifications
         """
 
-        super().__init__(tile_queue, feature_detector, geolocator, feature_table, region_request_table)
+        # Initialize without geolocator - will create per request
+        super().__init__(tile_queue, feature_detector, None, feature_table, region_request_table)
 
         self.name = f"AsyncResultsWorker-{worker_id}"
         self.worker_id = worker_id
         self.metrics_tracker = metrics_tracker
-        self.running = True
+        self.completion_queue = completion_queue
+
+        # Geolocator caching by image_id
+        self._cached_geolocator = None
+        self._cached_image_id = None
 
         self.tile_request_table = TileRequestTable(AsyncServiceConfig.tile_request_table)
         self.job_table = JobTable(AsyncServiceConfig.job_table)
@@ -86,6 +95,116 @@ class AsyncResultsWorker(TileWorker):
         self.async_config = AsyncServiceConfig.async_endpoint_config
 
         logger.info(f"AsyncResultsWorker-{worker_id} initialized")
+
+    def _get_or_create_geolocator(
+        self, image_id: str, sensor_model: Optional[SensorModel], elevation_model: Optional[ElevationModel]
+    ) -> Optional[Geolocator]:
+        """Get cached geolocator or create new one if image_id changed"""
+
+        # Check if we can reuse cached geolocator
+        if self._cached_geolocator is not None and self._cached_image_id == image_id:
+            logger.debug(f"AsyncResultsWorker-{self.worker_id} reusing cached geolocator for image_id: {image_id}")
+            return self._cached_geolocator
+
+        # Create new geolocator
+        if sensor_model is not None:
+            logger.debug(f"AsyncResultsWorker-{self.worker_id} creating new geolocator for image_id: {image_id}")
+            new_geolocator = Geolocator(ImagedFeaturePropertyAccessor(), sensor_model, elevation_model=elevation_model)
+
+            # Cache the new geolocator
+            self._cached_geolocator = new_geolocator
+            self._cached_image_id = image_id
+
+            return new_geolocator
+        else:
+            # No sensor model, clear cache
+            self._cached_geolocator = None
+            self._cached_image_id = None
+            return None
+
+    def run(self) -> None:
+        """Modified run method with geolocator caching"""
+        thread_event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(thread_event_loop)
+        while True:
+            try:
+                work_item = self.tile_queue.get(timeout=1.0)
+
+                if work_item is None:  # Shutdown signal
+                    break
+
+                try:
+                    request_id = work_item["request_id"]
+                    image_info = work_item["tile_request_item"]
+                    image_id = work_item.get("image_id")
+                    sensor_model = work_item.get("sensor_model")
+                    elevation_model = work_item.get("elevation_model")
+
+                    # Get or create geolocator for this image_id
+                    request_geolocator = self._get_or_create_geolocator(image_id, sensor_model, elevation_model)
+
+                    # Process using existing method with request-specific geolocator
+                    self.process_tile_with_geolocator(image_info, request_geolocator)
+
+                    # Signal completion
+                    if self.completion_queue:
+                        self.completion_queue.put(
+                            {
+                                "request_id": request_id,
+                                "status": "completed",
+                                "timestamp": time.time(),
+                                "worker_id": self.worker_id,
+                            }
+                        )
+
+                except Exception as e:
+                    logger.error(f"AsyncResultsWorker-{self.worker_id} error processing: {e}")
+
+                    # Signal failure
+                    if self.completion_queue:
+                        self.completion_queue.put(
+                            {
+                                "request_id": request_id,
+                                "status": "failed",
+                                "error": str(e),
+                                "timestamp": time.time(),
+                                "worker_id": self.worker_id,
+                            }
+                        )
+
+                finally:
+                    self.tile_queue.task_done()
+
+            except Empty:
+                continue
+            except Exception as e:
+                logger.error(f"Unexpected error in AsyncResultsWorker-{self.worker_id}: {e}")
+
+        try:
+            thread_event_loop.stop()
+            thread_event_loop.close()
+        except Exception as e:
+            logger.warning("Failed to stop and close the thread event loop")
+            logging.exception(e)
+
+    def process_tile_with_geolocator(self, image_info: Dict, geolocator: Optional[Geolocator]) -> None:
+        """Process tile with a specific geolocator (temporarily override self.geolocator)"""
+        # Temporarily set the geolocator for this request
+        original_geolocator = self.geolocator
+        self.geolocator = geolocator
+
+        try:
+            # Use existing process_tile method
+            self.process_tile(image_info)
+        finally:
+            # Restore original geolocator
+            self.geolocator = original_geolocator
+
+    def clear_geolocator_cache(self):
+        """Clear cached geolocator (useful for testing or memory management)"""
+        logger.debug(f"AsyncResultsWorker-{self.worker_id} clearing geolocator cache")
+        self._cached_geolocator = None
+        self._cached_image_id = None
 
     @metric_scope
     def process_tile(self, image_info: Dict, metrics: MetricsLogger = None) -> None:

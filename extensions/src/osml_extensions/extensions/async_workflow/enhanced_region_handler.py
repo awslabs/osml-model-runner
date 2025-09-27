@@ -174,6 +174,10 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
                     metrics=metrics,
                 )
 
+                image_request_item = self.job_table.get_image_request(region_request.image_id)
+
+                return image_request_item
+
             except Exception as err:
                 failed_msg = f"Enhanced handler failed to process image region: {err}"
                 logger.error(failed_msg)
@@ -308,7 +312,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
                             region_id=region_request_item.region_id,
                             image_id=region_request_item.image_id,
                             job_id=region_request_item.job_id,
-                            image_path=tmp_image_path,
+                            image_path=str(tmp_image_path.absolute()),
                             image_url=region_request.image_url,
                             tile_bounds=tile_bounds,
                         )

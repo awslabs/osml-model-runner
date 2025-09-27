@@ -4,6 +4,7 @@ import logging
 import time
 from dataclasses import dataclass
 from typing import List, Optional
+import traceback
 
 from dacite import from_dict
 
@@ -54,7 +55,7 @@ class TileRequestItem(DDBItem):
 
     tile_id: str
     job_id: str
-    image_url: str
+    image_url: Optional[str] = None
     image_path: Optional[str] = None
     image_id: Optional[str] = None
     region_id: Optional[str] = None
@@ -282,6 +283,7 @@ class TileRequestTable(DDBHelper):
 
             return from_dict(TileRequestItem, updated_item)
         except Exception as e:
+            logger.error(traceback.format_exc())
             raise UpdateRegionException("Failed to update tile status!") from e
 
     def complete_tile_request(

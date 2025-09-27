@@ -1,5 +1,8 @@
 import logging
+import time
+import uuid
 from typing import Optional
+from queue import Queue
 
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.metric_scope import metric_scope
@@ -30,6 +33,22 @@ class TileRequestHandler:
     ):
         self.tile_request_table = tile_request_table
         self.job_table = job_table
+        self.tile_status_monitor = tile_status_monitor
+
+        # Add persistent worker pool components
+        self._worker_pool = None
+        self._work_queue = None
+        self._completion_queue = Queue()
+
+    def _ensure_worker_pool(self, region_request):
+        """Lazy initialization of persistent worker pool (no sensor/elevation model)"""
+        if self._worker_pool is None:
+            self._work_queue, self._worker_pool = setup_result_tile_workers(
+                region_request,
+                sensor_model=None,  # Don't pass sensor model at setup
+                elevation_model=None,  # Don't pass elevation model at setup
+                completion_queue=self._completion_queue,
+            )
 
     @metric_scope
     def process_tile_request(
@@ -47,38 +66,34 @@ class TileRequestHandler:
             raise ValueError("Invalid Tile Request")
 
         try:
-
-            # Set up our threaded tile worker pool
+            # Load models for this specific request
             raster_dataset, sensor_model = load_gdal_dataset(tile_request.image_url)
             region_request = self.tile_request_table.get_region_request(tile_request.tile_id)
-            # using a subclass of TileWorker to reuse the code already there.
-            tile_queue, tile_workers = setup_result_tile_workers(
-                region_request, sensor_model, AsyncServiceConfig.elevation_model
-            )
 
-            # submit to worker queue.
-            # Using 'process_tiles" to maintain original TileWorker function naming.
-            # self.process_tiles(tile_request_item, tile_queue)
+            self._ensure_worker_pool(region_request)
 
-            tile_queue.put(tile_request_item.__dict__)
+            # Submit to persistent worker queue with models and image_id for this request
+            request_data = {
+                "request_id": str(uuid.uuid4()),
+                "tile_request_item": tile_request_item.__dict__,
+                "image_id": tile_request_item.image_id,  # Add image_id for caching
+                "sensor_model": sensor_model,
+                "elevation_model": AsyncServiceConfig.elevation_model,
+                "timestamp": time.time(),
+            }
+            self._work_queue.put(request_data)
 
-            # Put enough empty messages on the queue to shut down the workers
-            for i in range(len(tile_workers)):
-                tile_queue.put(None)
+            # Wait for completion
+            result = self._completion_queue.get()  # Blocks until worker completes
 
-                # Ensure the wait for tile workers happens within the context where we create
-                # the temp directory. If the context is exited before all workers return then
-                # the directory will be deleted, and we will potentially lose tiles.
-                # Wait for all the workers to finish gracefully before we clean up the temp directory
-                tile_error_count = 0
-                for worker in tile_workers:
-                    worker.join()
-                    tile_error_count += worker.failed_tile_count
+            if result["status"] == "failed":
+                raise Exception(result.get("error", "Worker processing failed"))
+
+            logger.info(f"Tile request {result['request_id']} completed successfully")
 
         except Exception as err:
             failed_msg = f"Failed to process image tile: {err}"
             logger.error(failed_msg)
-            # Update the table to record the failure
             tile_request_item.message = failed_msg
             return self.fail_tile_request(tile_request_item)
 
@@ -96,5 +111,10 @@ class TileRequestHandler:
             logger.exception(status_error)
             raise ProcessTileException("Failed to process image tile!")
 
-    # def process_tiles(self, tile_request_item, tile_queue):
-    #     tile_queue.put(tile_request_item.__dict__)
+    def shutdown(self):
+        """Gracefully shutdown worker pool"""
+        if self._worker_pool:
+            for worker in self._worker_pool:
+                self._work_queue.put(None)  # Shutdown signal
+            for worker in self._worker_pool:
+                worker.join()

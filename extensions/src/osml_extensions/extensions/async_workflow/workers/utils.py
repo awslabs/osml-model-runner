@@ -2,7 +2,6 @@ import logging
 from typing import Optional, Tuple, List
 from queue import Queue
 
-from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
 from aws.osml.model_runner.tile_worker.exceptions import SetupTileWorkersException
 from aws.osml.model_runner.database import FeatureTable, RegionRequestTable
 from aws.osml.model_runner.api import RegionRequest
@@ -21,8 +20,9 @@ logger = logging.getLogger(__name__)
 
 def setup_result_tile_workers(
     region_request: RegionRequest,
-    sensor_model: Optional[SensorModel] = None,
-    elevation_model: Optional[ElevationModel] = None,
+    sensor_model: Optional[SensorModel] = None,  # Keep for backward compatibility but ignore
+    elevation_model: Optional[ElevationModel] = None,  # Keep for backward compatibility but ignore
+    completion_queue: Optional[Queue] = None,
 ) -> Tuple[Queue, List[TileWorker]]:
 
     try:
@@ -58,19 +58,16 @@ def setup_result_tile_workers(
                 logger.error("Failed to create feature detector")
                 return None
 
-            # Set up geolocator
-            geolocator = None
-            if sensor_model is not None:
-                geolocator = Geolocator(ImagedFeaturePropertyAccessor(), sensor_model, elevation_model=elevation_model)
-
+            # Don't create geolocator here - will be created per request in worker
             logger.info(f"Starting the AsyncResultsWorker with {feature_detector=}")
             worker = AsyncResultsWorker(
                 worker_id=i,
                 feature_table=feature_table,
-                geolocator=geolocator,
+                geolocator=None,  # No geolocator at initialization
                 region_request_table=region_request_table,
                 tile_queue=tile_queue,
                 feature_detector=feature_detector,
+                completion_queue=completion_queue,
             )
             logger.info("Created poller worker")
             worker.start()
