@@ -5,7 +5,7 @@ from queue import Queue
 import time
 
 from aws.osml.features import Geolocator
-from aws.osml.model_runner.database import FeatureTable, RegionRequestTable
+from aws.osml.model_runner.database import FeatureTable, RegionRequestTable, JobTable
 from aws.osml.model_runner.app_config import MetricLabels
 from aws.osml.model_runner.app_config import BotoConfig
 from aws.osml.model_runner.tile_worker import TileWorker
@@ -16,7 +16,8 @@ from aws_embedded_metrics.unit import Unit
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 
 from ..s3 import S3Manager
-from ..database import TileRequestTable
+from .api import TileRequest
+from ..database import TileRequestTable, TileRequestItem
 from ..detectors import AsyncSMDetector
 from ..async_app_config import AsyncServiceConfig
 from ..metrics import AsyncMetricsTracker
@@ -66,9 +67,9 @@ class AsyncResultsWorker(TileWorker):
         self.running = True
 
         self.tile_request_table = TileRequestTable(AsyncServiceConfig.tile_request_table)
+        self.job_table = JobTable(AsyncServiceConfig.job_table)
 
         # Initialize async configuration
-
         if assumed_credentials is not None:
             # Use the provided credentials to invoke SageMaker endpoints in another AWS account.
             self.sm_client = boto3.client(
@@ -156,33 +157,46 @@ class AsyncResultsWorker(TileWorker):
             # Download and parse results
             feature_collection = AsyncServiceConfig._download_from_s3(output_location)
 
-            features = self._refine_features(feature_collection, image_info.tile_info)
+            # image_info = {
+            #             "image_path": tmp_image_path,
+            #             "region": tile_bounds,
+            #             "image_id": region_request_item.image_id,
+            #             "job_id": region_request_item.job_id,
+            #             "region_id": region_request_item.region_id,
+            #         }
+            features = self._refine_features(feature_collection, image_info)
 
             if len(features) > 0:
                 self.feature_table.add_features(features)
 
             self.region_request_table.add_tile(
-                image_info.tile_info.get("image_id"),
-                image_info.tile_info.get("region_id"),
-                image_info.tile_info.get("region"),
+                image_info.get("image_id"),
+                image_info.get("region_id"),
+                image_info.get("region"),
                 TileState.SUCCEEDED,
             )
 
             if self.metrics_tracker:
                 self.metrics_tracker.increment_counter("JobCompletions")
-                processing_time = time.time() - image_info.submitted_time
+                processing_time = time.time() - image_info.start_time
                 self.metrics_tracker.set_counter("JobProcessingTime", int(processing_time))
 
             # Update tile status to COMPLETED
-            if self.tile_request_table and image_info.tile_info.get("tile_id") and image_info.tile_info.get("job_id"):
+            if self.tile_request_table and image_info.get("tile_id") and image_info.get("job_id"):
                 try:
-                    self.tile_request_table.update_tile_status(
-                        image_info.tile_info["tile_id"], image_info.tile_info["job_id"], "COMPLETED"
-                    )
+                    self.tile_request_table.update_tile_status(image_info["tile_id"], image_info["job_id"], "COMPLETED")
                 except Exception as e:
                     logger.warning(f"Failed to update tile status to COMPLETED: {e}")
 
             logger.debug(f"AsyncResultsWorker-{self.worker_id} completed image_info: {image_info}")
+
+            tile_request = TileRequest.from_tile_request_dict()
+            _ = self.tile_request_table.complete_tile_request(tile_request.tile_id)  # region_request_item
+            tile_status = self.tile_status_monitor.get_status(tile_request.item)
+            tile_request_item = TileRequestItem.from_tile_request(tile_request)
+            tile_request_item = self.tile_request_table.complete_tile_request(tile_request_item, tile_status)
+
+            self.tile_status_monitor.process_event(tile_request_item, tile_status, "Completed tile processing")
 
         except Exception as e:
             logger.error(f"AsyncResultsWorker-{self.worker_id} error processing completed image_info {image_info}: {e}")

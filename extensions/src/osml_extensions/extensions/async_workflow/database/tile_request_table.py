@@ -7,6 +7,11 @@ from typing import List, Optional
 
 from dacite import from_dict
 
+from aws_embedded_metrics.metric_scope import metric_scope
+from aws_embedded_metrics.unit import Unit
+from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+
+from aws.osml.model_runner.app_config import MetricLabels
 from aws.osml.model_runner.database.ddb_helper import DDBHelper, DDBItem, DDBKey
 from aws.osml.model_runner.database.exceptions import (
     GetRegionRequestItemException,
@@ -14,9 +19,11 @@ from aws.osml.model_runner.database.exceptions import (
     UpdateRegionException,
     CompleteRegionException,
 )
-from aws.osml.model_runner.database import RegionRequestTable
+from aws.osml.model_runner.database import RegionRequestTable, JobTable
+from aws.osml.model_runner.api import RegionRequest
 
 from ..async_app_config import AsyncServiceConfig
+from ..api import TileRequest
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +54,8 @@ class TileRequestItem(DDBItem):
 
     tile_id: str
     job_id: str
+    image_url: str
     image_path: Optional[str] = None
-    region: Optional[str] = None
     image_id: Optional[str] = None
     region_id: Optional[str] = None
     ttl: Optional[int] = None
@@ -63,6 +70,8 @@ class TileRequestItem(DDBItem):
     tile_bounds: Optional[List[List[int]]] = None
 
     def __post_init__(self):
+        self.region = self.tile_bounds
+
         self.ddb_key = DDBKey(
             hash_key="tile_id",
             hash_value=self.tile_id,
@@ -100,8 +109,8 @@ class TileRequestItem(DDBItem):
         return cls(
             tile_id=tile_request.tile_id,
             job_id=tile_request.job_id,
-            image_path=tile_request.image_path,
-            region=str(tile_request.region) if tile_request.region else None,
+            image_path=str(tile_request.image_path),
+            image_url=str(tile_request.image_url),
             image_id=tile_request.image_id,
             region_id=tile_request.region_id,
             tile_bounds=tile_bounds,
@@ -117,6 +126,67 @@ class TileRequestItem(DDBItem):
             error_message=None,
         )
 
+    # TODO: SHOULD THIS MOVE TO THE TILE REQUEST TABLE
+    def is_region_request_complete(self, tile_request):
+        """
+        Check if all tiles for a region are done processing.
+
+        :param tile_request: TileRequest to check
+        :return: Tuple of (all_done, total_tile_count, failed_tile_count, region_request, region_request_item)
+        """
+        try:
+            # Get all tiles for this job
+            tiles = self.tile_request_table.get_tiles_for_region(tile_request.region_id)
+
+            total_tile_count = len(tiles)
+            failed_tile_count = 0
+            completed_count = 0
+
+            for tile in tiles:
+                if tile.status == "COMPLETED":
+                    completed_count += 1
+                elif tile.status == "FAILED":
+                    failed_tile_count += 1
+
+            all_done = (completed_count + failed_tile_count) == total_tile_count
+
+            # Get region request and region request item
+            region_request = self.tile_request_table.get_region_request(tile_request.tile_id)
+            region_request_item = self.region_request_table.get_region_request(tile_request.region_id)
+
+            return all_done, total_tile_count, failed_tile_count, region_request, region_request_item
+
+        except Exception as e:
+            logger.error(f"Error checking if region is done: {e}")
+            # Return safe defaults
+            return False, 0, 0, None, None
+
+    @metric_scope
+    def complete_region_request(self, tile_request: TileRequest, job_table: JobTable, metrics):
+
+        all_done, total_tile_count, failed_tile_count, region_request, region_request_item = self.is_region_request_complete(
+            tile_request
+        )
+
+        # Update table w/ total tile counts
+        region_request_item.total_tiles = total_tile_count
+        region_request_item.succeeded_tile_count = total_tile_count - failed_tile_count
+        region_request_item.failed_tile_count = failed_tile_count
+        region_request_item = self.region_request_table.update_region_request(region_request_item)
+
+        # Update the image request to complete this region
+        _ = job_table.complete_region_request(region_request.image_id, bool(failed_tile_count))  # image_request_item
+
+        # Update region request table if that region succeeded
+        region_status = self.region_status_monitor.get_status(region_request_item)
+        region_request_item = self.region_request_table.complete_region_request(region_request_item, region_status)
+
+        self.region_status_monitor.process_event(region_request_item, region_status, "Completed region processing")
+
+        # Write CloudWatch Metrics to the Logs
+        if isinstance(metrics, MetricsLogger):
+            metrics.put_metric(MetricLabels.INVOCATIONS, 1, str(Unit.COUNT.value))
+
 
 class TileRequestTable(DDBHelper):
     """
@@ -126,7 +196,7 @@ class TileRequestTable(DDBHelper):
 
     Access patterns:
     1. Get tile by id (primary table): Direct lookup using tile_id
-    2. Get tiles for job_id (GSI): Query using JobIdIndex GSI
+    2. Get tiles for region_id (GSI): Query using RegionIdIndex GSI
 
     :param table_name: str = the name of the table to interact with
 
@@ -283,11 +353,11 @@ class TileRequestTable(DDBHelper):
             logger.warning(f"Failed to check tile status for tile_id={tile_id}: {err}")
             return False
 
-    def get_tiles_for_job(self, job_id: str, status_filter: Optional[str] = None) -> List[TileRequestItem]:
+    def get_tiles_for_region(self, region_id: str, status_filter: Optional[str] = None) -> List[TileRequestItem]:
         """
-        Get all tiles for a specific job using the JobIdIndex GSI.
+        Get all tiles for a specific job using the RegionIdIndex GSI.
 
-        :param job_id: str = the job identifier
+        :param regin_id: str = the job identifier
         :param status_filter: Optional[str] = filter by specific status
 
         :return: List[TileRequestItem] = list of tile request items for the job
@@ -295,9 +365,9 @@ class TileRequestTable(DDBHelper):
         try:
             # Query the GSI using job_id as partition key
             query_kwargs = {
-                "IndexName": "JobIdIndex",
-                "KeyConditionExpression": "job_id = :job_id",
-                "ExpressionAttributeValues": {":job_id": job_id},
+                "IndexName": "RegionIdIndex",
+                "KeyConditionExpression": "region_id = :region_id",
+                "ExpressionAttributeValues": {":region_id": region_id},
             }
 
             # Add status filter if provided
@@ -315,7 +385,7 @@ class TileRequestTable(DDBHelper):
 
             return tiles
         except Exception as err:
-            logger.error(f"Failed to get tiles for job_id={job_id}: {err}")
+            logger.error(f"Failed to get tiles for region_id={region_id}: {err}")
             return []
 
     def increment_retry_count(self, tile_id: str, job_id: str) -> TileRequestItem:
@@ -384,8 +454,6 @@ class TileRequestTable(DDBHelper):
                 return None
 
             # Convert RegionRequestItem to RegionRequest
-            from aws.osml.model_runner.api import RegionRequest
-
             region_request = RegionRequest()
             region_request.region_id = region_request_item.region_id
             region_request.image_id = region_request_item.image_id

@@ -11,7 +11,6 @@ from secrets import token_hex
 
 from aws.osml.model_runner.queue import RequestQueue
 from aws.osml.model_runner.database import JobTable
-from aws.osml.model_runner.app_config import MetricLabels
 from aws.osml.model_runner.database import EndpointStatisticsTable
 from aws.osml.model_runner.common import EndpointUtils
 from aws.osml.model_runner.status import RegionStatusMonitor
@@ -37,7 +36,7 @@ from osml_extensions.registry import HandlerType, register_handler
 
 from .async_app_config import AsyncServiceConfig
 from .errors import ExtensionRuntimeError
-from .database import TileRequestTable
+from .database import TileRequestTable, TileRequestItem
 from .api import TileRequest
 from .workers import setup_submission_tile_workers
 
@@ -164,10 +163,11 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
                 )
 
                 # Process tiles using appropriate method
-                total_tile_count, failed_tile_count = self.queue_tile_request(
+                self.queue_tile_request(
                     tile_queue,
                     tile_workers,
                     self.tiling_strategy,
+                    region_request,
                     region_request_item,
                     raster_dataset,
                     sensor_model,
@@ -249,6 +249,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
         tile_queue,
         tile_workers,
         tiling_strategy,
+        region_request: RegionRequest,
         region_request_item: RegionRequestItem,
         raster_dataset,
         sensor_model: Optional[SensorModel],
@@ -303,16 +304,18 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
 
                         # Create image info
                         tile_request = TileRequest(
-                            str(uuid.uuid4()),
-                            region_request_item.region_id,
-                            region_request_item.image_id,
-                            region_request_item.job_id,
-                            tmp_image_path,
-                            tile_bounds,
+                            tile_id=str(uuid.uuid4()),
+                            region_id=region_request_item.region_id,
+                            image_id=region_request_item.image_id,
+                            job_id=region_request_item.job_id,
+                            image_path=tmp_image_path,
+                            image_url=region_request.image_url,
+                            tile_bounds=tile_bounds,
                         )
 
                         # Add tile to tracking database
-                        self.tile_request_table.start_tile_request(tile_request)
+                        tile_request_item = TileRequestItem.from_tile_request(tile_request)
+                        self.tile_request_table.start_tile_request(tile_request_item)
                         tile_queue.put(tile_request.__dict__)
 
                     # Put enough empty messages on the queue to shut down the workers
@@ -326,61 +329,3 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
             if isinstance(metrics, MetricsLogger):
                 metrics.put_metric("AsyncWorkerPool.ProcessingErrors", 1, str(Unit.COUNT.value))
             raise
-
-    def check_done(self, tile_request):
-        """
-        Check if all tiles for a region are done processing.
-
-        :param tile_request: TileRequest to check
-        :return: Tuple of (all_done, total_tile_count, failed_tile_count, region_request, region_request_item)
-        """
-        try:
-            # Get all tiles for this job
-            tiles = self.tile_request_table.get_tiles_for_job(tile_request.job_id)
-
-            total_tile_count = len(tiles)
-            failed_tile_count = 0
-            completed_count = 0
-
-            for tile in tiles:
-                if tile.status == "COMPLETED":
-                    completed_count += 1
-                elif tile.status == "FAILED":
-                    failed_tile_count += 1
-
-            all_done = (completed_count + failed_tile_count) == total_tile_count
-
-            # Get region request and region request item
-            region_request = self.tile_request_table.get_region_request(tile_request.tile_id)
-            region_request_item = self.region_request_table.get_region_request(tile_request.region_id)
-
-            return all_done, total_tile_count, failed_tile_count, region_request, region_request_item
-
-        except Exception as e:
-            logger.error(f"Error checking if region is done: {e}")
-            # Return safe defaults
-            return False, 0, 0, None, None
-
-    @metric_scope
-    def complete_region_request(self, tile_request: TileRequest, metrics):
-
-        all_done, total_tile_count, failed_tile_count, region_request, region_request_item = self.check_done(tile_request)
-
-        # Update table w/ total tile counts
-        region_request_item.total_tiles = total_tile_count
-        region_request_item.succeeded_tile_count = total_tile_count - failed_tile_count
-        region_request_item.failed_tile_count = failed_tile_count
-        region_request_item = self.region_request_table.update_region_request(region_request_item)
-
-        # Update the image request to complete this region
-        _ = self.job_table.complete_region_request(region_request.image_id, bool(failed_tile_count))  # image_request_item
-
-        # Update region request table if that region succeeded
-        region_status = self.region_status_monitor.get_status(region_request_item)
-        region_request_item = self.region_request_table.complete_region_request(region_request_item, region_status)
-
-        self.region_status_monitor.process_event(region_request_item, region_status, "Completed region processing")
-
-        # Write CloudWatch Metrics to the Logs
-        if isinstance(metrics, MetricsLogger):
-            metrics.put_metric(MetricLabels.INVOCATIONS, 1, str(Unit.COUNT.value))

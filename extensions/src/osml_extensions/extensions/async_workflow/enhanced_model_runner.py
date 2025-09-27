@@ -108,9 +108,9 @@ class EnhancedModelRunner(ModelRunner):
                 *region_handler_args, **region_handler_kwargs
             )
             self.tile_request_handler = TileRequestHandler(
-                tile_request_table=self.tile_request_table, 
-                job_table=self.job_table, 
-                tile_status_monitor=self.tile_status_monitor
+                tile_request_table=self.tile_request_table,
+                job_table=self.job_table,
+                tile_status_monitor=self.tile_status_monitor,
             )
 
             logger.debug(
@@ -166,24 +166,24 @@ class EnhancedModelRunner(ModelRunner):
         if tile_request_attributes:
             ThreadingLocalContextFilter.set_context(tile_request_attributes)
             try:
+                logger.info(f"process file requests. {tile_request_attributes=}")
                 tile_request = TileRequest(tile_request_attributes)
                 tile_request_item = self._get_or_create_tile_request_item(tile_request)
-                region_request, region_request_item, image_request, image_request_item = (
-                    self.tile_request_handler.process_tile_request(tile_request, tile_request_item)
-                )
+                image_request_item = self.tile_request_handler.process_tile_request(tile_request, tile_request_item)
 
                 # check if the region is done
-                if self.job_table.is_region_request_complete(region_request_item):
-                    self.region_request_handler.complete_region_request(tile_request)
+                done, _, _, region_request, _ = self.tile_request_table.is_region_request_complete(tile_request)
+                if done:
+                    self.tile_request_table.complete_region_request(tile_request, self.job_table)
 
                 # Check if the whole image is done
+                image_request_item = self.job_table.get_image_request(tile_request.image_id)
                 if self.job_table.is_image_request_complete(image_request_item):
-
-                    raster_dataset, sensor_model = load_gdal_dataset(tile_request.image_path)
-
+                    raster_dataset, sensor_model = load_gdal_dataset(tile_request.image_url)
                     self.image_request_handler.complete_image_request(
                         region_request, str(raster_dataset.GetDriver().ShortName).upper(), raster_dataset, sensor_model
                     )
+
                 # finish the current request
                 self.tile_request_queue.finish_request(receipt_handle)
             except RetryableJobException as err:

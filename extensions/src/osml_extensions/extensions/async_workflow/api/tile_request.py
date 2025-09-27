@@ -12,8 +12,9 @@ class TileRequest:
     region_id: str
     image_id: str
     job_id: str
-    image_path: str
-    region: List
+    image_path: str  # path to tile image
+    image_url: str  # path to full image in S3
+    tile_bounds: List
 
     def is_valid(self) -> bool:
         """
@@ -42,11 +43,14 @@ class TileRequest:
             logger.error("Invalid image_path in TileRequest: must be a non-empty string")
             return False
 
+        if not self.image_url.startswith("s3://"):
+            logger.error(f"Invalid image_url format in TileRequest: {self.image_url}")
+
         # Basic validation for image path (check if it's a reasonable path format)
         try:
             # Accept both S3 paths and local file paths
-            if not (self.image_path.startswith("s3://") or Path(self.image_path).is_absolute() or "/" in self.image_path):
-                logger.error(f"Invalid image_path format in TileRequest: {self.image_path}")
+            if self.image_url.startswith("s3://") or Path(self.image_path).is_absolute() or "/" in self.image_path:
+                logger.error(f"Invalid image_url format in TileRequest: {self.image_path}")
                 return False
         except Exception as e:
             logger.error(f"Error validating image_path in TileRequest: {e}")
@@ -85,3 +89,21 @@ class TileRequest:
             return False
 
         return True
+
+    @classmethod
+    def from_tile_request_dict(cls, data):
+        """
+        Create a TileRequest from a dictionary (typically from TileRequestItem).
+
+        :param data: Dictionary containing tile request data
+        :return: TileRequest instance
+        """
+        return cls(
+            tile_id=data.get("tile_id", ""),
+            region_id=data.get("region_id", ""),
+            image_id=data.get("image_id", ""),
+            job_id=data.get("job_id", ""),
+            image_path=data.get("image_path", ""),
+            image_url=data.get("image_url", ""),
+            tile_bounds=data.get("tile_bounds", []),
+        )

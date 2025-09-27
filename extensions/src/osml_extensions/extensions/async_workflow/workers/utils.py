@@ -34,7 +34,7 @@ def setup_result_tile_workers(
         tile_workers = []
 
         # Start polling workers
-        for i in range(AsyncServiceConfig.polling_workers):
+        for i in range(1):  # AsyncServiceConfig.polling_workers):
 
             # Set up our feature table to work with the region quest
             feature_table = FeatureTable(
@@ -62,6 +62,8 @@ def setup_result_tile_workers(
             geolocator = None
             if sensor_model is not None:
                 geolocator = Geolocator(ImagedFeaturePropertyAccessor(), sensor_model, elevation_model=elevation_model)
+
+            logger.info(f"Starting the AsyncResultsWorker with {feature_detector=}")
             worker = AsyncResultsWorker(
                 worker_id=i,
                 feature_table=feature_table,

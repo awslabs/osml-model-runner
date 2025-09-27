@@ -49,23 +49,31 @@ class TileRequestHandler:
         try:
 
             # Set up our threaded tile worker pool
-            raster_dataset, sensor_model = load_gdal_dataset(tile_request.image_path)
+            raster_dataset, sensor_model = load_gdal_dataset(tile_request.image_url)
             region_request = self.tile_request_table.get_region_request(tile_request.tile_id)
+            # using a subclass of TileWorker to reuse the code already there.
             tile_queue, tile_workers = setup_result_tile_workers(
                 region_request, sensor_model, AsyncServiceConfig.elevation_model
             )
 
-            # Process all our tiles
-            _ = self.process_tiles(tile_request_item, tile_queue)
+            # submit to worker queue.
+            # Using 'process_tiles" to maintain original TileWorker function naming.
+            # self.process_tiles(tile_request_item, tile_queue)
 
-            region_request_item = self.job_table.complete_tile_request(tile_request.tile_id)
-            tile_status = self.tile_status_monitor.get_status(tile_request.item)
-            tile_request_item = self.tile_request_table.complete_tile_request(tile_request_item, tile_status)
+            tile_queue.put(tile_request_item.__dict__)
 
-            self.tile_status_monitor.process_event(tile_request_item, tile_status, "Completed tile processing")
+            # Put enough empty messages on the queue to shut down the workers
+            for i in range(len(tile_workers)):
+                tile_queue.put(None)
 
-            # Return the updated item
-            return region_request_item
+                # Ensure the wait for tile workers happens within the context where we create
+                # the temp directory. If the context is exited before all workers return then
+                # the directory will be deleted, and we will potentially lose tiles.
+                # Wait for all the workers to finish gracefully before we clean up the temp directory
+                tile_error_count = 0
+                for worker in tile_workers:
+                    worker.join()
+                    tile_error_count += worker.failed_tile_count
 
         except Exception as err:
             failed_msg = f"Failed to process image tile: {err}"
@@ -82,11 +90,11 @@ class TileRequestHandler:
             tile_status = RequestStatus.FAILED
             tile_request_item = self.tile_request_table.complete_tile_request(tile_request_item, tile_status)
             self.tile_status_monitor.process_event(tile_request_item, tile_status, "Completed tile processing")
-            return self.job_table.complete_tile_request(tile_request_item.image_id, error=True)
+            return self.tile_request_table.complete_tile_request(tile_request_item.image_id, error=True)
         except Exception as status_error:
             logger.error("Unable to update tile status in job table")
             logger.exception(status_error)
             raise ProcessTileException("Failed to process image tile!")
 
-    def process_tiles(self, tile_request_item, tile_queue):
-        tile_queue.put(tile_request_item.__dict__)
+    # def process_tiles(self, tile_request_item, tile_queue):
+    #     tile_queue.put(tile_request_item.__dict__)
