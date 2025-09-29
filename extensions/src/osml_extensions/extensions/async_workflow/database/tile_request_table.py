@@ -23,27 +23,40 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TileRequestItem(DDBItem):
     """
-    TileRequestItem is a dataclass meant to represent a single item in the Tile table.
+    TileRequestItem is a dataclass representing a single tile processing request in the DynamoDB table.
 
-    The data schema is defined as follows:
-    tile_id: str = primary key - unique identifier for the tile
-    job_id: str = secondary key - job identifier for tracking
-    image_path: Optional[str] = path to the image file
-    region: Optional[str] = region identifier
-    image_id: Optional[str] = image identifier
-    region_id: Optional[str] = region identifier
-    expire_time: Optional[int] = time to live for the item (ttl)
-    model_name: Optional[str] = name of the model used for processing
-    tile_size: Optional[List[int]] = size dimensions of the tile [width, height]
-    start_time: Optional[int] = time in epoch milliseconds when tile processing started
-    end_time: Optional[int] = time in epoch milliseconds when tile processing ended
-    tile_status: Optional[str] = tile processing status - PENDING, PROCESSING, COMPLETED, FAILED
-    processing_duration: Optional[int] = time in milliseconds to complete tile processing
-    retry_count: Optional[int] = number of times the tile processing has been retried
-    error_message: Optional[str] = error message if tile processing failed
-    tile_bounds: Optional[List[List[int]]] = pixel bounds that define the tile [[x1, y1], [x2, y2]]
-    inference_id: Optional[str] = SageMaker async inference ID
-    output_location: Optional[str] = S3 output location for results
+    DynamoDB Schema:
+    - Primary Key: region_id (hash key) + tile_id (range key)
+    - GSI: OutputLocationIndex on output_location (projects region_id, tile_id only)
+    - TTL: expire_time (set to 7 days from creation)
+
+    Attributes:
+        tile_id (str): Unique identifier for the tile (range key)
+        region_id (str): Region identifier (hash key)
+        job_id (Optional[str]): Job identifier for tracking
+        image_url (Optional[str]): URL to the image file
+        image_path (Optional[str]): Path to the image file
+        image_id (Optional[str]): Image identifier
+        expire_time (Optional[int]): TTL timestamp (7 days from creation)
+        start_time (Optional[int]): Processing start time in epoch milliseconds
+        end_time (Optional[int]): Processing end time in epoch milliseconds
+        tile_status (Optional[str]): Processing status - PENDING, PROCESSING, COMPLETED, FAILED
+        processing_duration (Optional[int]): Processing time in milliseconds (end_time - start_time)
+        retry_count (Optional[int]): Number of processing retries (initialized to 0)
+        error_message (Optional[str]): Error message if processing failed
+        tile_bounds (Optional[List[List[int]]]): Pixel bounds [[x1, y1], [x2, y2]] (converted to tuple)
+        inference_id (Optional[str]): SageMaker async inference job ID
+        output_location (Optional[str]): S3 output location for results
+        model_invocation_role (str): IAM role for model invocation
+        tile_size (Optional[List[int]]): Tile dimensions [width, height]
+        tile_overlap (Optional[List[int]]): Tile overlap dimensions
+        model_invoke_mode (Optional[str]): Model invocation mode
+        model_name (str): Name of the model used for processing
+        image_read_role (Optional[str]): IAM role for reading images
+
+    Note:
+        - tile_bounds is converted to tuple of tuples in __post_init__ for DynamoDB compatibility
+        - region attribute is set to tile_bounds for backward compatibility
     """
 
     tile_id: str

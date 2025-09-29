@@ -48,10 +48,10 @@ class EnhancedImageRequestHandler(ImageRequestHandler):
 
         image_request.model_invoke_mode = ExtendedModelInvokeMode["SM_ENDPOINT_ASYNC"]
 
-        # logger.info(f"image request model invoke: {image_request.model_invoke_mode}")
-        # logger.info(f"from detector: {AsyncSMDetector.model_invoke_mode}")
+        if "-async" not in image_request.model_name:
+            image_request.model_name = f"{image_request.model_name}-async"
 
-        logger.info(f"image_request: {image_request}")
+        logger.info(f"Enhanced MR image_request: {image_request}")
 
         super().queue_region_request(
             all_regions=all_regions,

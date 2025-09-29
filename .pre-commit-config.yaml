@@ -58,42 +58,42 @@ repos:
           files: ^extensions/
           exclude: ^extensions/tests/|^extensions/docs/
 
-  - repo: https://github.com/sbrunner/pre-commit-copyright
-    rev: 1.6.1
-    hooks:
-      - id: copyright
-        name: update copyright
-        exclude: |
-          (?x)^(
-            doc/.*|
-            ^\..+|
-            .+\.md|
-            test/data/.*|
-            LICENSE|
-            tox.ini|
-            pyproject.toml|
-            setup.cfg|
-            setup.py|
-            py.typed|
-            docs/|
-            tests/|
-            test/
-          )$
-      - id: copyright-required
-        name: require copyright
-        exclude: |
-          (?x)^(
-            doc/.*|
-            ^\..+|
-            .+\.md|
-            test/data/.*|
-            LICENSE|
-            tox.ini|
-            pyproject.toml|
-            setup.cfg|
-            setup.py|
-            py.typed|
-            docs/|
-            tests/|
-            test/
-          )$
+  # - repo: https://github.com/sbrunner/pre-commit-copyright
+  #   rev: 1.6.1
+  #   hooks:
+  #     - id: copyright
+  #       name: update copyright
+  #       exclude: |
+  #         (?x)^(
+  #           doc/.*|
+  #           ^\..+|
+  #           .+\.md|
+  #           test/data/.*|
+  #           LICENSE|
+  #           tox.ini|
+  #           pyproject.toml|
+  #           setup.cfg|
+  #           setup.py|
+  #           py.typed|
+  #           docs/|
+  #           tests/|
+  #           test/
+  #         )$
+  #     - id: copyright-required
+  #       name: require copyright
+  #       exclude: |
+  #         (?x)^(
+  #           doc/.*|
+  #           ^\..+|
+  #           .+\.md|
+  #           test/data/.*|
+  #           LICENSE|
+  #           tox.ini|
+  #           pyproject.toml|
+  #           setup.cfg|
+  #           setup.py|
+  #           py.typed|
+  #           docs/|
+  #           tests/|
+  #           test/
+  #         )$

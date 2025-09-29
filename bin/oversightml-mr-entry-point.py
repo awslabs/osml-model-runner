@@ -84,7 +84,7 @@ def use_extensions() -> bool:
 
     :return: bool = True if extensions should be used, False otherwise
     """
-    env_value = os.getenv("USE_EXTENSIONS", "true").lower()
+    env_value = os.getenv("USE_EXTENSIONS", "false").lower()
     return env_value in ("true", "1")
 
 
