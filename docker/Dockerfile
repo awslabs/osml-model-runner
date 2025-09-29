@@ -59,7 +59,7 @@ RUN ${PYTHON_BINARY} -m pip install \
 
 # install extensions as separate package
 COPY extensions/ /home/extensions/
-RUN python3 -m pip install \
+RUN python3.11 -m pip install \
     --no-cache-dir \
     --index-url ${PIP_INDEX_URL} \ 
     --trusted-host https://mirrors.gs.mil \
@@ -119,7 +119,7 @@ ENV AWS_SESSION_TOKEN=testing
 # Extension configuration
 ENV USE_EXTENSIONS=true
 
-RUN python3 -m pip install \
+RUN python3.11 -m pip install \
     --no-cache-dir \
     --index-url ${PIP_INDEX_URL} \
     --trusted-host ${PIP_TRUSTED_HOST} \

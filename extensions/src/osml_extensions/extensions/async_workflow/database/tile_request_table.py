@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TileRequestItem(DDBItem):
     """
-    TileRequestItem is a dataclass meant to represent a single item in the Tile table.
+    TileRequestItem is a dataclass representing a single tile processing request in the DynamoDB table.
 
     The data schema is defined as follows:
     tile_id: str = primary key - unique identifier for the tile
