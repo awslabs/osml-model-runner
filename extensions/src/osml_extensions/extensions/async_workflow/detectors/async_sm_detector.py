@@ -10,11 +10,9 @@ from typing import Dict, Optional, Any
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.metric_scope import metric_scope
 
-# from aws_embedded_metrics.unit import Unit
 from botocore.exceptions import ClientError
 from geojson import FeatureCollection
 
-# from aws.osml.model_runner.app_config import MetricLabels
 from aws.osml.model_runner.common import Timer
 from aws.osml.model_runner.inference.detector import Detector
 from aws.osml.model_runner.inference.sm_detector import SMDetector
@@ -90,7 +88,7 @@ class AsyncSMDetector(SMDetector):
         raise NotImplementedError()
 
     def _invoke_async_endpoint(
-        self, input_s3_uri: str, metrics: Optional[MetricsLogger], custom_attributes: Optional[Dict[str, Any]]
+        self, input_s3_uri: str, metrics: Optional[MetricsLogger], custom_attributes: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         Invoke SageMaker async endpoint with S3 input URI.
@@ -99,7 +97,7 @@ class AsyncSMDetector(SMDetector):
         :param metrics: Optional metrics logger
         :return: Inference job ID
         """
-        logger.info(f"Invoking async endpoint: {self.endpoint} for object: {input_s3_uri}")
+        logger.debug(f"Invoking async endpoint: {self.endpoint} for object: {input_s3_uri}")
 
         try:
             with Timer(
@@ -123,7 +121,7 @@ class AsyncSMDetector(SMDetector):
             if not inference_id:
                 raise ExtensionConfigurationError("No inference ID returned from async endpoint")
 
-            logger.info(f"Async inference submitted with ID: {inference_id}")
+            logger.debug(f"Async inference submitted with ID: {inference_id}")
             return inference_id, output_location
 
         except ClientError as e:

@@ -12,6 +12,7 @@ from aws.osml.gdal import load_gdal_dataset
 from aws.osml.model_runner.database import JobTable
 from aws.osml.model_runner.app_config import MetricLabels
 from aws.osml.model_runner.common import RequestStatus
+from aws.osml.model_runner.api import get_image_path
 
 from .database import TileRequestTable, TileRequestItem
 from .async_app_config import AsyncServiceConfig
@@ -40,11 +41,11 @@ class TileRequestHandler:
         self._work_queue = None
         self._completion_queue = Queue()
 
-    def _ensure_worker_pool(self, region_request):
+    def _ensure_worker_pool(self, tile_request):
         """Lazy initialization of persistent worker pool (no sensor/elevation model)"""
         if self._worker_pool is None:
             self._work_queue, self._worker_pool = setup_result_tile_workers(
-                region_request,
+                tile_request,
                 sensor_model=None,  # Don't pass sensor model at setup
                 elevation_model=None,  # Don't pass elevation model at setup
                 completion_queue=self._completion_queue,
@@ -67,10 +68,10 @@ class TileRequestHandler:
 
         try:
             # Load models for this specific request
-            raster_dataset, sensor_model = load_gdal_dataset(tile_request.image_url)
-            region_request = self.tile_request_table.get_region_request(tile_request.tile_id)
+            image_path = get_image_path(tile_request.image_url, tile_request.image_read_role)
+            raster_dataset, sensor_model = load_gdal_dataset(image_path)
 
-            self._ensure_worker_pool(region_request)
+            self._ensure_worker_pool(tile_request)
 
             # Submit to persistent worker queue with models and image_id for this request
             request_data = {

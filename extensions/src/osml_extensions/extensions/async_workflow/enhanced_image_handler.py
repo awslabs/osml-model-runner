@@ -15,7 +15,6 @@ from aws.osml.photogrammetry import SensorModel
 from aws.osml.model_runner.common import ImageRegion
 from aws.osml.model_runner.api import ImageRequest
 
-# from .detectors import AsyncSMDetector
 from .api import ExtendedModelInvokeMode
 
 

@@ -8,11 +8,7 @@ import traceback
 
 from dacite import from_dict
 
-from aws_embedded_metrics.metric_scope import metric_scope
-from aws_embedded_metrics.unit import Unit
-from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 
-from aws.osml.model_runner.app_config import MetricLabels
 from aws.osml.model_runner.database.ddb_helper import DDBHelper, DDBItem, DDBKey
 from aws.osml.model_runner.database.exceptions import (
     GetRegionRequestItemException,
@@ -20,11 +16,6 @@ from aws.osml.model_runner.database.exceptions import (
     UpdateRegionException,
     CompleteRegionException,
 )
-from aws.osml.model_runner.database import RegionRequestTable, JobTable
-from aws.osml.model_runner.api import RegionRequest
-
-from ..async_app_config import AsyncServiceConfig
-from ..api import TileRequest
 
 logger = logging.getLogger(__name__)
 
@@ -41,43 +32,54 @@ class TileRequestItem(DDBItem):
     region: Optional[str] = region identifier
     image_id: Optional[str] = image identifier
     region_id: Optional[str] = region identifier
-    ttl: Optional[int] = time to live for the item (expire_time)
+    expire_time: Optional[int] = time to live for the item (ttl)
     model_name: Optional[str] = name of the model used for processing
     tile_size: Optional[List[int]] = size dimensions of the tile [width, height]
     start_time: Optional[int] = time in epoch milliseconds when tile processing started
     end_time: Optional[int] = time in epoch milliseconds when tile processing ended
-    status: Optional[str] = tile processing status - PENDING, PROCESSING, COMPLETED, FAILED
+    tile_status: Optional[str] = tile processing status - PENDING, PROCESSING, COMPLETED, FAILED
     processing_duration: Optional[int] = time in milliseconds to complete tile processing
     retry_count: Optional[int] = number of times the tile processing has been retried
     error_message: Optional[str] = error message if tile processing failed
     tile_bounds: Optional[List[List[int]]] = pixel bounds that define the tile [[x1, y1], [x2, y2]]
+    inference_id: Optional[str] = SageMaker async inference ID
+    output_location: Optional[str] = S3 output location for results
     """
 
     tile_id: str
-    job_id: str
+    region_id: str
+    job_id: Optional[str] = None
     image_url: Optional[str] = None
     image_path: Optional[str] = None
     image_id: Optional[str] = None
-    region_id: Optional[str] = None
-    ttl: Optional[int] = None
-    model_name: Optional[str] = None
-    tile_size: Optional[List[int]] = None
+    expire_time: Optional[int] = None
     start_time: Optional[int] = None
     end_time: Optional[int] = None
-    status: Optional[str] = None
+    tile_status: Optional[str] = None
     processing_duration: Optional[int] = None
     retry_count: Optional[int] = None
     error_message: Optional[str] = None
     tile_bounds: Optional[List[List[int]]] = None
+    inference_id: Optional[str] = None  # SageMaker async inference ID
+    output_location: Optional[str] = None  # S3 output location for results
+    model_invocation_role: str = ""
+    tile_size: Optional[List[int]] = None
+    tile_overlap: Optional[List[int]] = None
+    model_invoke_mode: Optional[str] = None
+    model_name: str = ""
+    image_read_role: Optional[str] = None
 
     def __post_init__(self):
+        # needs to be a tuple of tuples for the add_tile operation
+        if self.tile_bounds is not None:
+            self.tile_bounds = tuple([tuple(x) for x in self.tile_bounds])
         self.region = self.tile_bounds
 
         self.ddb_key = DDBKey(
-            hash_key="tile_id",
-            hash_value=self.tile_id,
-            range_key="job_id",
-            range_value=self.job_id,
+            hash_key="region_id",
+            hash_value=self.region_id,
+            range_key="tile_id",
+            range_value=self.tile_id,
         )
 
     @classmethod
@@ -88,25 +90,6 @@ class TileRequestItem(DDBItem):
         :param tile_request: TileRequest object to convert
         :return: TileRequestItem instance
         """
-        # Convert region bounds from List format to List[List[int]] format for tile_bounds
-        tile_bounds = None
-        if hasattr(tile_request, "region") and tile_request.region:
-            try:
-                # Convert region coordinates to integer bounds if they're numeric
-                if (
-                    isinstance(tile_request.region, list)
-                    and len(tile_request.region) == 2
-                    and all(isinstance(coord_pair, list) and len(coord_pair) == 2 for coord_pair in tile_request.region)
-                ):
-
-                    tile_bounds = [
-                        [int(tile_request.region[0][0]), int(tile_request.region[0][1])],
-                        [int(tile_request.region[1][0]), int(tile_request.region[1][1])],
-                    ]
-            except (ValueError, TypeError, IndexError) as e:
-                logger.warning(f"Could not convert region bounds to tile_bounds: {e}")
-                tile_bounds = None
-
         return cls(
             tile_id=tile_request.tile_id,
             job_id=tile_request.job_id,
@@ -114,79 +97,23 @@ class TileRequestItem(DDBItem):
             image_url=str(tile_request.image_url),
             image_id=tile_request.image_id,
             region_id=tile_request.region_id,
-            tile_bounds=tile_bounds,
-            # Set default values for optional fields
-            ttl=None,  # Will be set when starting the request
-            model_name=None,  # Can be set later if needed
-            tile_size=None,  # Can be derived from tile_bounds if needed
+            tile_bounds=tile_request.tile_bounds,
+            inference_id=getattr(tile_request, "inference_id", ""),
+            output_location=tile_request.output_location or "UNKNOWN",
+            expire_time=None,  # Will be set when starting the request
             start_time=None,  # Will be set when starting processing
             end_time=None,
-            status=None,  # Will be set to PENDING when starting
+            tile_status=None,  # Will be set to PENDING when starting
             processing_duration=None,
             retry_count=None,  # Will be set to 0 when starting
             error_message=None,
+            model_invocation_role=tile_request.model_invocation_role,
+            tile_size=tile_request.tile_size,
+            tile_overlap=tile_request.tile_overlap,
+            model_invoke_mode=tile_request.model_invoke_mode,
+            model_name=tile_request.model_name,
+            image_read_role=tile_request.image_read_role,
         )
-
-    # TODO: SHOULD THIS MOVE TO THE TILE REQUEST TABLE
-    def is_region_request_complete(self, tile_request):
-        """
-        Check if all tiles for a region are done processing.
-
-        :param tile_request: TileRequest to check
-        :return: Tuple of (all_done, total_tile_count, failed_tile_count, region_request, region_request_item)
-        """
-        try:
-            # Get all tiles for this job
-            tiles = self.tile_request_table.get_tiles_for_region(tile_request.region_id)
-
-            total_tile_count = len(tiles)
-            failed_tile_count = 0
-            completed_count = 0
-
-            for tile in tiles:
-                if tile.status == "COMPLETED":
-                    completed_count += 1
-                elif tile.status == "FAILED":
-                    failed_tile_count += 1
-
-            all_done = (completed_count + failed_tile_count) == total_tile_count
-
-            # Get region request and region request item
-            region_request = self.tile_request_table.get_region_request(tile_request.tile_id)
-            region_request_item = self.region_request_table.get_region_request(tile_request.region_id)
-
-            return all_done, total_tile_count, failed_tile_count, region_request, region_request_item
-
-        except Exception as e:
-            logger.error(f"Error checking if region is done: {e}")
-            # Return safe defaults
-            return False, 0, 0, None, None
-
-    @metric_scope
-    def complete_region_request(self, tile_request: TileRequest, job_table: JobTable, metrics):
-
-        all_done, total_tile_count, failed_tile_count, region_request, region_request_item = self.is_region_request_complete(
-            tile_request
-        )
-
-        # Update table w/ total tile counts
-        region_request_item.total_tiles = total_tile_count
-        region_request_item.succeeded_tile_count = total_tile_count - failed_tile_count
-        region_request_item.failed_tile_count = failed_tile_count
-        region_request_item = self.region_request_table.update_region_request(region_request_item)
-
-        # Update the image request to complete this region
-        _ = job_table.complete_region_request(region_request.image_id, bool(failed_tile_count))  # image_request_item
-
-        # Update region request table if that region succeeded
-        region_status = self.region_status_monitor.get_status(region_request_item)
-        region_request_item = self.region_request_table.complete_region_request(region_request_item, region_status)
-
-        self.region_status_monitor.process_event(region_request_item, region_status, "Completed region processing")
-
-        # Write CloudWatch Metrics to the Logs
-        if isinstance(metrics, MetricsLogger):
-            metrics.put_metric(MetricLabels.INVOCATIONS, 1, str(Unit.COUNT.value))
 
 
 class TileRequestTable(DDBHelper):
@@ -196,8 +123,9 @@ class TileRequestTable(DDBHelper):
     working with items from the table.
 
     Access patterns:
-    1. Get tile by id (primary table): Direct lookup using tile_id
-    2. Get tiles for region_id (GSI): Query using RegionIdIndex GSI
+    1. Get tile by region_id + tile_id (primary table): Direct lookup using region_id + tile_id
+    2. Get tiles for region_id (primary table): Query using region_id
+    3. Get tile by output_location (GSI): Query using OutputLocationIndex GSI (projects region_id, tile_id only)
 
     :param table_name: str = the name of the table to interact with
 
@@ -220,11 +148,11 @@ class TileRequestTable(DDBHelper):
 
             # Update the tile item to have the correct start parameters
             tile_request_item.start_time = start_time_millisec
-            tile_request_item.status = "PENDING"
+            tile_request_item.tile_status = "PENDING"
             tile_request_item.retry_count = 0
             tile_request_item.processing_duration = 0
             # Set TTL to 7 days from now
-            tile_request_item.ttl = int((start_time_millisec / 1000) + (7 * 24 * 60 * 60))
+            tile_request_item.expire_time = int((start_time_millisec / 1000) + (7 * 24 * 60 * 60))
 
             # Put the item into the table
             self.put_ddb_item(tile_request_item)
@@ -234,41 +162,41 @@ class TileRequestTable(DDBHelper):
             raise StartRegionException("Failed to add tile request to the table!") from err
 
     def update_tile_status(
-        self, tile_id: str, job_id: str, status: str, error_message: Optional[str] = None
+        self, tile_id: str, region_id: str, tile_status: str, error_message: Optional[str] = None
     ) -> TileRequestItem:
         """
-        Update the status of a tile processing request.
+        Update the tile_status of a tile processing request.
 
         :param tile_id: str = the unique identifier for the tile
-        :param job_id: str = the job identifier
-        :param status: str = new status (PROCESSING, COMPLETED, FAILED)
-        :param error_message: Optional[str] = error message if status is FAILED
+        :param region_id: str = the region identifier
+        :param tile_status: str = new status (PROCESSING, COMPLETED, FAILED)
+        :param error_message: Optional[str] = error message if tile_status is FAILED
 
         :return: TileRequestItem = Updated tile request item
         """
         try:
             current_time = int(time.time() * 1000)
 
-            # Create a minimal item for the update
-            tile_item = TileRequestItem(tile_id=tile_id, job_id=job_id)
+            # Create item with correct primary key (region_id + tile_id)
+            tile_item = TileRequestItem(tile_id=tile_id, region_id=region_id)
 
             # Build update expression
-            update_expr = "SET #status = :status, last_updated_time = :current_time"
-            update_attr = {":status": status, ":current_time": current_time}
-            expr_attr_names = {"#status": "status"}
+            update_expr = "SET #tile_status = :tile_status, last_updated_time = :current_time"
+            update_attr = {":tile_status": tile_status, ":current_time": current_time}
+            expr_attr_names = {"#tile_status": "tile_status"}
 
-            # Add start_time when status changes to PROCESSING
-            if status == "PROCESSING":
+            # Add start_time when tile_status changes to PROCESSING
+            if tile_status == "PROCESSING":
                 update_expr += ", start_time = :start_time"
                 update_attr[":start_time"] = current_time
 
             # Add end_time and processing_duration if completing
-            if status in ["COMPLETED", "FAILED"]:
+            if tile_status in ["COMPLETED", "FAILED"]:
                 update_expr += ", end_time = :end_time"
                 update_attr[":end_time"] = current_time
 
                 # Calculate processing duration if start_time exists
-                existing_item = self.get_tile_request(tile_id, job_id)
+                existing_item = self.get_tile_request(tile_id, region_id)
                 if existing_item and existing_item.start_time:
                     processing_duration = current_time - existing_item.start_time
                     update_expr += ", processing_duration = :processing_duration"
@@ -279,22 +207,30 @@ class TileRequestTable(DDBHelper):
                 update_expr += ", error_message = :error_message"
                 update_attr[":error_message"] = error_message
 
-            updated_item = self.update_ddb_item(tile_item, update_expr, update_attr, expr_attr_names)
+            # Use direct table.update_item call since we need ExpressionAttributeNames
+            response = self.table.update_item(
+                Key=self.get_keys(ddb_item=tile_item),
+                UpdateExpression=update_expr,
+                ExpressionAttributeValues=update_attr,
+                ExpressionAttributeNames=expr_attr_names,
+                ReturnValues="ALL_NEW",
+            )
+            updated_item = self.convert_decimal(response["Attributes"])
 
             return from_dict(TileRequestItem, updated_item)
         except Exception as e:
             logger.error(traceback.format_exc())
-            raise UpdateRegionException("Failed to update tile status!") from e
+            raise UpdateRegionException("Failed to update tile_status!") from e
 
     def complete_tile_request(
-        self, tile_request_item: TileRequestItem, status: str, error_message: Optional[str] = None
+        self, tile_request_item: TileRequestItem, tile_status: str, error_message: Optional[str] = None
     ) -> TileRequestItem:
         """
-        Complete a tile processing request with final status.
+        Complete a tile processing request with final tile_status.
 
         :param tile_request_item: TileRequestItem = the tile request item to complete
-        :param status: str = final status (COMPLETED, FAILED)
-        :param error_message: Optional[str] = error message if status is FAILED
+        :param tile_status: str = final tile_status (COMPLETED, FAILED)
+        :param error_message: Optional[str] = error message if tile_status is FAILED
 
         :return: TileRequestItem = Updated tile request item
         """
@@ -302,7 +238,7 @@ class TileRequestTable(DDBHelper):
             current_time = int(time.time() * 1000)
 
             tile_request_item.end_time = current_time
-            tile_request_item.status = status
+            tile_request_item.tile_status = tile_status
 
             if tile_request_item.start_time:
                 tile_request_item.processing_duration = current_time - tile_request_item.start_time
@@ -310,47 +246,56 @@ class TileRequestTable(DDBHelper):
             if error_message:
                 tile_request_item.error_message = error_message
 
+            # Ensure the item has the correct primary key structure
+            if not tile_request_item.output_location:
+                tile_request_item.output_location = ""
+
             return from_dict(
                 TileRequestItem,
                 self.update_ddb_item(tile_request_item),
             )
         except Exception as e:
+            logger.error(traceback.format_exc())
             raise CompleteRegionException("Failed to complete tile request!") from e
 
-    def get_tile_request(self, tile_id: str, job_id: str) -> Optional[TileRequestItem]:
+    def get_tile_request(self, tile_id: str, region_id: str) -> Optional[TileRequestItem]:
         """
-        Get a TileRequestItem object from the table based on the tile_id and job_id provided.
+        Get a TileRequestItem object from the table based on the tile_id and region_id provided.
         This uses the primary table for optimal performance.
 
         :param tile_id: str = the unique identifier for the tile
-        :param job_id: str = the job identifier
+        :param region_id: str = the region identifier
 
         :return: Optional[TileRequestItem] = tile request item
         """
         try:
             return from_dict(
                 TileRequestItem,
-                self.get_ddb_item(TileRequestItem(tile_id=tile_id, job_id=job_id)),
+                self.get_ddb_item(TileRequestItem(tile_id=tile_id, region_id=region_id)),
             )
         except Exception as err:
             logger.warning(GetRegionRequestItemException(f"Failed to get TileRequestItem! {err}"))
             return None
 
-    def is_tile_done(self, tile_id: str, job_id: str) -> bool:
+    def is_tile_item_done(self, tile_item: TileRequestItem):
+        if tile_item and tile_item.tile_status:
+            return tile_item.tile_status in ["COMPLETED", "FAILED"]
+        return False
+
+    def is_tile_done(self, tile_id: str, region_id: str) -> bool:
         """
+        NOT USED
         Check if a tile is done processing (COMPLETED or FAILED status).
         Optimized for the primary access pattern "is tile with id done?".
 
         :param tile_id: str = the unique identifier for the tile
-        :param job_id: str = the job identifier
+        :param region_id: str = the region identifier
 
         :return: bool = True if tile is done (COMPLETED or FAILED), False otherwise
         """
         try:
-            tile_item = self.get_tile_request(tile_id, job_id)
-            if tile_item and tile_item.status:
-                return tile_item.status in ["COMPLETED", "FAILED"]
-            return False
+            tile_item = self.get_tile_request(tile_id, region_id)
+            return self.is_tile_item_done(tile_item)
         except Exception as err:
             logger.warning(f"Failed to check tile status for tile_id={tile_id}: {err}")
             return False
@@ -365,18 +310,17 @@ class TileRequestTable(DDBHelper):
         :return: List[TileRequestItem] = list of tile request items for the job
         """
         try:
-            # Query the GSI using job_id as partition key
+            # Query the table using job_id as partition key
             query_kwargs = {
-                "IndexName": "RegionIdIndex",
                 "KeyConditionExpression": "region_id = :region_id",
                 "ExpressionAttributeValues": {":region_id": region_id},
             }
 
             # Add status filter if provided
             if status_filter:
-                query_kwargs["FilterExpression"] = "#status = :status"
-                query_kwargs["ExpressionAttributeNames"] = {"#status": "status"}
-                query_kwargs["ExpressionAttributeValues"][":status"] = status_filter
+                query_kwargs["FilterExpression"] = "#tile_status = :tile_status"
+                query_kwargs["ExpressionAttributeNames"] = {"#tile_status": "tile_status"}
+                query_kwargs["ExpressionAttributeValues"][":tile_status"] = status_filter
 
             response = self.table.query(**query_kwargs)
 
@@ -390,17 +334,18 @@ class TileRequestTable(DDBHelper):
             logger.error(f"Failed to get tiles for region_id={region_id}: {err}")
             return []
 
-    def increment_retry_count(self, tile_id: str, job_id: str) -> TileRequestItem:
+    def increment_retry_count(self, tile_id: str, region_id: str) -> TileRequestItem:
         """
+        NOT USED
         Increment the retry count for a tile processing request.
 
         :param tile_id: str = the unique identifier for the tile
-        :param job_id: str = the job identifier
+        :param region_id: str = the region identifier
 
         :return: TileRequestItem = Updated tile request item
         """
         try:
-            tile_item = TileRequestItem(tile_id=tile_id, job_id=job_id)
+            tile_item = TileRequestItem(tile_id=tile_id, region_id=region_id)
 
             update_expr = "ADD retry_count :increment"
             update_attr = {":increment": 1}
@@ -411,68 +356,114 @@ class TileRequestTable(DDBHelper):
         except Exception as e:
             raise UpdateRegionException("Failed to increment retry count!") from e
 
-    def get_region_request(self, tile_id: str, region_request_table=None):
+    def get_tile_request_by_output_location(self, output_location: str) -> Optional[TileRequestItem]:
         """
-        Get the region request associated with a tile ID by querying the RegionRequestTable.
+        Get a TileRequestItem by its output location using the OutputLocationIndex GSI.
+        Note: This GSI only projects region_id and tile_id, so a second query is needed for full item.
 
-        :param tile_id: str = the unique identifier for the tile
-        :param region_request_table: Optional RegionRequestTable instance to use for lookup
-        :return: RegionRequest object or None
+        :param output_location: str = the S3 output location to search for
+
+        :return: Optional[TileRequestItem] = tile request item if found
         """
         try:
-            # Since we don't have job_id, we need to scan the table to find the tile
-            # This is less efficient but necessary for this lookup pattern
-            response = self.table.scan(
-                FilterExpression="tile_id = :tile_id",
-                ExpressionAttributeValues={":tile_id": tile_id},
+            # Query the OutputLocationIndex GSI using output_location as partition key
+            response = self.table.query(
+                IndexName="OutputLocationIndex",
+                KeyConditionExpression="output_location = :output_location",
+                ExpressionAttributeValues={":output_location": output_location},
                 Limit=1,  # We only need one result
             )
 
             items = response.get("Items", [])
             if not items:
-                logger.warning(f"No tile request found for tile_id: {tile_id}")
+                logger.warning(f"No tile request found for output_location: {output_location}")
                 return None
 
-            # Convert the first item to TileRequestItem
-            tile_item_data = self.convert_decimal(items[0])
-            tile_item = from_dict(TileRequestItem, tile_item_data)
+            # The GSI only projects region_id and tile_id, so we need to get the full item
+            gsi_item = self.convert_decimal(items[0])
+            region_id = gsi_item.get("region_id")
+            tile_id = gsi_item.get("tile_id")
 
-            # Get the region_id from the tile item
-            region_id = tile_item.region_id
-            if not region_id:
-                logger.warning(f"No region_id found in tile item for tile_id: {tile_id}")
+            if not region_id or not tile_id:
+                logger.error(f"Missing region_id or tile_id in GSI result for output_location: {output_location}")
                 return None
 
-            # Use RegionRequestTable to get the actual region request
-            if region_request_table is None:
-                config = AsyncServiceConfig()
-                region_request_table = RegionRequestTable(config.region_request_table)
-
-            # Get the region request from the table
-            region_request_item = region_request_table.get_region_request(region_id)
-
-            if not region_request_item:
-                logger.warning(f"No region request found for region_id: {region_id}")
-                return None
-
-            # Convert RegionRequestItem to RegionRequest
-            region_request = RegionRequest()
-            region_request.region_id = region_request_item.region_id
-            region_request.image_id = region_request_item.image_id
-            region_request.job_id = region_request_item.job_id
-            region_request.image_url = region_request_item.image_url
-            region_request.image_read_role = region_request_item.image_read_role
-            region_request.model_name = region_request_item.model_name
-            region_request.model_invoke_mode = region_request_item.model_invoke_mode
-            region_request.model_invocation_role = region_request_item.model_invocation_role
-            region_request.tile_size = region_request_item.tile_size
-            region_request.tile_overlap = region_request_item.tile_overlap
-            region_request.tile_format = region_request_item.tile_format
-            region_request.tile_compression = region_request_item.tile_compression
-            region_request.region_bounds = region_request_item.region_bounds
-
-            return region_request
+            # Get the full item from the primary table
+            return self.get_tile_request(tile_id, region_id)
 
         except Exception as err:
-            logger.error(f"Failed to get region request for tile_id {tile_id}: {err}")
+            logger.error(f"Failed to get tile request by output_location {output_location}: {err}")
             return None
+
+    def update_tile_inference_info(
+        self, tile_id: str, region_id: str, inference_id: str, output_location: str
+    ) -> TileRequestItem:
+        """
+        Update the inference_id and output_location for a tile processing request.
+
+        :param tile_id: str = the unique identifier for the tile
+        :param region_id: str = the region identifier
+        :param inference_id: str = SageMaker async inference ID
+        :param output_location: str = S3 output location for results
+
+        :return: TileRequestItem = Updated tile request item
+        """
+        try:
+            current_time = int(time.time() * 1000)
+
+            # Create item with correct primary key (region_id + tile_id)
+            tile_item = TileRequestItem(tile_id=tile_id, region_id=region_id)
+
+            # Build update expression
+            update_expr = (
+                "SET inference_id = :inference_id, output_location = :output_location, last_updated_time = :current_time"
+            )
+            update_attr = {
+                ":inference_id": inference_id,
+                ":output_location": output_location,
+                ":current_time": current_time,
+            }
+
+            # Use direct table.update_item call
+            response = self.table.update_item(
+                Key=self.get_keys(ddb_item=tile_item),
+                UpdateExpression=update_expr,
+                ExpressionAttributeValues=update_attr,
+                ReturnValues="ALL_NEW",
+            )
+            updated_item = self.convert_decimal(response["Attributes"])
+
+            return from_dict(TileRequestItem, updated_item)
+        except Exception as e:
+            logger.error(traceback.format_exc())
+            raise UpdateRegionException("Failed to update tile inference info!") from e
+
+    def is_region_request_complete(self, tile_request_item: TileRequestItem):
+        """
+        Check if all tiles for a region are done processing.
+
+        :param tile_request_item: TileRequestItem to check
+        :return: Tuple of (all_done, total_tile_count, failed_tile_count, region_request, region_request_item)
+        """
+        try:
+            # Get all tiles for this job
+            tiles = self.get_tiles_for_region(tile_request_item.region_id)
+
+            total_tile_count = len(tiles)
+            failed_tile_count = 0
+            completed_count = 0
+
+            for tile in tiles:
+                if tile.tile_status == "COMPLETED":
+                    completed_count += 1
+                elif tile.tile_status == "FAILED":
+                    failed_tile_count += 1
+
+            all_done = (completed_count + failed_tile_count) == total_tile_count
+
+            return all_done, total_tile_count, failed_tile_count
+
+        except Exception as e:
+            logger.error(f"Error checking if region is done: {e}")
+            # Return safe defaults
+            return False, 0, 0, None, None

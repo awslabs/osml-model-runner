@@ -4,6 +4,7 @@ import logging
 from queue import Queue, Empty
 import time
 import asyncio
+import traceback
 
 from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
 from aws.osml.model_runner.database import FeatureTable, RegionRequestTable, JobTable
@@ -18,8 +19,7 @@ from aws_embedded_metrics.unit import Unit
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 
 from ..s3 import S3Manager
-from ..api import TileRequest
-from ..database import TileRequestTable, TileRequestItem
+from ..database import TileRequestTable
 from ..detectors import AsyncSMDetector
 from ..async_app_config import AsyncServiceConfig
 from ..metrics import AsyncMetricsTracker
@@ -44,7 +44,7 @@ class AsyncResultsWorker(TileWorker):
         feature_table: FeatureTable,
         geolocator: Optional[Geolocator],
         region_request_table: RegionRequestTable,
-        tile_queue: Queue,
+        in_queue: Queue,
         feature_detector: AsyncSMDetector,
         metrics_tracker: Optional[AsyncMetricsTracker] = None,
         assumed_credentials: Optional[Dict[str, str]] = None,
@@ -57,14 +57,14 @@ class AsyncResultsWorker(TileWorker):
         :param feature_table: FeatureTable for storing detected features
         :param geolocator: Optional geolocator for feature positioning (will be None for persistent workers)
         :param region_request_table: RegionRequestTable for tracking tile processing
-        :param tile_queue: Queue containing submitted jobs
+        :param in_queue: Queue containing submitted jobs
         :param feature_detector: AsyncSMDetector instance
         :param metrics_tracker: Optional metrics tracker
         :param completion_queue: Optional queue for completion notifications
         """
 
         # Initialize without geolocator - will create per request
-        super().__init__(tile_queue, feature_detector, None, feature_table, region_request_table)
+        super().__init__(in_queue, feature_detector, None, feature_table, region_request_table)
 
         self.name = f"AsyncResultsWorker-{worker_id}"
         self.worker_id = worker_id
@@ -128,7 +128,7 @@ class AsyncResultsWorker(TileWorker):
         asyncio.set_event_loop(thread_event_loop)
         while True:
             try:
-                work_item = self.tile_queue.get(timeout=1.0)
+                work_item = self.in_queue.get(timeout=1.0)
 
                 if work_item is None:  # Shutdown signal
                     break
@@ -173,7 +173,7 @@ class AsyncResultsWorker(TileWorker):
                         )
 
                 finally:
-                    self.tile_queue.task_done()
+                    self.in_queue.task_done()
 
             except Empty:
                 continue
@@ -231,33 +231,31 @@ class AsyncResultsWorker(TileWorker):
             tile_id = image_info.get("tile_id")
             job_id = image_info.get("job_id")
 
-            current_time = time.time()
-
-            tile_item = self.tile_request_table.get_tile_request(tile_id, job_id)
+            tile_item = self.tile_request_table.get_tile_request(tile_id, image_info.get("region_id"))
             if not tile_item:
                 logger.warning(f"Could not find tile item for {tile_id}, {job_id}")
                 return
 
-            job_status = tile_item.status
+            job_status = tile_item.tile_status
 
             logger.debug(f"AsyncResultsWorker-{self.worker_id} image_info: {tile_item}")
 
-            if job_status == "COMPLETED":
+            if job_status == "PROCESSING":
                 # Get output location from image_info's output_s3_uri
-                output_location = getattr(image_info, "output_s3_uri", None)
+                output_location = image_info.get("output_location")
                 if output_location:
                     self._process_completed_job(image_info, output_location)
                 else:
-                    logger.error(f"Job {image_info} completed but no output location")
+                    logger.error(f"Job [{type(image_info)}]{image_info} completed but no output location")
                     self._handle_failed_job(image_info, "No output location")
 
             elif job_status == "FAILED":
                 error_message = tile_item.error_message or "Job failed"
                 self._handle_failed_job(image_info, error_message)
 
-            # Check for timeout
-            elif current_time - image_info["submitted_time"] > AsyncServiceConfig.async_endpoint_config.max_wait_time:
-                self._handle_failed_job(image_info, "Job timed out")
+            # # Check for timeout
+            # elif time.time() - image_info["submitted_time"] > AsyncServiceConfig.async_endpoint_config.max_wait_time:
+            #     self._handle_failed_job(image_info, "Job timed out")
 
         except Exception as e:
             logger.error(f"AsyncResultsWorker-{self.worker_id} error image_info {image_info}: {e}")
@@ -274,7 +272,7 @@ class AsyncResultsWorker(TileWorker):
             logger.info(f"AsyncResultsWorker-{self.worker_id} processing completed image_info: {image_info}")
 
             # Download and parse results
-            feature_collection = AsyncServiceConfig._download_from_s3(output_location)
+            feature_collection = S3_MANAGER._download_from_s3(output_location)
 
             # image_info = {
             #             "image_path": tmp_image_path,
@@ -297,28 +295,21 @@ class AsyncResultsWorker(TileWorker):
 
             if self.metrics_tracker:
                 self.metrics_tracker.increment_counter("JobCompletions")
-                processing_time = time.time() - image_info.start_time
+                processing_time = time.time() - image_info["start_time"]
                 self.metrics_tracker.set_counter("JobProcessingTime", int(processing_time))
 
             # Update tile status to COMPLETED
-            if self.tile_request_table and image_info.get("tile_id") and image_info.get("job_id"):
+            if self.tile_request_table and image_info.get("tile_id") and image_info.get("region_id"):
                 try:
-                    self.tile_request_table.update_tile_status(image_info["tile_id"], image_info["job_id"], "COMPLETED")
+                    self.tile_request_table.update_tile_status(image_info["tile_id"], image_info["region_id"], "COMPLETED")
                 except Exception as e:
                     logger.warning(f"Failed to update tile status to COMPLETED: {e}")
 
             logger.debug(f"AsyncResultsWorker-{self.worker_id} completed image_info: {image_info}")
 
-            tile_request = TileRequest.from_tile_request_dict()
-            _ = self.tile_request_table.complete_tile_request(tile_request.tile_id)  # region_request_item
-            tile_status = self.tile_status_monitor.get_status(tile_request.item)
-            tile_request_item = TileRequestItem.from_tile_request(tile_request)
-            tile_request_item = self.tile_request_table.complete_tile_request(tile_request_item, tile_status)
-
-            self.tile_status_monitor.process_event(tile_request_item, tile_status, "Completed tile processing")
-
         except Exception as e:
             logger.error(f"AsyncResultsWorker-{self.worker_id} error processing completed image_info {image_info}: {e}")
+            logger.error(f"traceback: {traceback.format_exc()}")
             self._handle_failed_job(image_info, f"Result processing error: {e}")
 
     def _handle_failed_job(self, image_info: Dict[str, Any], reason: str) -> None:
@@ -328,11 +319,9 @@ class AsyncResultsWorker(TileWorker):
         logger.error(f"AsyncResultsWorker-{self.worker_id} image_info {image_info} failed: {reason}")
 
         # Update tile status to FAILED
-        if self.tile_request_table and image_info.tile_info.get("tile_id") and image_info.tile_info.get("job_id"):
+        if self.tile_request_table and image_info.get("tile_id") and image_info.get("region_id"):
             try:
-                self.tile_request_table.update_tile_status(
-                    image_info.tile_info["tile_id"], image_info.tile_info["job_id"], "FAILED", reason
-                )
+                self.tile_request_table.update_tile_status(image_info["tile_id"], image_info["region_id"], "FAILED", reason)
             except Exception as e:
                 logger.warning(f"Failed to update tile status to FAILED: {e}")
 

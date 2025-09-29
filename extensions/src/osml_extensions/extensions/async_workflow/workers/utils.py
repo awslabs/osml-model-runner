@@ -13,13 +13,14 @@ from .async_tile_submission_worker import AsyncSubmissionWorker
 from .async_tile_results_worker import AsyncResultsWorker
 from ..async_app_config import AsyncServiceConfig
 from ..factory import EnhancedFeatureDetectorFactory
+from ..api import TileRequest
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
 
 
 def setup_result_tile_workers(
-    region_request: RegionRequest,
+    tile_request: TileRequest,
     sensor_model: Optional[SensorModel] = None,  # Keep for backward compatibility but ignore
     elevation_model: Optional[ElevationModel] = None,  # Keep for backward compatibility but ignore
     completion_queue: Optional[Queue] = None,
@@ -27,8 +28,8 @@ def setup_result_tile_workers(
 
     try:
         model_invocation_credentials = None
-        if region_request.model_invocation_role:
-            model_invocation_credentials = get_credentials_for_assumed_role(region_request.model_invocation_role)
+        if tile_request.model_invocation_role:
+            model_invocation_credentials = get_credentials_for_assumed_role(tile_request.model_invocation_role)
 
         tile_queue: Queue = Queue()
         tile_workers = []
@@ -39,8 +40,8 @@ def setup_result_tile_workers(
             # Set up our feature table to work with the region quest
             feature_table = FeatureTable(
                 AsyncServiceConfig.feature_table,
-                region_request.tile_size,
-                region_request.tile_overlap,
+                tile_request.tile_size,
+                tile_request.tile_overlap,
             )
 
             # Set up our feature table to work with the region quest
@@ -49,8 +50,8 @@ def setup_result_tile_workers(
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed
             feature_detector = EnhancedFeatureDetectorFactory(
-                endpoint=region_request.model_name,
-                endpoint_mode=region_request.model_invoke_mode,
+                endpoint=tile_request.model_name,
+                endpoint_mode=tile_request.model_invoke_mode,
                 assumed_credentials=model_invocation_credentials,
             ).build()
 
@@ -65,7 +66,7 @@ def setup_result_tile_workers(
                 feature_table=feature_table,
                 geolocator=None,  # No geolocator at initialization
                 region_request_table=region_request_table,
-                tile_queue=tile_queue,
+                in_queue=tile_queue,
                 feature_detector=feature_detector,
                 completion_queue=completion_queue,
             )
@@ -105,15 +106,6 @@ def setup_submission_tile_workers(
         tile_workers = []
 
         for i in range(int(AsyncServiceConfig.workers)):
-            # Set up our feature table to work with the region quest
-            # feature_table = FeatureTable(
-            #     AsyncServiceConfig.feature_table,
-            #     region_request.tile_size,
-            #     region_request.tile_overlap,
-            # )
-
-            # Set up our feature table to work with the region quest
-            # region_request_table = RegionRequestTable(AsyncServiceConfig.region_request_table)
 
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed
@@ -125,11 +117,6 @@ def setup_submission_tile_workers(
 
             worker = AsyncSubmissionWorker(worker_id=i, tile_queue=tile_queue, feature_detector=feature_detector)
 
-            # geolocator = None
-            # if sensor_model is not None:
-            #     geolocator = Geolocator(ImagedFeaturePropertyAccessor(), sensor_model, elevation_model=elevation_model)
-
-            # worker = TileWorker(tile_queue, feature_detector, geolocator, feature_table, region_request_table)
             worker.start()
             tile_workers.append(worker)
 

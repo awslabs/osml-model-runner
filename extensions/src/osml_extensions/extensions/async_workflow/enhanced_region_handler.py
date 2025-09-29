@@ -279,6 +279,7 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
             if region_request_item.image_read_role:
                 image_read_credentials = get_credentials_for_assumed_role(region_request_item.image_read_role)
 
+            tiles_submitted = 0
             logger.debug(f"Processing tiles with creds: {image_read_credentials}")
             with GDALConfigEnv().with_aws_credentials(image_read_credentials):
                 # Create GDAL tile factory
@@ -315,16 +316,25 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
                             image_path=str(tmp_image_path.absolute()),
                             image_url=region_request.image_url,
                             tile_bounds=tile_bounds,
+                            model_invocation_role=region_request.model_invocation_role,
+                            tile_size=region_request.tile_size,
+                            tile_overlap=region_request.tile_overlap,
+                            model_invoke_mode=str(region_request.model_invoke_mode),
+                            model_name=region_request.model_name,
+                            image_read_role=region_request.image_read_role,
                         )
 
                         # Add tile to tracking database
                         tile_request_item = TileRequestItem.from_tile_request(tile_request)
                         self.tile_request_table.start_tile_request(tile_request_item)
                         tile_queue.put(tile_request.__dict__)
+                        tiles_submitted += 1
 
                     # Put enough empty messages on the queue to shut down the workers
                     for i in range(len(tile_workers)):
                         tile_queue.put(None)
+
+            logger.info(f"Region handler submittedd {tiles_submitted} tiles to workers")
 
         except Exception as e:
             logger.error(f"Error processing tiles with async worker pool: {e}")

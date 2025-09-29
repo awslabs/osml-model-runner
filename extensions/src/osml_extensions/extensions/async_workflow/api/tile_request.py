@@ -1,7 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import List
-from pathlib import Path
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +14,14 @@ class TileRequest:
     image_path: str  # path to tile image
     image_url: str  # path to full image in S3
     tile_bounds: List
+    inference_id: str = ""  # SageMaker async inference ID
+    output_location: str = "UNKNOWN"  # S3 output location for results
+    model_invocation_role: str = ""
+    tile_size: Optional[List[int]] = None
+    tile_overlap: Optional[List[int]] = None
+    model_invoke_mode: Optional[str] = None
+    model_name: str = ""
+    image_read_role: Optional[str] = None
 
     def is_valid(self) -> bool:
         """
@@ -46,46 +53,15 @@ class TileRequest:
         if not self.image_url.startswith("s3://"):
             logger.error(f"Invalid image_url format in TileRequest: {self.image_url}")
 
-        # Basic validation for image path (check if it's a reasonable path format)
-        try:
-            # Accept both S3 paths and local file paths
-            if self.image_url.startswith("s3://") or Path(self.image_path).is_absolute() or "/" in self.image_path:
-                logger.error(f"Invalid image_url format in TileRequest: {self.image_path}")
-                return False
-        except Exception as e:
-            logger.error(f"Error validating image_path in TileRequest: {e}")
+        # Check tile bounds
+        if not isinstance(self.tile_bounds, (list, tuple)):
+            logger.error(
+                f"Invalid tile_bounds in TileRequest: must be a list, got: {type(self.tile_bounds)}, {self.tile_bounds}"
+            )
             return False
 
-        # Check region bounds
-        if not isinstance(self.region, list):
-            logger.error("Invalid region in TileRequest: must be a list")
-            return False
-
-        if len(self.region) != 2:
-            logger.error("Invalid region in TileRequest: must contain exactly 2 coordinate pairs")
-            return False
-
-        # Validate region bounds format: [[x1, y1], [x2, y2]]
-        try:
-            for i, coord_pair in enumerate(self.region):
-                if not isinstance(coord_pair, list) or len(coord_pair) != 2:
-                    logger.error(f"Invalid region coordinate pair {i} in TileRequest: must be [x, y]")
-                    return False
-
-                if not all(isinstance(coord, (int, float)) for coord in coord_pair):
-                    logger.error(f"Invalid region coordinates in pair {i}: must be numeric")
-                    return False
-
-            # Basic sanity check: ensure bounds make sense (x2 > x1, y2 > y1)
-            x1, y1 = self.region[0]
-            x2, y2 = self.region[1]
-
-            if x2 <= x1 or y2 <= y1:
-                logger.error("Invalid region bounds in TileRequest: second coordinate must be greater than first")
-                return False
-
-        except (IndexError, TypeError, ValueError) as e:
-            logger.error(f"Error validating region bounds in TileRequest: {e}")
+        if len(self.tile_bounds) != 2:
+            logger.error("Invalid tile_bounds in TileRequest: must contain exactly 2 coordinate pairs")
             return False
 
         return True
@@ -106,4 +82,35 @@ class TileRequest:
             image_path=data.get("image_path", ""),
             image_url=data.get("image_url", ""),
             tile_bounds=data.get("tile_bounds", []),
+            inference_id=data.get("inference_id", ""),
+            output_location=data.get("output_location", "UNKNWON"),
+            model_invocation_role=data.get("model_invocation_role"),
+            tile_size=data.get("tile_size"),
+            tile_overlap=data.get("tile_overlap"),
+            model_invoke_mode=data.get("model_invoke_mode"),
+            model_name=data.get("model_name"),
+            image_read_role=data.get("image_read_role"),
         )
+
+    @classmethod
+    def from_tile_request_item(cls, tile_request_item):
+
+        tile_request = cls.from_tile_request_dict(
+            {
+                "tile_id": tile_request_item.tile_id,
+                "region_id": tile_request_item.region_id,
+                "image_id": tile_request_item.image_id,
+                "job_id": tile_request_item.job_id,
+                "image_path": tile_request_item.image_path,
+                "image_url": tile_request_item.image_url,
+                "tile_bounds": tile_request_item.tile_bounds,
+                "inference_id": tile_request_item.inference_id,
+                "output_location": tile_request_item.output_location,
+                "model_invocation_role": tile_request_item.model_invocation_role,
+                "tile_size": tile_request_item.tile_size,
+                "tile_overlap": tile_request_item.tile_overlap,
+                "model_invoke_mode": str(tile_request_item.model_invoke_mode),
+                "model_name": tile_request_item.model_name,
+            }
+        )
+        return tile_request

@@ -19,8 +19,8 @@ class TileStatusMonitor(BaseStatusMonitor):
         :return: RequestStatus enum value
         """
         try:
-            if hasattr(tile_request_item, "status") and tile_request_item.status:
-                status_str = tile_request_item.status.upper()
+            if hasattr(tile_request_item, "tile_status") and tile_request_item.tile_status:
+                status_str = tile_request_item.tile_status.upper()
 
                 if status_str == "COMPLETED":
                     return RequestStatus.SUCCESS
@@ -31,14 +31,14 @@ class TileStatusMonitor(BaseStatusMonitor):
                 elif status_str == "PENDING":
                     return RequestStatus.IN_PROGRESS
                 else:
-                    logger.warning(f"Unknown tile status: {status_str}, defaulting to IN_PROGRESS")
+                    logger.warning(f"Unknown tile_status: {status_str}, defaulting to IN_PROGRESS")
                     return RequestStatus.IN_PROGRESS
             else:
-                logger.warning("Tile request item has no status, defaulting to IN_PROGRESS")
+                logger.warning("Tile request item has no tile_status, defaulting to IN_PROGRESS")
                 return RequestStatus.IN_PROGRESS
 
         except Exception as e:
-            logger.error(f"Error getting tile status: {e}")
+            logger.error(f"Error getting tile tile_status: {e}")
             return RequestStatus.FAILED
 
     def process_event(self, tile_request_item, status: RequestStatus, message: str) -> None:

@@ -71,7 +71,7 @@ class AsyncSubmissionWorker(Thread):
                     # Get tile from queue with timeout
                     tile_info = self.tile_queue.get(timeout=1.0)
 
-                    logger.info(
+                    logger.debug(
                         f"Got tile in submission worker from region handler: {tile_info}, on worker: {self.worker_id}"
                     )
 
@@ -89,8 +89,8 @@ class AsyncSubmissionWorker(Thread):
                         self.failed_tile_count += 1
 
                     # Mark task as done
-                    logger.info(f"Completing task on submission worker: {self.worker_id}")
                     self.tile_queue.task_done()
+                    logger.info(f"Completing task on submission worker: {self.worker_id} for {tile_info.get('tile_id')}")
 
                 except Empty:
                     # Timeout waiting for tile, continue loop
@@ -102,7 +102,7 @@ class AsyncSubmissionWorker(Thread):
 
                     # Mark task as done if we got a tile
                     try:
-                        logger.info(f"Completing task on submission worker: {self.worker_id} on error")
+                        logger.info(f"Error on submission worker: {self.worker_id} on error")
                         self.tile_queue.task_done()
                     except ValueError:
                         pass  # task_done() called more times than get()
@@ -143,26 +143,38 @@ class AsyncSubmissionWorker(Thread):
                 input_s3_uri = S3_MANAGER._upload_to_s3(payload, input_key)
 
             # Submit to async endpoint
+            # The use of custom attributes does not work because it depends on the model to
+            # parse and pass through the required information
             inference_id, output_location = self.feature_detector._invoke_async_endpoint(
-                input_s3_uri, metrics, custom_attributes=tile_info
-            )
+                input_s3_uri, metrics
+            )  # , custom_attributes=tile_info
 
-            # Update tile status to PROCESSING
-            if self.tile_request_table and tile_info.get("tile_id") and tile_info.get("job_id"):
+            logger.info(f"Async inference job submitted with {inference_id=}, {output_location=}")
+
+            # Update tile status to PROCESSING and store inference info
+            if self.tile_request_table and tile_info.get("tile_id") and tile_info.get("region_id"):
                 try:
-                    self.tile_request_table.update_tile_status(tile_info["tile_id"], tile_info["job_id"], "PROCESSING")
+                    # Update status to PROCESSING
+                    self.tile_request_table.update_tile_status(tile_info["tile_id"], tile_info["region_id"], "PROCESSING")
+
+                    # Update inference_id and output_location
+                    self.tile_request_table.update_tile_inference_info(
+                        tile_info["tile_id"], tile_info["region_id"], inference_id, output_location
+                    )
                 except Exception as e:
-                    logger.warning(f"Failed to update tile status to PROCESSING: {e}")
+                    logger.warning(f"Failed to update tile status and inference info: {e}")
+
+            return True
 
         except Exception as e:
             logger.error(f"AsyncSubmissionWorker-{self.worker_id} failed to submit tile: {e}")
 
             # Update tile status to FAILED due to submission error
-            if self.tile_request_table and tile_info.get("tile_id") and tile_info.get("job_id"):
+            if self.tile_request_table and tile_info.get("tile_id") and tile_info.get("region_id"):
                 try:
                     logger.info(f"Updating status for {tile_info=}")
                     self.tile_request_table.update_tile_status(
-                        tile_info["tile_id"], tile_info["job_id"], "FAILED", f"Submission error: {str(e)}"
+                        tile_info["tile_id"], tile_info["region_id"], "FAILED", f"Submission error: {str(e)}"
                     )
                 except Exception as update_e:
                     logger.warning(f"Failed to update tile status to FAILED: {update_e}")
