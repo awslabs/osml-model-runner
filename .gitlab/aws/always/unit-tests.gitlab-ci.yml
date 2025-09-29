@@ -28,6 +28,7 @@ unit-tests:
     IMAGE_STATUS_TOPIC: "TEST-IMAGE-STATUS-TOPIC"
     REGION_STATUS_TOPIC: "TEST-REGION-STATUS-TOPIC"
     SM_SELF_THROTTLING: "true"
+    PYTHON_BINARY: "python3.11"
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "trigger"
