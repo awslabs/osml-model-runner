@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- No changes; bumping minor version to re-run all pipelines.
+- Pointed GDAL base image to gdal-base:v3-8-5-2 
 
 ## [2.5.3] - 2025-09-10
 
