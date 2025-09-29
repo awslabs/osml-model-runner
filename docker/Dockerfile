@@ -5,6 +5,8 @@ FROM ${BASE_IMG} as runner
 # Only override if you're using a mirror with a cert pulled in using cert-base as a build parameter
 ARG PIP_INDEX_URL=https://pypi.org/simple/
 ARG PACKAGES="cmake wget gcc gcc-c++ libstdc++ sqlite-libs libcurl libtiff zlib libzstd libjpeg-turbo libpng openjpeg2 libwebp expat libpq"
+ARG PYTHON_BINARY
+ARG PIP_BINARY
 
 # Justification: we switch to a non-root user before running the container in any capacity,
 # but a parsing error prevents semgrep from detecting that.
@@ -30,14 +32,14 @@ ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
 ENV C_INCLUDE_PATH=/usr/include/gdal
 
 # Upgrade pip 
-RUN pip3 install \    
+RUN ${PIP_BINARY} install \    
     --no-cache-dir \
     --index-url ${PIP_INDEX_URL} \ 
     --trusted-host https://mirrors.gs.mil \
     pip -U 
 
 # install the model runner application from source
-RUN python3 -m pip install \
+RUN ${PYTHON_BINARY} -m pip install \
     --no-cache-dir \
     --index-url ${PIP_INDEX_URL} \ 
     --trusted-host https://mirrors.gs.mil \
