@@ -5,6 +5,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- No changes; bumping minor version to re-run all pipelines.
+
 ## [2.5.3] - 2025-09-10
 
 ### Changed
