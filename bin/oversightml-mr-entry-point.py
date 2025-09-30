@@ -20,11 +20,7 @@ logger = logging.getLogger(__name__)
 # Check if extensions are available
 EXTENSIONS_AVAILABLE = False
 try:
-    # import osml_extensions
-    # TODO: Make the model runner discoverable by the registry. 
-    # Or just hardcode it in with build in logic for async and live endpoints.
-    from osml_extensions.extensions.async_workflow.enhanced_model_runner import EnhancedModelRunner
-
+    from osml_extensions.registry import ModelRunnerSelector, ComponentSelectionError
     EXTENSIONS_AVAILABLE = True
     logger.info("Extensions package found and imported successfully")
 except ImportError as e:
@@ -78,16 +74,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def use_extensions() -> bool:
-    """
-    Check if extensions should be used based on environment variable.
-
-    :return: bool = True if extensions should be used, False otherwise
-    """
-    env_value = os.getenv("USE_EXTENSIONS", "false").lower()
-    return env_value in ("true", "1")
-
-
 def should_use_extensions(args: argparse.Namespace) -> bool:
     """
     Determine if extensions should be used based on command line arguments and environment.
@@ -103,12 +89,30 @@ def should_use_extensions(args: argparse.Namespace) -> bool:
         logger.info("Extensions disabled via --disable-extensions command line argument")
         return False
 
-    if not use_extensions():
+    if os.getenv("USE_EXTENSIONS", "false").lower() == "false":
         logger.info("Extensions disabled via USE_EXTENSIONS environment variable")
         return False
 
     logger.info("Extensions are available and enabled")
     return True
+
+
+def get_request_type() -> str:
+    """
+    Get the request type from command line arguments, environment variables, or configuration.
+    
+    :param args: Parsed command line arguments
+    :return: Request type string
+    """
+    # Check environment variable
+    request_type = os.getenv("REQUEST_TYPE", "sm_endpoint")
+    if request_type:
+        logger.debug(f"Request type from environment: {request_type}")
+        return request_type
+    
+    # Default to standard SageMaker endpoint
+    logger.debug("Using default request type: sm_endpoint")
+    return "sm_endpoint"
 
 
 # def setup_code_profiling() -> None:
@@ -119,17 +123,39 @@ def should_use_extensions(args: argparse.Namespace) -> bool:
 
 def create_model_runner(use_enhanced: bool) -> ModelRunner:
     """
-    Create the appropriate model runner based on configuration.
+    Create the appropriate model runner based on configuration and registry.
 
     :param use_enhanced: Whether to use the enhanced model runner
     :return: ModelRunner instance (base or enhanced)
     """
     if use_enhanced and EXTENSIONS_AVAILABLE:
         try:
-            logger.info("Creating EnhancedModelRunner with extension support")
-            return EnhancedModelRunner()
-        except Exception as e:
-            logger.error(f"Failed to create EnhancedModelRunner: {e}")
+            # Use registry to select appropriate ModelRunner
+            selector = ModelRunnerSelector()
+            
+            # Determine request type from configuration
+            request_type = get_request_type()
+            logger.info(f"Using request type: {request_type}")
+            
+            # Log available ModelRunners for debugging
+            available_runners = selector.get_available_model_runners()
+            logger.debug(f"Available ModelRunners: {list(available_runners.keys())}")
+            
+            if not available_runners:
+                logger.warning("No ModelRunners registered in registry, falling back to base ModelRunner")
+                logger.info("Creating base ModelRunner")
+                return ModelRunner()
+            
+            # Select ModelRunner from registry
+            model_runner_metadata = selector.select_model_runner(request_type)
+            logger.info(f"Creating ModelRunner: {model_runner_metadata.name} ({model_runner_metadata.description})")
+            
+            # Instantiate the selected ModelRunner
+            return model_runner_metadata.component_class()
+            
+        except (ComponentSelectionError, Exception) as e:
+            logger.error(f"Failed to create ModelRunner from registry: {e}")
+            logger.debug(f"Exception details: {traceback.format_exc()}")
             logger.info("Falling back to base ModelRunner")
 
     logger.info("Creating base ModelRunner")

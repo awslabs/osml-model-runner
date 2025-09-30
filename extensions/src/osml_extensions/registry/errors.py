@@ -11,19 +11,13 @@ class ExtensionRegistryError(Exception):
     pass
 
 
-class HandlerRegistrationError(ExtensionRegistryError):
-    """Raised when handler registration fails."""
+class ComponentRegistrationError(ExtensionRegistryError):
+    """Raised when component registration fails."""
 
     pass
 
 
-class HandlerSelectionError(ExtensionRegistryError):
-    """Raised when no suitable handler can be selected."""
-
-    pass
-
-
-class DependencyInjectionError(ExtensionRegistryError):
-    """Raised when dependency injection fails."""
+class ComponentSelectionError(ExtensionRegistryError):
+    """Raised when no suitable component can be selected."""
 
     pass

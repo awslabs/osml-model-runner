@@ -1,86 +1,86 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
 """
-Central registry for all handler extensions.
+Central registry for all component extensions.
 """
 
 import logging
 import threading
 from typing import Dict, List, Optional
 
-from .errors import HandlerRegistrationError
-from .handler_metadata import HandlerMetadata, HandlerType
+from .errors import ComponentRegistrationError
+from .component_metadata import ComponentMetadata, ComponentType
 
 logger = logging.getLogger(__name__)
 
 
 class ExtensionRegistry:
-    """Central registry for all handler extensions."""
+    """Central registry for all component extensions."""
 
     def __init__(self):
         """Initialize the extension registry."""
-        self._handlers: Dict[str, Dict[HandlerType, HandlerMetadata]] = {}
+        self._components: Dict[str, Dict[ComponentType, ComponentMetadata]] = {}
         self._lock = threading.RLock()
         logger.debug("ExtensionRegistry initialized")
 
-    def register_handler(self, request_type: str, handler_type: HandlerType, metadata: HandlerMetadata) -> None:
+    def register_component(self, request_type: str, component_type: ComponentType, metadata: ComponentMetadata) -> None:
         """
-        Register a handler with the registry.
+        Register a component with the registry.
 
         :param request_type: The request type (e.g., "http", "sm_endpoint", "async_sm_endpoint")
-        :param handler_type: The type of handler being registered
-        :param metadata: Metadata describing the handler
-        :raises HandlerRegistrationError: If registration fails
+        :param component_type: The type of component being registered
+        :param metadata: Metadata describing the component
+        :raises ComponentRegistrationError: If registration fails
         """
         if not request_type:
-            raise HandlerRegistrationError("Request type cannot be empty")
+            raise ComponentRegistrationError("Request type cannot be empty")
 
-        if not isinstance(handler_type, HandlerType):
-            raise HandlerRegistrationError(f"handler_type must be a HandlerType enum, got {type(handler_type)}")
+        if not isinstance(component_type, ComponentType):
+            raise ComponentRegistrationError(f"component_type must be a ComponentType enum, got {type(component_type)}")
 
-        if not isinstance(metadata, HandlerMetadata):
-            raise HandlerRegistrationError(f"metadata must be a HandlerMetadata instance, got {type(metadata)}")
+        if not isinstance(metadata, ComponentMetadata):
+            raise ComponentRegistrationError(f"metadata must be a ComponentMetadata instance, got {type(metadata)}")
 
         with self._lock:
-            if request_type not in self._handlers:
-                self._handlers[request_type] = {}
+            if request_type not in self._components:
+                self._components[request_type] = {}
 
-            # Check if handler already exists for this request type and handler type
-            if handler_type in self._handlers[request_type]:
-                existing = self._handlers[request_type][handler_type]
+            # Check if component already exists for this request type and component type
+            if component_type in self._components[request_type]:
+                existing = self._components[request_type][component_type]
                 logger.warning(
-                    f"Overriding existing handler for request_type='{request_type}', "
-                    f"handler_type='{handler_type.value}': {existing.name} -> {metadata.name}"
+                    f"Overriding existing component for request_type='{request_type}', "
+                    f"component_type='{component_type.value}': {existing.name} -> {metadata.name}"
                 )
 
-            self._handlers[request_type][handler_type] = metadata
+            self._components[request_type][component_type] = metadata
             logger.debug(
-                f"Registered handler '{metadata.name}' for request_type='{request_type}', "
-                f"handler_type='{handler_type.value}'"
+                f"Registered component '{metadata.name}' for request_type='{request_type}', "
+                f"component_type='{component_type.value}'"
             )
 
-    def get_handler(self, request_type: str, handler_type: HandlerType) -> Optional[HandlerMetadata]:
+    def get_component(self, request_type: str, component_type: ComponentType) -> Optional[ComponentMetadata]:
         """
-        Get a specific handler by request type and handler type.
+        Get a specific component by request type and component type.
 
         :param request_type: The request type to look up
-        :param handler_type: The handler type to look up
-        :return: HandlerMetadata if found, None otherwise
+        :param component_type: The component type to look up
+        :return: ComponentMetadata if found, None otherwise
         """
         with self._lock:
-            if request_type in self._handlers:
-                return self._handlers[request_type].get(handler_type)
+            if request_type in self._components:
+                return self._components[request_type].get(component_type)
             return None
 
-    def get_handlers_for_request_type(self, request_type: str) -> Dict[HandlerType, HandlerMetadata]:
+    def get_components_for_request_type(self, request_type: str) -> Dict[ComponentType, ComponentMetadata]:
         """
-        Get all handlers for a specific request type.
+        Get all components for a specific request type.
 
         :param request_type: The request type to look up
-        :return: Dictionary mapping handler types to metadata
+        :return: Dictionary mapping component types to metadata
         """
         with self._lock:
-            return self._handlers.get(request_type, {}).copy()
+            return self._components.get(request_type, {}).copy()
 
     def get_supported_request_types(self) -> List[str]:
         """
@@ -89,25 +89,25 @@ class ExtensionRegistry:
         :return: List of supported request types
         """
         with self._lock:
-            return list(self._handlers.keys())
+            return list(self._components.keys())
 
-    def is_registered(self, request_type: str, handler_type: HandlerType) -> bool:
+    def is_registered(self, request_type: str, component_type: ComponentType) -> bool:
         """
-        Check if a handler is registered for the given request type and handler type.
+        Check if a component is registered for the given request type and component type.
 
         :param request_type: The request type to check
-        :param handler_type: The handler type to check
+        :param component_type: The component type to check
         :return: True if registered, False otherwise
         """
         with self._lock:
-            return request_type in self._handlers and handler_type in self._handlers[request_type]
+            return request_type in self._components and component_type in self._components[request_type]
 
     def clear_registry(self) -> None:
         """
-        Clear all registered handlers. Used primarily for testing.
+        Clear all registered components. Used primarily for testing.
         """
         with self._lock:
-            self._handlers.clear()
+            self._components.clear()
             logger.debug("Registry cleared")
 
     def get_registry_stats(self) -> Dict[str, int]:
@@ -118,12 +118,40 @@ class ExtensionRegistry:
         """
         with self._lock:
             stats = {
-                "total_request_types": len(self._handlers),
-                "total_handlers": sum(len(handlers) for handlers in self._handlers.values()),
+                "total_request_types": len(self._components),
+                "total_components": sum(len(components) for components in self._components.values()),
             }
-            for request_type, handlers in self._handlers.items():
-                stats[f"handlers_for_{request_type}"] = len(handlers)
+            for request_type, components in self._components.items():
+                stats[f"components_for_{request_type}"] = len(components)
             return stats
+
+    # Backward compatibility methods (deprecated)
+    def register_handler(self, request_type: str, handler_type, metadata) -> None:
+        """
+        Backward compatibility method for register_component.
+
+        :deprecated: Use register_component instead
+        """
+        logger.warning("register_handler is deprecated, use register_component instead")
+        self.register_component(request_type, handler_type, metadata)
+
+    def get_handler(self, request_type: str, handler_type):
+        """
+        Backward compatibility method for get_component.
+
+        :deprecated: Use get_component instead
+        """
+        logger.warning("get_handler is deprecated, use get_component instead")
+        return self.get_component(request_type, handler_type)
+
+    def get_handlers_for_request_type(self, request_type: str):
+        """
+        Backward compatibility method for get_components_for_request_type.
+
+        :deprecated: Use get_components_for_request_type instead
+        """
+        logger.warning("get_handlers_for_request_type is deprecated, use get_components_for_request_type instead")
+        return self.get_components_for_request_type(request_type)
 
 
 # Global registry instance

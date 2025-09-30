@@ -15,14 +15,14 @@ from aws_embedded_metrics.unit import Unit
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws.osml.model_runner.app_config import MetricLabels
 
-from osml_extensions.registry import DependencyInjectionError, HandlerSelectionError, HandlerSelector
-
 from .async_app_config import AsyncServiceConfig
 from .api import TileRequest
 from .database import TileRequestItem, TileRequestTable
 from .enhanced_tile_handler import TileRequestHandler
 from .status import TileStatusMonitor
 from .errors import SelfThrottledTileException, RetryableJobException
+from .enhanced_image_handler import EnhancedImageRequestHandler
+from .enhanced_region_handler import EnhancedRegionRequestHandler
 
 logger = logging.getLogger(__name__)
 
@@ -56,35 +56,20 @@ class EnhancedModelRunner(ModelRunner):
 
     def _setup_enhanced_components(self) -> None:
         """
-        Set up enhanced components based on configuration and dependency injection.
+        Set up enhanced components for async workflow processing.
 
         :return: None
         """
         try:
-
-            # TODO: The registry mechanism is now broken. Update to get the handlers from the registry itself.
-
+            # Set up async-specific components
             self.tile_request_queue = RequestQueue(AsyncServiceConfig.tile_queue, wait_seconds=0)
             self.tile_requests_iter = iter(self.tile_request_queue)
 
             self.tile_request_table = TileRequestTable(AsyncServiceConfig.tile_request_table)
             self.tile_status_monitor = TileStatusMonitor(AsyncServiceConfig.tile_status_topic)
 
-            # Initialize handler selector and dependency injector
-            handler_selector = HandlerSelector()  # TODO: REMOVE THIS AND JUST USE THE ASYNC HANDLERS
-
-            # Determine request type from environment or configuration
-            request_type = AsyncServiceConfig.request_type  # ['sm_endpoint', 'async_sm_endpoint']
-
-            logger.debug(f"Setting up components for request_type='{request_type}'")
-
-            region_handler_metadata, image_handler_metadata = handler_selector.select_handlers(request_type)
-
-            # Create image request handler
-            # TODO: For now this assumes all image handlers and all region handlers
-            # have the same class signature, update this so this is configurable.
-            image_handler_args = []
-            image_handler_kwargs = dict(
+            # Create enhanced handlers with async workflow support
+            self.image_request_handler = EnhancedImageRequestHandler(
                 job_table=self.job_table,
                 image_status_monitor=self.image_status_monitor,
                 endpoint_statistics_table=self.endpoint_statistics_table,
@@ -96,8 +81,7 @@ class EnhancedModelRunner(ModelRunner):
                 region_request_handler=self.region_request_handler,
             )
 
-            region_handler_args = []
-            region_handler_kwargs = dict(
+            self.region_request_handler = EnhancedRegionRequestHandler(
                 tile_request_table=self.tile_request_table,
                 tile_request_queue=self.tile_request_queue,
                 region_request_table=self.region_request_table,
@@ -109,37 +93,18 @@ class EnhancedModelRunner(ModelRunner):
                 config=AsyncServiceConfig,
             )
 
-            self.image_request_handler = image_handler_metadata.handler_class(*image_handler_args, **image_handler_kwargs)
-            self.region_request_handler = region_handler_metadata.handler_class(
-                *region_handler_args, **region_handler_kwargs
-            )
             self.tile_request_handler = TileRequestHandler(
                 tile_request_table=self.tile_request_table,
                 job_table=self.job_table,
                 tile_status_monitor=self.tile_status_monitor,
             )
 
-            logger.debug(
-                f"Successfully configured handlers: region='{region_handler_metadata.name}', "
-                f"image='{image_handler_metadata.name}'"
-            )
-
-        except (HandlerSelectionError, DependencyInjectionError) as e:
-            logger.error(f"Failed to set up enhanced components: {e}")
-            if (
-                hasattr(AsyncServiceConfig, "extension_fallback_enabled")
-                and not AsyncServiceConfig.extension_fallback_enabled
-            ):
-                raise
+            logger.debug("Successfully configured enhanced components for async workflow")
 
         except Exception as e:
             logger.error(f"Unexpected error setting up enhanced components: {e}")
             logger.debug(f"Traceback: {traceback.format_exc()}")
-            if (
-                hasattr(AsyncServiceConfig, "extension_fallback_enabled")
-                and not AsyncServiceConfig.extension_fallback_enabled
-            ):
-                raise
+            raise
 
     def monitor_work_queues(self) -> None:
         """

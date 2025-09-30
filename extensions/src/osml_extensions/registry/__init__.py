@@ -6,30 +6,32 @@
 """
 Extension Registry System
 
-This module provides the core registry infrastructure for managing handler extensions
+This module provides the core registry infrastructure for managing component extensions
 in the OSML Model Runner.
 """
 
-# Import base handlers to trigger auto-registration
-from . import base_handlers
-from .decorators import register_handler
-from .errors import DependencyInjectionError, ExtensionRegistryError, HandlerRegistrationError, HandlerSelectionError
+# Import model runners to trigger auto-registration
+from . import model_runner_registry
+from .decorators import register_component, register_handler  # register_handler for backward compatibility
+from .errors import ExtensionRegistryError, ComponentRegistrationError, ComponentSelectionError
 from .extension_registry import ExtensionRegistry, get_registry, reset_registry
-from .handler_metadata import HandlerMetadata, HandlerType
-from .handler_selector import HandlerSelector
+from .component_metadata import ComponentMetadata, ComponentType
+from .model_runner_selector import ModelRunnerSelector
+
+# Backward compatibility imports
+from .component_metadata import ComponentMetadata as HandlerMetadata, ComponentType as HandlerType
 
 __all__ = [
     # Core types
-    "HandlerMetadata",
-    "HandlerType",
+    "ComponentMetadata",
+    "ComponentType",
     # Registry components
     "ExtensionRegistry",
-    "HandlerSelector",
+    "ModelRunnerSelector",
     # Decorators
-    "register_handler",
+    "register_component",
     # Errors
     "ExtensionRegistryError",
-    "HandlerRegistrationError",
-    "HandlerSelectionError",
-    "DependencyInjectionError",
+    "ComponentRegistrationError",
+    "ComponentSelectionError",
 ]
