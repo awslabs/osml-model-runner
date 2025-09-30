@@ -1,6 +1,7 @@
 import logging
 
 from aws.osml.model_runner.status.base_status_monitor import BaseStatusMonitor
+from aws.osml.model_runner.status.status_message import StatusMessage
 from aws.osml.model_runner.common import RequestStatus
 
 logger = logging.getLogger(__name__)
@@ -51,21 +52,34 @@ class TileStatusMonitor(BaseStatusMonitor):
         """
         try:
             # Create event data
-            event_data = {
-                "tile_id": getattr(tile_request_item, "tile_id", "unknown"),
-                "job_id": getattr(tile_request_item, "job_id", "unknown"),
-                "region_id": getattr(tile_request_item, "region_id", "unknown"),
-                "image_id": getattr(tile_request_item, "image_id", "unknown"),
-                "status": status.value if hasattr(status, "value") else str(status),
-                "message": message,
-                "processing_duration": getattr(tile_request_item, "processing_duration", None),
-                "retry_count": getattr(tile_request_item, "retry_count", 0),
-            }
 
-            # Use the base class method to publish the event
-            self.publish_event(event_data)
+            logger.info(
+                "TileStatusMonitorUpdate",
+                extra={
+                    "reason": message,
+                    "status": status,
+                    "request": tile_request_item.__dict__,
+                },
+            )
 
-            logger.debug(f"Published tile status event: {event_data}")
+            sns_message_attributes = StatusMessage(
+                status=status,
+                image_status=status,
+                job_id=tile_request_item.job_id,
+                image_id=tile_request_item.image_id,
+                processing_duration=tile_request_item.processing_duration,
+            )
+
+            # region_id = tile_request_item.region_id
+            # job_id = tile_request_item.job_id
+            # tile_id = tile_request_item.tile_id
+            # status_message = f"StatusMonitor update: {status} {job_id=} {region_id=} {tile_id=}: {message}"
+            # self.sns_helper.publish_message(
+            #     status_message,
+            #     sns_message_attributes.asdict_str_values(),
+            # )
+
+            logger.debug(f"Published tile status event: {sns_message_attributes}")
 
         except Exception as e:
             logger.error(f"Error processing tile status event: {e}")

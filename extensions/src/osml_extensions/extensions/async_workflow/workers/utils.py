@@ -1,6 +1,7 @@
 import logging
 from typing import Optional, Tuple, List
 from queue import Queue
+import traceback
 
 from aws.osml.model_runner.tile_worker.exceptions import SetupTileWorkersException
 from aws.osml.model_runner.database import FeatureTable, RegionRequestTable
@@ -57,6 +58,7 @@ def setup_result_tile_workers(
 
             if feature_detector is None:
                 logger.error("Failed to create feature detector")
+                logger.error(f"Exception details: {traceback.format_exc()}")
                 return None
 
             # Don't create geolocator here - will be created per request in worker
@@ -72,7 +74,7 @@ def setup_result_tile_workers(
             )
             logger.info("Created poller worker")
             worker.start()
-            logger.info("poller worker started")
+            logger.info("Result worker started")
             tile_workers.append(worker)
 
         return tile_queue, tile_workers

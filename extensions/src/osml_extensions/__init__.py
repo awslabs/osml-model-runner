@@ -12,14 +12,8 @@ including an extension registry system for dynamic handler loading and managemen
 
 # Import registry system
 from .registry import (  # Core registry components; Handler metadata and types; Registration decorator; Errors
-    DependencyInjectionError,
     ExtensionRegistry,
     ExtensionRegistryError,
-    HandlerMetadata,
-    HandlerRegistrationError,
-    HandlerSelectionError,
-    HandlerSelector,
-    HandlerType,
     get_registry,
     register_handler,
     reset_registry,

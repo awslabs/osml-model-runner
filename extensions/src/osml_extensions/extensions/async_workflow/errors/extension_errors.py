@@ -15,6 +15,12 @@ class RetryableJobException(Exception):
     pass
 
 
+class InvocationFailure(RetryableJobException):
+    """Model failure"""
+
+    pass
+
+
 class ExtensionError(Exception):
     """Base exception for extension-related errors."""
 

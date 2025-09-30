@@ -11,6 +11,7 @@ from typing import Type
 
 class ComponentType(Enum):
     """Enumeration of supported component types."""
+
     MODEL_RUNNER = "model_runner"
 
 

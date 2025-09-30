@@ -20,7 +20,7 @@ from .api import TileRequest
 from .database import TileRequestItem, TileRequestTable
 from .enhanced_tile_handler import TileRequestHandler
 from .status import TileStatusMonitor
-from .errors import SelfThrottledTileException, RetryableJobException
+from .errors import SelfThrottledTileException, RetryableJobException, InvocationFailure
 from .enhanced_image_handler import EnhancedImageRequestHandler
 from .enhanced_region_handler import EnhancedRegionRequestHandler
 
@@ -68,17 +68,11 @@ class EnhancedModelRunner(ModelRunner):
             self.tile_request_table = TileRequestTable(AsyncServiceConfig.tile_request_table)
             self.tile_status_monitor = TileStatusMonitor(AsyncServiceConfig.tile_status_topic)
 
-            # Create enhanced handlers with async workflow support
-            self.image_request_handler = EnhancedImageRequestHandler(
+            # Create enhanced handlers with async workflow
+            self.tile_request_handler = TileRequestHandler(
+                tile_request_table=self.tile_request_table,
                 job_table=self.job_table,
-                image_status_monitor=self.image_status_monitor,
-                endpoint_statistics_table=self.endpoint_statistics_table,
-                tiling_strategy=self.tiling_strategy,
-                region_request_queue=self.region_request_queue,
-                region_request_table=self.region_request_table,
-                endpoint_utils=self.endpoint_utils,
-                config=AsyncServiceConfig,
-                region_request_handler=self.region_request_handler,
+                tile_status_monitor=self.tile_status_monitor,
             )
 
             self.region_request_handler = EnhancedRegionRequestHandler(
@@ -93,10 +87,16 @@ class EnhancedModelRunner(ModelRunner):
                 config=AsyncServiceConfig,
             )
 
-            self.tile_request_handler = TileRequestHandler(
-                tile_request_table=self.tile_request_table,
+            self.image_request_handler = EnhancedImageRequestHandler(
                 job_table=self.job_table,
-                tile_status_monitor=self.tile_status_monitor,
+                image_status_monitor=self.image_status_monitor,
+                endpoint_statistics_table=self.endpoint_statistics_table,
+                tiling_strategy=self.tiling_strategy,
+                region_request_queue=self.region_request_queue,
+                region_request_table=self.region_request_table,
+                endpoint_utils=self.endpoint_utils,
+                config=AsyncServiceConfig,
+                region_request_handler=self.region_request_handler,
             )
 
             logger.debug("Successfully configured enhanced components for async workflow")
@@ -293,6 +293,9 @@ class EnhancedModelRunner(ModelRunner):
                 records = message.get("Records", [])
                 logger.debug(f"Processing event from S3->SNS: {s3_event_message}")
             elif "responseParameters" in s3_event_message:
+                if s3_event_message.get("invocationStatus") == "Failed":
+                    logger.error(f"Invocation failed for {s3_event_message}")
+                    raise InvocationFailure(s3_event_message.get("failureReason"))
                 logger.debug(f"Processing event from SageMaker->SNS: {s3_event_message}")
                 return s3_event_message["responseParameters"]["outputLocation"]
             else:

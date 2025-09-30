@@ -41,7 +41,9 @@ class ModelRunnerSelector:
                 model_runner_metadata = self._get_fallback_model_runner()
 
             if not model_runner_metadata:
-                raise ComponentSelectionError(f"No ModelRunner found for request_type='{request_type}' and no fallback available")
+                raise ComponentSelectionError(
+                    f"No ModelRunner found for request_type='{request_type}' and no fallback available"
+                )
 
             logger.debug(f"Selected ModelRunner for request_type='{request_type}': '{model_runner_metadata.name}'")
             return model_runner_metadata
@@ -62,13 +64,13 @@ class ModelRunnerSelector:
         """
         # Try common fallback request types
         fallback_types = ["http", "sm_endpoint", "base"]
-        
+
         for fallback_type in fallback_types:
             model_runner_metadata = self.registry.get_component(fallback_type, ComponentType.MODEL_RUNNER)
             if model_runner_metadata:
                 logger.debug(f"Using fallback ModelRunner from request_type='{fallback_type}'")
                 return model_runner_metadata
-        
+
         return None
 
     def get_available_model_runners(self) -> dict:

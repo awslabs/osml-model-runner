@@ -22,4 +22,5 @@ from .extension_errors import (
     ExtensionError,
     ExtensionRuntimeError,
     ExtensionConfigurationError,
+    InvocationFailure,
 )

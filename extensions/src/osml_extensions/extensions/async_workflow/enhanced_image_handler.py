@@ -7,8 +7,6 @@ from geojson import Feature
 from osgeo import gdal
 from osgeo.gdal import Dataset
 
-from osml_extensions.registry import HandlerType, register_handler
-
 from aws.osml.model_runner.database import JobItem
 from aws.osml.model_runner.image_request_handler import ImageRequestHandler
 from aws.osml.photogrammetry import SensorModel
@@ -21,12 +19,6 @@ from .api import ExtendedModelInvokeMode
 logger = logging.getLogger(__name__)
 
 
-@register_handler(
-    request_type="async_sm_endpoint",
-    handler_type=HandlerType.IMAGE_REQUEST_HANDLER,
-    name="enhanced_image_request_handler",
-    description="Enhanced image request handler with async processing capabilities",
-)
 class EnhancedImageRequestHandler(ImageRequestHandler):
     """
     Example enhanced ImageRequestHandler showing extension patterns.
@@ -46,7 +38,7 @@ class EnhancedImageRequestHandler(ImageRequestHandler):
 
         # logger.info("in enhanced image handler queue region reqeust")
 
-        image_request.model_invoke_mode = ExtendedModelInvokeMode["SM_ENDPOINT_ASYNC"]
+        image_request.model_invoke_mode = ExtendedModelInvokeMode["SM_ENDPOINT_ASYNC"].name
 
         if "-async" not in image_request.model_name:
             image_request.model_name = f"{image_request.model_name}-async"

@@ -32,8 +32,6 @@ from aws.osml.model_runner.tile_worker import TilingStrategy
 from aws.osml.model_runner.tile_worker.tile_worker_utils import _create_tile
 from aws.osml.photogrammetry import SensorModel
 
-from osml_extensions.registry import HandlerType, register_handler
-
 from .async_app_config import AsyncServiceConfig
 from .errors import ExtensionRuntimeError
 from .database import TileRequestTable, TileRequestItem
@@ -43,12 +41,6 @@ from .workers import setup_submission_tile_workers
 logger = logging.getLogger(__name__)
 
 
-@register_handler(
-    request_type="async_sm_endpoint",
-    handler_type=HandlerType.REGION_REQUEST_HANDLER,
-    name="enhanced_region_request_handler",
-    description="Enhanced region request handler with async processing capabilities",
-)
 class EnhancedRegionRequestHandler(RegionRequestHandler):
     """
     Enhanced region request handler with additional monitoring and processing capabilities.

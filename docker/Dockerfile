@@ -116,6 +116,7 @@ ENV AWS_SESSION_TOKEN=testing
 
 # Extension configuration
 ENV USE_EXTENSIONS=true
+ENV REQUEST_TYPE=sm_endpoint
 
 RUN python3.11 -m pip install \
     --no-cache-dir \

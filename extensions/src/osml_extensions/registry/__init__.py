@@ -18,9 +18,6 @@ from .extension_registry import ExtensionRegistry, get_registry, reset_registry
 from .component_metadata import ComponentMetadata, ComponentType
 from .model_runner_selector import ModelRunnerSelector
 
-# Backward compatibility imports
-from .component_metadata import ComponentMetadata as HandlerMetadata, ComponentType as HandlerType
-
 __all__ = [
     # Core types
     "ComponentMetadata",
