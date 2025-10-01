@@ -266,6 +266,10 @@ class EnhancedRegionRequestHandler(RegionRequestHandler):
 
             tile_array = self.load_region_request(self.tiling_strategy, region_request_item)
 
+            # update the expected number of tiles
+            region_request_item.total_tiles = len(tile_array)
+            region_request_item = self.region_request_table.update_region_request(region_request_item)
+
             # Set up credentials for image reading
             image_read_credentials = None
             if region_request_item.image_read_role:

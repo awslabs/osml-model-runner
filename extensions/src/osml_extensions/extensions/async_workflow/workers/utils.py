@@ -72,7 +72,7 @@ def setup_result_tile_workers(
                 feature_detector=feature_detector,
                 completion_queue=completion_queue,
             )
-            logger.info("Created poller worker")
+            logger.info("Created results worker")
             worker.start()
             logger.info("Result worker started")
             tile_workers.append(worker)

@@ -14,10 +14,11 @@ from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws.osml.model_runner.app_config import MetricLabels
+from aws.osml.model_runner.common import RequestStatus
 
 from .async_app_config import AsyncServiceConfig
 from .api import TileRequest
-from .database import TileRequestItem, TileRequestTable
+from .database import TileRequestItem, TileRequestTable, is_image_request_complete
 from .enhanced_tile_handler import TileRequestHandler
 from .status import TileStatusMonitor
 from .errors import SelfThrottledTileException, RetryableJobException, InvocationFailure
@@ -170,29 +171,41 @@ class EnhancedModelRunner(ModelRunner):
                 completed_tile_request_item = self.tile_request_table.complete_tile_request(tile_request_item, "COMPLETED")
 
                 # Check if the region is done
-                completed_region_request_item = self.check_if_region_request_complete(completed_tile_request_item)
+                completed_region_request_item, region_is_done = self.check_if_region_request_complete(tile_request_item)
 
-                # Check if the whole image is done
-                image_request_item = self.job_table.get_image_request(completed_tile_request_item.image_id)
-                is_done = self.job_table.is_image_request_complete(image_request_item)
-                logger.info(f"image complete check for {completed_tile_request_item.image_id} = {is_done}")
-                if is_done:
-                    image_path = get_image_path(
-                        completed_tile_request_item.image_url, completed_tile_request_item.image_read_role
+                if region_is_done:
+                    # Check if the whole image is done
+                    image_request_item = self.job_table.get_image_request(completed_tile_request_item.image_id)
+                    # image_is_done = self.job_table.is_image_request_complete(image_request_item)
+                    image_is_done, region_complete, region_failures = is_image_request_complete(
+                        self.region_request_table, image_request_item
                     )
-                    raster_dataset, sensor_model = load_gdal_dataset(image_path)
+                    logger.info(f"image complete check for {completed_tile_request_item.image_id} = {image_is_done}")
+                    if image_is_done:
 
-                    region_request = RegionRequest()
-                    region_request.image_id = completed_region_request_item.image_id
-                    region_request.region_id = completed_region_request_item.region_id
-                    region_request.tile_size = completed_region_request_item.tile_size
-                    region_request.tile_overlap = completed_region_request_item.tile_overlap
-                    # region_request.job_id = completed_region_request_item.job_id
+                        # update region counts
+                        image_request_item.region_error = region_failures
+                        image_request_item.region_success = region_complete
+                        image_request_item = self.job_table.update_image_request(image_request_item)
 
-                    logger.info(f"Calling image handler complete image request for {completed_tile_request_item.image_id}")
-                    self.image_request_handler.complete_image_request(
-                        region_request, str(raster_dataset.GetDriver().ShortName).upper(), raster_dataset, sensor_model
-                    )
+                        # close and get features
+                        image_path = get_image_path(
+                            completed_tile_request_item.image_url, completed_tile_request_item.image_read_role
+                        )
+                        raster_dataset, sensor_model = load_gdal_dataset(image_path)
+
+                        region_request = RegionRequest()
+                        region_request.image_id = completed_region_request_item.image_id
+                        region_request.region_id = completed_region_request_item.region_id
+                        region_request.tile_size = completed_region_request_item.tile_size
+                        region_request.tile_overlap = completed_region_request_item.tile_overlap
+
+                        logger.info(
+                            f"Calling image handler complete image request for {completed_tile_request_item.image_id}"
+                        )
+                        self.image_request_handler.complete_image_request(
+                            region_request, str(raster_dataset.GetDriver().ShortName).upper(), raster_dataset, sensor_model
+                        )
 
                 # Finish the current request
                 self.tile_request_queue.finish_request(receipt_handle)
@@ -218,70 +231,71 @@ class EnhancedModelRunner(ModelRunner):
 
         :param s3_event_message: S3 event notification message from SQS
         :return: S3 URI of the output location, or empty string if parsing fails
+
+        messages:
+            S3 message
+                {
+                    'Records': [{
+                        'eventVersion': '2.1',
+                        'eventSource': 'aws:s3',
+                        'awsRegion': 'us-west-2',
+                        'eventTime': '2025-09-28T07:28:42.606Z',
+                        'eventName': 'ObjectCreated:Put',
+                        'userIdentity': {
+                            'principalId': 'AWS:AROAZI2LIXEZ7G5XQA3QP:SageMaker'
+                        },
+                        'requestParameters': {
+                            'sourceIPAddress': '10.2.11.121'
+                        },
+                        'responseElements': {
+                            'x-amz-request-id': 'JT4J929BNCAZ6MZS',
+                            'x-amz-id-2': 'oRE6zlp4M1...AHiOjvHDGG5'
+                        },
+                        's3': {
+                            's3SchemaVersion': '1.0',
+                            'configurationId': 'NzI1NzcwNDEtNTU0Mi00NzQ3LTk0YzktY2NiMjZjNTljYzJl',
+                            'bucket': {
+                                'name': 'modelrunner-infra-mrartifactbucketf483353e-x0nfaecdvfrr',
+                                'ownerIdentity': {
+                                    'principalId': 'A244AJ6LIN4SSK'
+                                },
+                                'arn': 'arn:aws:s3:::modelrunner-infra-mrartifactbucketf483353e-x0nfaecdvfrr'
+                            },
+                            'object': {
+                                'key': 'async-inference/output/e52dabe9-938b-4135-8baa-34af002548f6.out',
+                                'size': 873,
+                                'eTag': '52c8bd24d8391a30f3f87b609c973e31',
+                                'sequencer': '0068D8E3AA906D1928'
+                            }
+                        }
+                    }]
+                }
+
+            sns message from sagemaker
+                {
+                    'awsRegion': 'us-west-2',
+                    'eventTime': '2025-09-28T07:28:43.333Z',
+                    'receivedTime': '2025-09-28T07:28:43.203Z',
+                    'invocationStatus': 'Completed',
+                    'requestParameters': {
+                        'accept': 'application/json',
+                        'contentType': 'application/json',
+                        'customAttributes': '{}',
+                        'endpointName': 'Endpoint-control-model-3-dice-async',
+                        'inputLocation': 's3://....0928_072843_8af55b3b'
+                    },
+                    'responseParameters': {
+                        'contentType': 'text/html; charset=utf-8',
+                        'outputLocation': 's3://....-8e93-758efa240cdf.out'
+                    },
+                    'inferenceId': '1d2071a5-65c5-40f8-ae06-f61367050695',
+                    'eventVersion': '1.0',
+                    'eventSource': 'aws:sagemaker',
+                    'eventName': 'InferenceResult'
+                }
+
         """
         try:
-
-            # S3 message
-            # {
-            #     'Records': [{
-            #         'eventVersion': '2.1',
-            #         'eventSource': 'aws:s3',
-            #         'awsRegion': 'us-west-2',
-            #         'eventTime': '2025-09-28T07:28:42.606Z',
-            #         'eventName': 'ObjectCreated:Put',
-            #         'userIdentity': {
-            #             'principalId': 'AWS:AROAZI2LIXEZ7G5XQA3QP:SageMaker'
-            #         },
-            #         'requestParameters': {
-            #             'sourceIPAddress': '10.2.11.121'
-            #         },
-            #         'responseElements': {
-            #             'x-amz-request-id': 'JT4J929BNCAZ6MZS',
-            #             'x-amz-id-2': 'oRE6zlp4M1...AHiOjvHDGG5'
-            #         },
-            #         's3': {
-            #             's3SchemaVersion': '1.0',
-            #             'configurationId': 'NzI1NzcwNDEtNTU0Mi00NzQ3LTk0YzktY2NiMjZjNTljYzJl',
-            #             'bucket': {
-            #                 'name': 'modelrunner-infra-mrartifactbucketf483353e-x0nfaecdvfrr',
-            #                 'ownerIdentity': {
-            #                     'principalId': 'A244AJ6LIN4SSK'
-            #                 },
-            #                 'arn': 'arn:aws:s3:::modelrunner-infra-mrartifactbucketf483353e-x0nfaecdvfrr'
-            #             },
-            #             'object': {
-            #                 'key': 'async-inference/output/e52dabe9-938b-4135-8baa-34af002548f6.out',
-            #                 'size': 873,
-            #                 'eTag': '52c8bd24d8391a30f3f87b609c973e31',
-            #                 'sequencer': '0068D8E3AA906D1928'
-            #             }
-            #         }
-            #     }]
-            # }
-
-            # sns message from sagemaker
-            # {
-            #     'awsRegion': 'us-west-2',
-            #     'eventTime': '2025-09-28T07:28:43.333Z',
-            #     'receivedTime': '2025-09-28T07:28:43.203Z',
-            #     'invocationStatus': 'Completed',
-            #     'requestParameters': {
-            #         'accept': 'application/json',
-            #         'contentType': 'application/json',
-            #         'customAttributes': '{}',
-            #         'endpointName': 'Endpoint-control-model-3-dice-async',
-            #         'inputLocation': 's3://....0928_072843_8af55b3b'
-            #     },
-            #     'responseParameters': {
-            #         'contentType': 'text/html; charset=utf-8',
-            #         'outputLocation': 's3://....-8e93-758efa240cdf.out'
-            #     },
-            #     'inferenceId': '1d2071a5-65c5-40f8-ae06-f61367050695',
-            #     'eventVersion': '1.0',
-            #     'eventSource': 'aws:sagemaker',
-            #     'eventName': 'InferenceResult'
-            # }
-
             # Handle both direct S3 events and SNS-wrapped S3 events
             if "Records" in s3_event_message:
                 # Direct S3 event
@@ -331,35 +345,50 @@ class EnhancedModelRunner(ModelRunner):
     @metric_scope
     def check_if_region_request_complete(self, tile_request_item: TileRequestItem, metrics):
 
-        done, total_tile_count, failed_tile_count = self.tile_request_table.is_region_request_complete(tile_request_item)
-        if not done:
-            return None
-
-        # region done
-
         # Get region request and region request item
-        # region_request = self.get_region_request(tile_request.tile_id)
         region_request_item = self.region_request_table.get_region_request(
             tile_request_item.region_id, tile_request_item.image_id
         )
+        total_expected_tile_count = region_request_item.total_tiles
+
+        failed_count, completed = self.tile_request_table.get_region_request_complete_counts(tile_request_item)
+
+        done = (completed + failed_count) >= total_expected_tile_count
+
+        region_status = region_request_item.region_status
+        region_id = region_request_item.region_id
+        logger.info(
+            f"{region_id=}: Found counts:  {done=} = ({completed=} + {failed_count=}) == {total_expected_tile_count=}"
+        )
+        logger.info(f"{region_id=}: {region_status=} in [{RequestStatus.SUCCESS.name}, {RequestStatus.FAILED.name}]")
+        if not done:
+            return region_request_item, False
+
+        # region done
+
+        # if aleady marked done, finish
+        if region_status in [RequestStatus.SUCCESS.name, RequestStatus.FAILED.name]:
+            logger.info(f"{region_id=} already completed, skipping")
+            return region_request_item, True
 
         # Update table w/ total tile counts
-        region_request_item.total_tiles = total_tile_count
-        region_request_item.succeeded_tile_count = total_tile_count - failed_tile_count
-        region_request_item.failed_tile_count = failed_tile_count
-        region_request_item = self.region_request_table.update_region_request(region_request_item)
+        region_request_item.succeeded_tile_count = completed
+        region_request_item.failed_tile_count = failed_count
+
+        # Update region request table
+        region_status = self.region_status_monitor.get_status(region_request_item)
+        completed_region_request_item = self.region_request_table.complete_region_request(region_request_item, region_status)
 
         # Update the image request to complete this region
-        _ = self.job_table.complete_region_request(tile_request_item.image_id, bool(failed_tile_count))  # image_request_item
+        _ = self.job_table.complete_region_request(tile_request_item.image_id, bool(failed_count))
+        logger.info(f"{region_id=}: Marking region success in job table for : {tile_request_item.__dict__}")
 
-        # Update region request table if that region succeeded
-        region_status = self.region_status_monitor.get_status(region_request_item)
-        region_request_item = self.region_request_table.complete_region_request(region_request_item, region_status)
+        # completed_region_request_item = self.region_request_table.update_region_request(completed_region_request_item)
 
-        self.region_status_monitor.process_event(region_request_item, region_status, "Completed region processing")
+        self.region_status_monitor.process_event(completed_region_request_item, region_status, "Completed region processing")
 
         # Write CloudWatch Metrics to the Logs
         if isinstance(metrics, MetricsLogger):
             metrics.put_metric(MetricLabels.INVOCATIONS, 1, str(Unit.COUNT.value))
 
-        return region_request_item
+        return completed_region_request_item, True

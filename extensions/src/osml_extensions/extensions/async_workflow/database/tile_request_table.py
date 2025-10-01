@@ -199,6 +199,7 @@ class TileRequestTable(DDBHelper):
             expr_attr_names = {"#tile_status": "tile_status"}
 
             # Add start_time when tile_status changes to PROCESSING
+            # TODO: Update these to use RequestStatus
             if tile_status == "PROCESSING":
                 update_expr += ", start_time = :start_time"
                 update_attr[":start_time"] = current_time
@@ -451,18 +452,17 @@ class TileRequestTable(DDBHelper):
             logger.error(traceback.format_exc())
             raise UpdateRegionException("Failed to update tile inference info!") from e
 
-    def is_region_request_complete(self, tile_request_item: TileRequestItem):
+    def get_region_request_complete_counts(self, tile_request_item: TileRequestItem):
         """
         Check if all tiles for a region are done processing.
 
         :param tile_request_item: TileRequestItem to check
-        :return: Tuple of (all_done, total_tile_count, failed_tile_count, region_request, region_request_item)
+        :return: Tuple of (failed_tile_count, complete_tile_count)
         """
         try:
             # Get all tiles for this job
             tiles = self.get_tiles_for_region(tile_request_item.region_id)
 
-            total_tile_count = len(tiles)
             failed_tile_count = 0
             completed_count = 0
 
@@ -472,9 +472,7 @@ class TileRequestTable(DDBHelper):
                 elif tile.tile_status == "FAILED":
                     failed_tile_count += 1
 
-            all_done = (completed_count + failed_tile_count) == total_tile_count
-
-            return all_done, total_tile_count, failed_tile_count
+            return failed_tile_count, completed_count
 
         except Exception as e:
             logger.error(f"Error checking if region is done: {e}")
