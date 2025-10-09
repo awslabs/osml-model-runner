@@ -5,3 +5,5 @@
 
 tag_stable:
   extends: .docker_stable_tag_template
+  variables:
+    ROLE_ARN: $ROLE_ARN_TST
