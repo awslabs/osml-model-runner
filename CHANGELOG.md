@@ -5,6 +5,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixing tag job in UC
+
 ## [2.6.1] - 2025-09-30
 
 ### Fixed
