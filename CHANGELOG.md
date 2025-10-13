@@ -5,6 +5,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Switched to skopeo for docker image management
+
 ## [2.6.2] - 2025-10-10
 
 ### Fixed

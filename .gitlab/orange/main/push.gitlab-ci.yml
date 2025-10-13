@@ -1,14 +1,7 @@
 ---
-# Push to ecr
-#
-# Push gitlab images to tst and ops ECR repos
-#
-
 push_to_ecr_tst:
   extends:
-    - .customer_push_template
-    - .customer_aws_template
-  tags: [dind]
+    - customer_push_template_skopeo
   variables:
     TARGET: "tst"
     ROLE_ARN: $ROLE_ARN_TST
@@ -19,9 +12,7 @@ push_to_ecr_tst:
 
 push_to_ecr_ops:
   extends:
-    - .customer_push_template
-    - .customer_aws_template
-  tags: [dind]
+    - customer_push_template_skopeo
   variables:
     TARGET: "ops"
     ROLE_ARN: $ROLE_ARN_OPS
