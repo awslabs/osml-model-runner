@@ -1,7 +1,7 @@
 ---
 push_to_ecr_tst:
   extends:
-    - customer_push_template_skopeo
+    - .customer_push_template_skopeo
   variables:
     TARGET: "tst"
     ROLE_ARN: $ROLE_ARN_TST
@@ -12,7 +12,7 @@ push_to_ecr_tst:
 
 push_to_ecr_ops:
   extends:
-    - customer_push_template_skopeo
+    - .customer_push_template_skopeo
   variables:
     TARGET: "ops"
     ROLE_ARN: $ROLE_ARN_OPS
