@@ -39,7 +39,6 @@ class JobItem(DDBItem):
     region_count: Optional[int] = total count of regions expected for this image
     width: Optional[int] = width of the image in pixels
     height: Optional[int] = height of the image in pixels
-    extents: Optional[str] = string representation of the image extents
     tile_size: Optional[str] = size of the tiles used during processing
     tile_overlap: Optional[str] = overlap between tiles during processing
     model_name: Optional[str] = name of the model used for processing
@@ -63,7 +62,6 @@ class JobItem(DDBItem):
     region_count: Optional[int] = None
     width: Optional[int] = None
     height: Optional[int] = None
-    extents: Optional[str] = None
     tile_size: Optional[str] = None
     tile_overlap: Optional[str] = None
     model_name: Optional[str] = None
