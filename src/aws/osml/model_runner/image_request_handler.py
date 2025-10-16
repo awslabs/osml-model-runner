@@ -42,7 +42,7 @@ from .exceptions import (
     UnsupportedModelException,
 )
 from .inference import calculate_processing_bounds, get_source_property
-from .inference.feature_utils import add_properties_to_features, get_extents
+from .inference.feature_utils import add_properties_to_features
 from .queue import RequestQueue
 from .region_request_handler import RegionRequestHandler
 from .sink import SinkFactory
@@ -148,11 +148,6 @@ class ImageRequestHandler:
                 job_item.region_count = len(regions)
                 job_item.width = int(ds.RasterXSize)
                 job_item.height = int(ds.RasterYSize)
-                try:
-                    job_item.extents = json.dumps(get_extents(ds, sensor_model))
-                except Exception as e:
-                    logger.warning(f"Could not get extents for image: {job_item.image_id}")
-                    logger.exception(e)
 
                 feature_properties: List[dict] = json.loads(job_item.feature_properties)
 
