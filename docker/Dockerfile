@@ -2,8 +2,19 @@
 ARG BASE_IMG
 #checkov:skip=CKV_DOCKER_7:This is using an already built non latest image that we maintain
 FROM ${BASE_IMG} as runner
-# Only override if you're using a mirror with a cert pulled in using cert-base as a build parameter
-ARG PIP_INDEX_URL=https://pypi.org/simple/
+
+##### ##### ##### ##### ##### ##### ##### ##### ##### #####
+# Configure Mirrors
+##### ##### ##### ##### #####
+# Pip Mirrors
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_TRUSTED_HOST=pypi.org
+#checkov:skip=CKV2_DOCKER_16: PIP_TRUSTED_HOST used for accessing approved mirrors.
+
+ENV PIP_INDEX_URL=${PIP_INDEX_URL}
+ENV PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}
+#checkov:skip=CKV2_DOCKER_16: PIP_TRUSTED_HOST used for accessing approved mirrors.
+
 ARG PACKAGES="cmake wget gcc gcc-c++ libstdc++ sqlite-libs libcurl libtiff zlib libzstd libjpeg-turbo libpng openjpeg2 libwebp expat libpq"
 ARG PYTHON_BINARY
 ARG PIP_BINARY
@@ -35,14 +46,14 @@ ENV C_INCLUDE_PATH=/usr/include/gdal
 RUN ${PIP_BINARY} install \    
     --no-cache-dir \
     --index-url ${PIP_INDEX_URL} \ 
-    --trusted-host https://mirrors.gs.mil \
+    --trusted-host ${PIP_TRUSTED_HOST} \
     pip -U 
 
 # install the model runner application from source
 RUN ${PYTHON_BINARY} -m pip install \
     --no-cache-dir \
     --index-url ${PIP_INDEX_URL} \ 
-    --trusted-host https://mirrors.gs.mil \
+    --trusted-host ${PIP_TRUSTED_HOST} \
     osml-model-runner/.
 
 # Resolve broken simlinks for gdal python header bindings after python installs. 
@@ -59,7 +70,7 @@ RUN chmod -R 744 /.local
 
 USER 1000
 
-ENTRYPOINT ["python3", "osml-model-runner/bin/oversightml-mr-entry-point.py"]
+ENTRYPOINT ${PYTHON_BINARY} osml-model-runner/bin/oversightml-mr-entry-point.py
 
 FROM runner as unit-test
 
@@ -86,10 +97,10 @@ ENV AWS_SECRET_ACCESS_KEY=testing
 ENV AWS_SECURITY_TOKEN=testing
 ENV AWS_SESSION_TOKEN=testing
 
-RUN python3 -m pip install \
+RUN ${PYTHON_BINARY} -m pip install \
     --no-cache-dir \
     --index-url ${PIP_INDEX_URL} \ 
-    --trusted-host https://mirrors.gs.mil \
+    --trusted-host ${PIP_TRUSTED_HOST} \
     -r /home/osml-model-runner/test/requirements-test.txt
 
 
@@ -97,6 +108,6 @@ RUN chown -R 1000:1000 /home/osml-model-runner
 RUN chmod -R 744 /home/osml-model-runner
 
 USER 1000
-ENTRYPOINT ["pytest"]
+ENTRYPOINT ${PYTHON_BINARY} -m pytest
 CMD ["--durations=10", "--cov-config", ".coveragerc", "--cov", "aws.osml.model_runner"] 
 #checkov:skip=CKV_DOCKER_2:HEALTHCHECK to be added later.

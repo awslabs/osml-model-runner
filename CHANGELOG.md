@@ -5,6 +5,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Updated Dockerfile to use `${PYTHON_BINARY}` variable instead of hardcoded `python3` references
+- Updated production ENTRYPOINT to use `${PYTHON_BINARY}` for consistent Python version management
+- Updated unit-test stage to use `${PYTHON_BINARY} -m pytest` instead of hardcoded `pytest`
+- Updated unit-test pip install to use `${PYTHON_BINARY} -m pip` for consistency
+
 ## [2.7.1] - 2025-10-13
 
 ### Fixed

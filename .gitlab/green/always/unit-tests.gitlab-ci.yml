@@ -15,7 +15,6 @@ unit-tests:
     PYTEST_ARGS: "--durations=10"  # Let the template handle coverage args
     # Green environment-specific variables
     BUILD_CERT: /certs/tls-ca-bundle.pem
-    PIP_INDEX_URL: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
     # Fix permission issues by setting writable home directory
     HOME: "/tmp"
     PIP_CACHE_DIR: "/tmp/.pip-cache"
