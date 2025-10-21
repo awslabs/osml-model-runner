@@ -5,6 +5,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.2] - 2025-10-21
+
 ### Changed
 
 - Updated Dockerfile to use `${PYTHON_BINARY}` variable instead of hardcoded `python3` references
@@ -12,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated unit-test stage to use `${PYTHON_BINARY} -m pytest` instead of hardcoded `pytest`
 - Updated unit-test pip install to use `${PYTHON_BINARY} -m pip` for consistency
 - Remove Tox
-- Pointed GDAL base image to gdal-base:v3-8-5-3
+- Pointed GDAL base image to gdal-base:v3-8-5-1-python3-13
 
 ## [2.7.1] - 2025-10-13
 
