@@ -12,5 +12,5 @@ build:
     TARGET: "runner"
     DOCKERFILE: docker/Dockerfile
     DESTINATION: ${MICROSERVICE_IMAGE}
-    PYTHON_BINARY: "python3.11"
-    PIP_BINARY: "pip3.11"
+    PYTHON_BINARY: "python3.13"
+    PIP_BINARY: "pip3.13"

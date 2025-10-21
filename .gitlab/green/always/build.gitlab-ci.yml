@@ -8,5 +8,5 @@ build:
     # Green environment uses GDAL base image
     BASE_IMG: ${GDAL_BASE_IMG}
     TARGET: "runner"
-    PYTHON_BINARY: "python3.11"
-    PIP_BINARY: "pip3.11"
+    PYTHON_BINARY: "python3.13"
+    PIP_BINARY: "pip3.13"

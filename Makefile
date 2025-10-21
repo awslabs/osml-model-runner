@@ -2,7 +2,7 @@ AWS_ACCOUNT_ID		:= $(shell aws sts get-caller-identity --query Account --output 
 TAG 							:= stable 
 
 publish_local_build: ecr_login
-	docker build --target runner -f docker/Dockerfile -t $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_DEFAULT_REGION).amazonaws.com/ie-model-runner:$(TAG) .
+	docker build --build-arg BASE_IMG=${BASE_IMG} --target runner -f docker/Dockerfile -t $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_DEFAULT_REGION).amazonaws.com/ie-model-runner:$(TAG) .
 	docker push $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_DEFAULT_REGION).amazonaws.com/ie-model-runner:$(TAG) 
 
 ecr_login:

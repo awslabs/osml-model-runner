@@ -13,9 +13,9 @@ across instances to process images as quickly as possible.
 
 This application has been hardened and built on top of an IronBank container located:
 
-* <https://repo1.dso.mil/dsop/opensource/python/python311/-/blob/development/Dockerfile>
-* OS=RHEL 8
-* Python=Python 3.11.5
+* <https://repo1.dso.mil/dsop/opensource/python/python313/-/blob/development/Dockerfile>
+* OS=RHEL 9
+* Python=Python 3.13.7
 * OPENJPEG_VERSION=2.5.0
 * PROJ=9.3.0
 * GDAL=3.8.3

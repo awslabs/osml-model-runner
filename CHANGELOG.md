@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated production ENTRYPOINT to use `${PYTHON_BINARY}` for consistent Python version management
 - Updated unit-test stage to use `${PYTHON_BINARY} -m pytest` instead of hardcoded `pytest`
 - Updated unit-test pip install to use `${PYTHON_BINARY} -m pip` for consistency
+- Remove Tox
+- Pointed GDAL base image to gdal-base:v3-8-5-3
 
 ## [2.7.1] - 2025-10-13
 

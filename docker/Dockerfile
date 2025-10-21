@@ -16,8 +16,8 @@ ENV PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}
 #checkov:skip=CKV2_DOCKER_16: PIP_TRUSTED_HOST used for accessing approved mirrors.
 
 ARG PACKAGES="cmake wget gcc gcc-c++ libstdc++ sqlite-libs libcurl libtiff zlib libzstd libjpeg-turbo libpng openjpeg2 libwebp expat libpq"
-ARG PYTHON_BINARY
-ARG PIP_BINARY
+ARG PYTHON_BINARY=python3.13
+ARG PIP_BINARY=pip3.13
 
 # Justification: we switch to a non-root user before running the container in any capacity,
 # but a parsing error prevents semgrep from detecting that.
@@ -42,8 +42,8 @@ COPY . osml-model-runner
 ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
 ENV C_INCLUDE_PATH=/usr/include/gdal
 
-# Upgrade pip 
-RUN ${PIP_BINARY} install \    
+# Upgrade pip
+RUN ${PIP_BINARY} install \
     --no-cache-dir \
     --index-url ${PIP_INDEX_URL} \ 
     --trusted-host ${PIP_TRUSTED_HOST} \
@@ -56,11 +56,15 @@ RUN ${PYTHON_BINARY} -m pip install \
     --trusted-host ${PIP_TRUSTED_HOST} \
     osml-model-runner/.
 
-# Resolve broken simlinks for gdal python header bindings after python installs. 
-RUN ldconfig 
-# Clean up old python3.6 install
+# Resolve broken simlinks for gdal python header bindings after python installs.
+RUN ldconfig
+# Clean up old python installs
 USER root
-RUN rm -rf /usr/lib/python3.6/site-packages/urllib3*
+RUN rm -rf /usr/lib/python3.6/site-packages/urllib3* \
+           /usr/lib/python3.9 \
+           /home/osml-model-runner/.venv/lib/python3.11 \
+           /usr/share/python3-wheels/setuptools-*.whl \
+           /usr/share/python3.11-wheels
 
 # Create directory that pip can install required packages
 # for unit tests to run. Needed for pipeline unit-test job.
@@ -78,7 +82,7 @@ WORKDIR /home/osml-model-runner
 
 USER root
 
-# Pyton packages and environment variables mirror tox.ini settings 
+# Pyton packages and environment variables mirror tox.ini settings
 ENV AWS_DEFAULT_REGION=us-west-2
 ENV WORKERS=4
 ENV WORKERS_PER_CPU=1
