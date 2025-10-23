@@ -9,6 +9,7 @@ import {
   FlowLogDestination,
   FlowLogResourceType,
   IVpc,
+  SecurityGroup,
   SubnetFilter,
   SubnetSelection,
   SubnetType,
@@ -149,8 +150,13 @@ export class ModelRunnerVpc extends Construct {
         ]
       });
 
-      // Use VPC's default security group
-      this.defaultSecurityGroup = (this.vpc as Vpc).vpcDefaultSecurityGroup;
+      const customSecurityGroup = new SecurityGroup(this, "ModelRunnerSecurityGroup", {
+        vpc: this.vpc,
+        description: "Security group for OSML Model Runner with outbound access",
+        allowAllOutbound: true // This ensures outbound access for general traffic
+      });
+
+      this.defaultSecurityGroup = customSecurityGroup.securityGroupId;
 
     }
 
