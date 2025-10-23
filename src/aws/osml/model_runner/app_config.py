@@ -23,8 +23,8 @@ class ServiceConfig:
 
     # Required env configuration
     aws_region: str = os.environ["AWS_DEFAULT_REGION"]
-    job_table: str = os.environ["JOB_TABLE"]
-    outstanding_jobs_table: str = os.environ["OUTSTANDING_JOBS_TABLE"]
+    image_request_table: str = os.environ["IMAGE_REQUEST_TABLE"]
+    outstanding_jobs_table: str = os.environ["OUTSTANDING_IMAGE_REQUEST_TABLE"]
     region_request_table: str = os.environ["REGION_REQUEST_TABLE"]
     endpoint_statistics_table = os.environ["ENDPOINT_TABLE"]
     feature_table: str = os.environ["FEATURE_TABLE"]

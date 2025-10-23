@@ -57,7 +57,20 @@ repos:
             pyproject.toml|
             setup.cfg|
             setup.py|
-            py.typed
+            py.typed|
+            .*\.json|
+            .*\.yml|
+            .*\.yaml|
+            .*\.example|
+            .*\.gitignore|
+            .*\.js|
+            .*\.d\.ts|
+            .*\.sh|
+            .*\.txt|
+            .*\.lock|
+            .*\.prettierignore|
+            .*\.npmignore|
+            .*\.prettierrc
           )$
       - id: copyright-required
         name: require copyright
@@ -72,5 +85,18 @@ repos:
             pyproject.toml|
             setup.cfg|
             setup.py|
-            py.typed
+            py.typed|
+            .*\.json|
+            .*\.yml|
+            .*\.yaml|
+            .*\.example|
+            .*\.gitignore|
+            .*\.js|
+            .*\.d\.ts|
+            .*\.sh|
+            .*\.txt|
+            .*\.lock|
+            .*\.prettierignore|
+            .*\.npmignore|
+            .*\.prettierrc
           )$

@@ -313,7 +313,7 @@ def select_features(
     tiling_strategy: TilingStrategy,
 ) -> List[Feature]:
     """
-    Selects the desired features using the options in the JobItem (NMS, SOFT_NMS, etc.).
+    Selects the desired features using the options in the ImageRequestItem (NMS, SOFT_NMS, etc.).
     This code applies a feature selector only to the features that came from regions of the image
     that were processed multiple times. First features are grouped based on the region they were
     processed in. Any features found in the overlap area between regions are run through the

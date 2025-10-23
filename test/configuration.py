@@ -53,8 +53,8 @@ TEST_CONFIG = {
     "IMAGE_KEY": "small.ntf",
     "JOB_ID": "test-job-id",
     "JOB_NAME": "test-job-name",
-    "JOB_TABLE_ATTRIBUTE_DEFINITIONS": [{"AttributeName": "image_id", "AttributeType": "S"}],
-    "JOB_TABLE_KEY_SCHEMA": [{"AttributeName": "image_id", "KeyType": "HASH"}],
+    "IMAGE_REQUEST_TABLE_ATTRIBUTE_DEFINITIONS": [{"AttributeName": "image_id", "AttributeType": "S"}],
+    "IMAGE_REQUEST_TABLE_KEY_SCHEMA": [{"AttributeName": "image_id", "KeyType": "HASH"}],
     "MOCK_PUT_EXCEPTION": Mock(side_effect=ClientError({"Error": {"Code": 500, "Message": "ClientError"}}, "put_item")),
     "MOCK_UPDATE_EXCEPTION": Mock(
         side_effect=ClientError({"Error": {"Code": 500, "Message": "ClientError"}}, "update_item")
@@ -62,11 +62,11 @@ TEST_CONFIG = {
     "MODEL_ENDPOINT": "TestEndpoint",
     "MODEL_NAME": "TestModel",
     "MODEL_VARIANT": "variant1",
-    "OUTSTANDING_JOBS_TABLE_ATTRIBUTE_DEFINITIONS": [
+    "OUTSTANDING_IMAGE_REQUEST_TABLE_ATTRIBUTE_DEFINITIONS": [
         {"AttributeName": "endpoint_id", "AttributeType": "S"},
         {"AttributeName": "job_id", "AttributeType": "S"},
     ],
-    "OUTSTANDING_JOBS_TABLE_KEY_SCHEMA": [
+    "OUTSTANDING_IMAGE_REQUEST_TABLE_KEY_SCHEMA": [
         {"AttributeName": "endpoint_id", "KeyType": "HASH"},
         {"AttributeName": "job_id", "KeyType": "RANGE"},
     ],

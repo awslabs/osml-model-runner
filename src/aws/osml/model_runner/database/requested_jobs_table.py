@@ -98,13 +98,13 @@ class RequestedJobsTable:
         :return: The status record for the image processing request
         :raises ClientError: If there is an error adding the request to DynamoDB
         """
-        logger.debug(f"Adding ImageRequest for {image_request.job_id} to job status table.")
+        logger.debug(f"Adding ImageRequest for {image_request.job_id} to image request table.")
         try:
             request_status_record = ImageRequestStatusRecord.new_from_request(image_request)
             self.table.put_item(Item=request_status_record.to_ddb_item())
             return request_status_record
         except ClientError as ce:
-            logger.error(f"Unable to add ImageRequest {image_request.job_id} to job status table.")
+            logger.error(f"Unable to add ImageRequest {image_request.job_id} to image request table.")
             logger.exception(ce)
             raise
 
@@ -128,7 +128,7 @@ class RequestedJobsTable:
             logger.debug(f"Successfully updated region count for job {image_request.job_id}")
         except ClientError as ce:
             logger.error(
-                f"Unable to update region count in job status table for {image_request.job_id}. "
+                f"Unable to update region count in image request table for {image_request.job_id}. "
                 f"Failed to set count to {region_count}"
             )
             logger.exception(ce)
@@ -141,7 +141,7 @@ class RequestedJobsTable:
         :return: List of all incomplete image processing requests
         :raises ClientError: If there is an error querying DynamoDB
         """
-        logger.debug("Scanning job status table for outstanding ImageRequests.")
+        logger.debug("Scanning image request table for outstanding ImageRequests.")
         try:
             response = self.table.scan(ConsistentRead=True)
             items = response.get("Items", [])
@@ -155,7 +155,7 @@ class RequestedJobsTable:
             # Convert DynamoDB items back to ImageRequestStatusRecord objects
             return [ImageRequestStatusRecord.from_ddb_item(item) for item in items]
         except ClientError as ce:
-            logger.error("Unable to scan job status table for outstanding image requests.")
+            logger.error("Unable to scan image request table for outstanding image requests.")
             logger.exception(ce)
             raise
 
@@ -170,7 +170,7 @@ class RequestedJobsTable:
         :return: True if the attempt was successfully started, False if another worker has already started this job
         :raises ClientError: If there is an unexpected error updating DynamoDB
         """
-        logger.debug(f"Updating job status table for new attempt of {request_status_record.job_id}")
+        logger.debug(f"Updating image request table for new attempt of {request_status_record.job_id}")
         try:
             current_time = int(time.time())
             self.table.update_item(
@@ -189,13 +189,13 @@ class RequestedJobsTable:
         except ClientError as ce:
             if ce.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 logger.debug(
-                    f"Unable to update job status table for {request_status_record.job_id}. "
+                    f"Unable to update image request table for {request_status_record.job_id}. "
                     "Another worker got to it first."
                 )
                 return False
             else:
                 logger.error(
-                    f"Unable to update job status table for {request_status_record.job_id}. " "Unexpected DynamoDB Error"
+                    f"Unable to update image request table for {request_status_record.job_id}. " "Unexpected DynamoDB Error"
                 )
                 logger.exception(ce)
                 raise
@@ -207,11 +207,11 @@ class RequestedJobsTable:
         :param image_request: The completed image request to remove
         :raises ClientError: If there is an error removing the item from DynamoDB
         """
-        logger.debug(f"Removing {image_request.job_id} from job status table")
+        logger.debug(f"Removing {image_request.job_id} from image request table")
         try:
             self.table.delete_item(Key={"endpoint_id": image_request.model_name, "job_id": image_request.job_id})
         except ClientError as ce:
-            logger.error(f"Unable to remove {image_request.job_id} from job status table.")
+            logger.error(f"Unable to remove {image_request.job_id} from image request table.")
             logger.exception(ce)
             raise
 
@@ -241,7 +241,7 @@ class RequestedJobsTable:
                 logger.debug(f"Region {region_id} was already marked as complete for job {image_request.job_id}")
                 return False
             logger.error(
-                f"Unable to update job status table for {image_request.job_id}. "
+                f"Unable to update image request table for {image_request.job_id}. "
                 f"Failed to add completed region {region_id}"
             )
             logger.exception(ce)

@@ -3,7 +3,7 @@
 import logging
 
 from aws.osml.model_runner.common import RequestStatus
-from aws.osml.model_runner.database.job_table import JobItem
+from aws.osml.model_runner.database.image_request_table import ImageRequestItem
 
 from .base_status_monitor import BaseStatusMonitor
 from .exceptions import StatusMonitorException
@@ -18,7 +18,7 @@ class ImageStatusMonitor(BaseStatusMonitor):
     ImageStatusMonitor is responsible for monitoring and publishing the status of image processing requests.
 
     This class uses Amazon SNS to publish updates on image request status, including success, partial success,
-    failure, and progress. It interacts with JobItem data to determine the current status of the request and logs
+    failure, and progress. It interacts with ImageRequestItem data to determine the current status of the request and logs
     important status changes.
     """
 
@@ -30,7 +30,7 @@ class ImageStatusMonitor(BaseStatusMonitor):
         """
         super().__init__(image_status_topic)
 
-    def process_event(self, image_request_item: JobItem, status: RequestStatus, message: str) -> None:
+    def process_event(self, image_request_item: ImageRequestItem, status: RequestStatus, message: str) -> None:
         """
         Publishes the status message via SNS for image requests.
 
@@ -38,7 +38,7 @@ class ImageStatusMonitor(BaseStatusMonitor):
         the event. If the required fields (job_id, image_id, processing_duration) are present in the request item,
         it sends a message using the StatusMessage class.
 
-        :param image_request_item: JobItem = The image request for which the status is being updated.
+        :param image_request_item: ImageRequestItem = The image request for which the status is being updated.
         :param status: RequestStatus = The current status of the image request.
         :param message: str = A message describing the reason for the status update.
 
@@ -79,14 +79,14 @@ class ImageStatusMonitor(BaseStatusMonitor):
         else:
             raise StatusMonitorException(f"StatusMonitor failed: {status} {image_request_item.job_id}")
 
-    def get_status(self, request_item: JobItem) -> RequestStatus:
+    def get_status(self, request_item: ImageRequestItem) -> RequestStatus:
         """
         Determines the current status of an image request.
 
         This method evaluates the success and error counts for regions in the image request and returns the
         appropriate status: SUCCESS, PARTIAL, FAILED, or IN_PROGRESS.
 
-        :param request_item: JobItem = The image request item containing region processing information.
+        :param request_item: ImageRequestItem = The image request item containing region processing information.
 
         :return: RequestStatus = The status of the image request based on the region counts.
         """

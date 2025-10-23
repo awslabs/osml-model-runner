@@ -36,7 +36,7 @@ class TestModelRunnerEndToEnd(TestCase):
         from aws.osml.model_runner.app_config import BotoConfig
         from aws.osml.model_runner.database.endpoint_statistics_table import EndpointStatisticsTable
         from aws.osml.model_runner.database.feature_table import FeatureTable
-        from aws.osml.model_runner.database.job_table import JobTable
+        from aws.osml.model_runner.database.image_request_table import ImageRequestTable
         from aws.osml.model_runner.database.region_request_table import RegionRequestTable
         from aws.osml.model_runner.model_runner import ModelRunner
         from aws.osml.model_runner.status import ImageStatusMonitor, RegionStatusMonitor
@@ -105,20 +105,20 @@ class TestModelRunnerEndToEnd(TestCase):
         self.ddb = boto3.resource("dynamodb", config=BotoConfig.default)
 
         self.image_request_ddb = self.ddb.create_table(
-            TableName=os.environ["JOB_TABLE"],
-            KeySchema=TEST_CONFIG["JOB_TABLE_KEY_SCHEMA"],
-            AttributeDefinitions=TEST_CONFIG["JOB_TABLE_ATTRIBUTE_DEFINITIONS"],
+            TableName=os.environ["IMAGE_REQUEST_TABLE"],
+            KeySchema=TEST_CONFIG["IMAGE_REQUEST_TABLE_KEY_SCHEMA"],
+            AttributeDefinitions=TEST_CONFIG["IMAGE_REQUEST_TABLE_ATTRIBUTE_DEFINITIONS"],
             BillingMode="PAY_PER_REQUEST",
         )
-        self.job_table = JobTable(os.environ["JOB_TABLE"])
+        self.image_request_table = ImageRequestTable(os.environ["IMAGE_REQUEST_TABLE"])
 
         self.outstanding_jobs_table_ddb = self.ddb.create_table(
-            TableName=os.environ["OUTSTANDING_JOBS_TABLE"],
-            KeySchema=TEST_CONFIG["OUTSTANDING_JOBS_TABLE_KEY_SCHEMA"],
-            AttributeDefinitions=TEST_CONFIG["OUTSTANDING_JOBS_TABLE_ATTRIBUTE_DEFINITIONS"],
+            TableName=os.environ["OUTSTANDING_IMAGE_REQUEST_TABLE"],
+            KeySchema=TEST_CONFIG["OUTSTANDING_IMAGE_REQUEST_TABLE_KEY_SCHEMA"],
+            AttributeDefinitions=TEST_CONFIG["OUTSTANDING_IMAGE_REQUEST_TABLE_ATTRIBUTE_DEFINITIONS"],
             BillingMode="PAY_PER_REQUEST",
         )
-        self.outstanding_jobs_table = RequestedJobsTable(os.environ["OUTSTANDING_JOBS_TABLE"])
+        self.outstanding_jobs_table = RequestedJobsTable(os.environ["OUTSTANDING_IMAGE_REQUEST_TABLE"])
         self.outstanding_jobs_table.add_new_request(self.image_request)
 
         self.image_request_ddb = self.ddb.create_table(
@@ -211,22 +211,22 @@ class TestModelRunnerEndToEnd(TestCase):
 
         # Plug in the required virtual resources to our ModelRunner instance
         self.model_runner = ModelRunner()
-        self.model_runner.job_table = self.job_table
+        self.model_runner.image_request_table = self.image_request_table
         self.model_runner.requested_jobs_table = self.outstanding_jobs_table
         self.model_runner.image_job_scheduler.image_request_queue.requested_jobs_table = self.outstanding_jobs_table
         self.model_runner.region_request_table = self.region_request_table
         self.model_runner.endpoint_statistics_table = self.endpoint_statistics_table
         self.model_runner.image_status_monitor = self.image_status_monitor
         self.model_runner.region_status_monitor = self.region_status_monitor
-        self.model_runner.region_request_handler.job_table = self.job_table
+        self.model_runner.region_request_handler.image_request_table = self.image_request_table
         self.model_runner.region_request_handler.region_request_table = self.region_request_table
         self.model_runner.region_request_handler.endpoint_statistics_table = self.endpoint_statistics_table
         self.model_runner.region_request_handler.region_status_monitor = self.region_status_monitor
-        self.model_runner.region_request_handler.job_table = self.job_table
+        self.model_runner.region_request_handler.image_request_table = self.image_request_table
         self.model_runner.image_request_handler.region_request_table = self.region_request_table
         self.model_runner.image_request_handler.region_request_handler = self.model_runner.region_request_handler
         self.model_runner.image_request_handler.endpoint_statistics_table = self.endpoint_statistics_table
-        self.model_runner.image_request_handler.job_table = self.job_table
+        self.model_runner.image_request_handler.image_request_table = self.image_request_table
         self.model_runner.image_request_handler.image_status_monitor = self.image_status_monitor
 
     def tearDown(self) -> None:
@@ -283,7 +283,7 @@ class TestModelRunnerEndToEnd(TestCase):
         self.model_runner.image_request_handler.process_image_request(self.image_request)
 
         # Ensure that the single region was processed successfully
-        image_request_item = self.job_table.get_image_request(self.image_request.image_id)
+        image_request_item = self.image_request_table.get_image_request(self.image_request.image_id)
         assert image_request_item.region_success == 1
 
         # Ensure that the detection outputs arrived in our DDB table
