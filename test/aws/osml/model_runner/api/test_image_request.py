@@ -5,6 +5,7 @@ from unittest import TestCase, main
 import boto3
 import pytest
 from botocore.stub import Stubber
+from dacite import exceptions
 
 from aws.osml.model_runner.api import InvalidS3ObjectException
 from aws.osml.model_runner.api.image_request import ImageRequest, ModelInvokeMode
@@ -44,6 +45,51 @@ class TestImageRequest(TestCase):
         ir = self.build_request_data()
         ir.tile_size = None
         assert not ir.is_valid()
+
+    def test_from_external_message_zero_tile_dimensions_int(self):
+        """Test zero tile dimensions as integers matching SQS format"""
+        message = {
+            "jobId": "test-job-id",
+            "imageUrls": ["test-image-url"],
+            "imageProcessor": {"name": "test-model", "type": "SM_ENDPOINT"},
+            "imageProcessorTileSize": 512,
+            "imageProcessorTileOverlap": 0,
+            "outputs": [{"type": "S3", "bucket": "test-bucket", "prefix": "test-prefix"}],
+        }
+        ir = ImageRequest.from_external_message(message)
+        assert ir.tile_size == (512, 512)
+        assert ir.tile_overlap == (0, 0)
+        assert ir.is_valid()
+
+    def test_from_external_message_zero_tile_dimensions_string(self):
+        """Test zero tile dimensions as strings"""
+        message = {
+            "jobId": "test-job-id",
+            "imageUrls": ["test-image-url"],
+            "imageProcessor": {"name": "test-model", "type": "SM_ENDPOINT"},
+            "imageProcessorTileSize": "512",
+            "imageProcessorTileOverlap": "0",
+            "outputs": [{"type": "S3", "bucket": "test-bucket", "prefix": "test-prefix"}],
+        }
+        ir = ImageRequest.from_external_message(message)
+        assert ir.tile_size == (512, 512)
+        assert ir.tile_overlap == (0, 0)
+
+    def test_from_external_message_invalid_tile_dimensions(self):
+        """Test invalid tile dimensions"""
+        message = {
+            "jobId": "test-job-id",
+            "imageUrls": ["test-image-url"],
+            "imageProcessor": {"name": "test-model", "type": "SM_ENDPOINT"},
+            "imageProcessorTileSize": "invalid",
+            "imageProcessorTileOverlap": None,
+            "outputs": [{"type": "S3", "bucket": "test-bucket", "prefix": "test-prefix"}],
+        }
+        # Should evalute to None
+        with self.assertRaisesRegex(exceptions.WrongTypeError, "wrong value type"):
+            ir = ImageRequest.from_external_message(message)
+            assert ir.tile_size is None
+            assert ir.tile_overlap is None
 
     def test_from_external_message(self):
         """

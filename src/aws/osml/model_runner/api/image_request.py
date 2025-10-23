@@ -106,14 +106,18 @@ class ImageRequest:
         return from_dict(ImageRequest, properties)
 
     @staticmethod
-    def _parse_tile_dimension(value: Optional[str]) -> ImageDimensions:
+    def _parse_tile_dimension(value: Optional[str]) -> Optional[ImageDimensions]:
         """
         Converts a string value to a tuple of integers representing tile dimensions.
 
         :param value: String value representing tile dimension.
         :return: Tuple of integers as tile dimensions.
         """
-        return (int(value), int(value)) if value else None
+        try:
+            int_value = int(value)
+            return (int_value, int_value)
+        except Exception:
+            return None
 
     @staticmethod
     def _parse_roi(roi: Optional[str]) -> Optional[BaseGeometry]:
