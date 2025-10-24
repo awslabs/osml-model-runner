@@ -17,11 +17,9 @@ from aws_embedded_metrics.unit import Unit
 from botocore.exceptions import ClientError, NoCredentialsError
 from geojson import FeatureCollection
 
-from aws.osml.model_runner.app_config import BotoConfig
+from aws.osml.model_runner.app_config import BotoConfig, ServiceConfig
 from aws.osml.model_runner.common import Timer
-
-from ..async_app_config import AsyncServiceConfig
-from ..errors import ExtensionRuntimeError
+from aws.osml.model_runner.exceptions import ExtensionRuntimeError
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +57,7 @@ class S3Manager:
         else:
             self.s3_client = boto3.client("s3", config=BotoConfig.default)
 
-        self.config = AsyncServiceConfig.async_endpoint_config
+        self.config = ServiceConfig.async_endpoint_config
         if not self.config.input_bucket:
             raise ValueError("Input (artifact) bucket is mandatory for async processing")
         logger.debug(f"S3Manager initialized with input bucket: {self.config.input_bucket}")
@@ -218,9 +216,6 @@ class S3Manager:
 
         :param s3_uri: S3 URI of the object to delete
         """
-        if not self.config.cleanup_enabled:
-            logger.debug(f"Cleanup disabled, skipping deletion of {s3_uri}")
-            return
 
         logger.debug(f"Deleting S3 object: {s3_uri}")
 
@@ -262,10 +257,6 @@ class S3Manager:
 
         :param s3_uris: List of S3 URIs to delete
         """
-        if not self.config.cleanup_enabled:
-            logger.debug("Cleanup disabled, skipping deletion of S3 objects")
-            return
-
         logger.debug(f"Cleaning up {len(s3_uris)} S3 objects")
 
         for s3_uri in s3_uris:

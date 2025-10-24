@@ -305,15 +305,16 @@ class TestModelRunnerEndToEnd(TestCase):
         """
 
         from math import radians
+
         import aws.osml.model_runner.app_config
 
         reload(aws.osml.model_runner.app_config)
         from aws.osml.gdal.gdal_dem_tile_factory import GDALDigitalElevationModelTileFactory
         from aws.osml.model_runner.app_config import ServiceConfig
-        from aws.osml.photogrammetry.digital_elevation_model import DigitalElevationModel
-        from aws.osml.photogrammetry.generic_dem_tile_set import GenericDEMTileSet 
         from aws.osml.photogrammetry.coordinates import GeodeticWorldCoordinate
-        
+        from aws.osml.photogrammetry.digital_elevation_model import DigitalElevationModel
+        from aws.osml.photogrammetry.generic_dem_tile_set import GenericDEMTileSet
+
         assert ServiceConfig.elevation_data_location == TEST_CONFIG["ELEVATION_DATA_LOCATION"]
         config = ServiceConfig()
         elevation_model = config.create_elevation_model()
@@ -328,7 +329,9 @@ class TestModelRunnerEndToEnd(TestCase):
         assert elevation_model.tile_set.min_longitude_degrees == -180.0
         assert elevation_model.tile_set.max_longitude_degrees == 180.00
 
-        assert "e142/n03.dt2" == elevation_model.tile_set.find_tile_id(GeodeticWorldCoordinate([radians(142), radians(3), 0.0]))
+        assert "e142/n03.dt2" == elevation_model.tile_set.find_tile_id(
+            GeodeticWorldCoordinate([radians(142), radians(3), 0.0])
+        )
 
         assert elevation_model.tile_factory.tile_directory == TEST_CONFIG["ELEVATION_DATA_LOCATION"]
 

@@ -4,9 +4,8 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
 """
-Metrics module for OSML extensions.
+S3 management module for OSML extensions.
 """
 
-from .async_metrics import AsyncMetricsContext, AsyncMetricsTracker
-
-__all__ = ["AsyncMetricsTracker", "AsyncMetricsContext"]
+from .s3_manager import S3Manager, S3OperationError
+from .tile_helpers import parse_s3_event_for_output_location

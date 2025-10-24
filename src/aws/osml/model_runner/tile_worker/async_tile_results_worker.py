@@ -7,22 +7,18 @@ import asyncio
 import traceback
 
 from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
-from aws.osml.model_runner.database import FeatureTable, RegionRequestTable, JobTable
+from aws.osml.model_runner.database import FeatureTable, RegionRequestTable, JobTable, TileRequestTable
 from aws.osml.model_runner.app_config import MetricLabels
-from aws.osml.model_runner.app_config import BotoConfig
+from aws.osml.model_runner.app_config import BotoConfig, ServiceConfig
 from aws.osml.model_runner.tile_worker import TileWorker
 from aws.osml.model_runner.common import TileState
 from aws.osml.photogrammetry import SensorModel, ElevationModel
+from aws.osml.model_runner.utilities import S3Manager
+from aws.osml.model_runner.inference.async_sm_detector import AsyncSMDetector
 
 from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
-
-from ..s3 import S3Manager
-from ..database import TileRequestTable
-from ..detectors import AsyncSMDetector
-from ..async_app_config import AsyncServiceConfig
-from ..metrics import AsyncMetricsTracker
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
@@ -46,7 +42,6 @@ class AsyncResultsWorker(TileWorker):
         region_request_table: RegionRequestTable,
         in_queue: Queue,
         feature_detector: AsyncSMDetector,
-        metrics_tracker: Optional[AsyncMetricsTracker] = None,
         assumed_credentials: Optional[Dict[str, str]] = None,
         completion_queue: Optional[Queue] = None,
     ):
@@ -59,7 +54,6 @@ class AsyncResultsWorker(TileWorker):
         :param region_request_table: RegionRequestTable for tracking tile processing
         :param in_queue: Queue containing submitted jobs
         :param feature_detector: AsyncSMDetector instance
-        :param metrics_tracker: Optional metrics tracker
         :param completion_queue: Optional queue for completion notifications
         """
 
@@ -68,15 +62,14 @@ class AsyncResultsWorker(TileWorker):
 
         self.name = f"AsyncResultsWorker-{worker_id}"
         self.worker_id = worker_id
-        self.metrics_tracker = metrics_tracker
         self.completion_queue = completion_queue
 
         # Geolocator caching by image_id
         self._cached_geolocator = None
         self._cached_image_id = None
 
-        self.tile_request_table = TileRequestTable(AsyncServiceConfig.tile_request_table)
-        self.job_table = JobTable(AsyncServiceConfig.job_table)
+        self.tile_request_table = TileRequestTable(ServiceConfig.tile_request_table)
+        self.job_table = JobTable(ServiceConfig.job_table)
 
         # Initialize async configuration
         if assumed_credentials is not None:
@@ -92,7 +85,7 @@ class AsyncResultsWorker(TileWorker):
             # Use the default role for this container if no specific credentials are provided.
             self.sm_client = boto3.client("sagemaker-runtime", config=BotoConfig.sagemaker)
 
-        self.async_config = AsyncServiceConfig.async_endpoint_config
+        self.async_config = ServiceConfig.async_endpoint_config
 
         logger.info(f"AsyncResultsWorker-{worker_id} initialized")
 
@@ -254,7 +247,7 @@ class AsyncResultsWorker(TileWorker):
                 self._handle_failed_job(image_info, error_message)
 
             # # Check for timeout
-            # elif time.time() - image_info["submitted_time"] > AsyncServiceConfig.async_endpoint_config.max_wait_time:
+            # elif time.time() - image_info["submitted_time"] > ServiceConfig.async_endpoint_config.max_wait_time:
             #     self._handle_failed_job(image_info, "Job timed out")
 
         except Exception as e:
@@ -293,11 +286,6 @@ class AsyncResultsWorker(TileWorker):
                 TileState.SUCCEEDED,
             )
 
-            if self.metrics_tracker:
-                self.metrics_tracker.increment_counter("JobCompletions")
-                processing_time = time.time() - image_info["start_time"]
-                self.metrics_tracker.set_counter("JobProcessingTime", int(processing_time))
-
             # Update tile status to COMPLETED
             if self.tile_request_table and image_info.get("tile_id") and image_info.get("region_id"):
                 try:
@@ -326,6 +314,3 @@ class AsyncResultsWorker(TileWorker):
                 logger.warning(f"Failed to update tile status to FAILED: {e}")
 
         assert isinstance(self.feature_detector, AsyncSMDetector)
-
-        if self.metrics_tracker:
-            self.metrics_tracker.increment_counter("JobFailures")

@@ -5,16 +5,15 @@ import traceback
 
 from aws.osml.model_runner.tile_worker.exceptions import SetupTileWorkersException
 from aws.osml.model_runner.database import FeatureTable, RegionRequestTable
-from aws.osml.model_runner.api import RegionRequest
+from aws.osml.model_runner.api import RegionRequest, TileRequest
 from aws.osml.photogrammetry import ElevationModel, SensorModel
 from aws.osml.model_runner.tile_worker import TileWorker
 from aws.osml.model_runner.common import get_credentials_for_assumed_role
 
 from .async_tile_submission_worker import AsyncSubmissionWorker
 from .async_tile_results_worker import AsyncResultsWorker
-from ..async_app_config import AsyncServiceConfig
-from ..factory import EnhancedFeatureDetectorFactory
-from ..api import TileRequest
+from aws.osml.model_runner.app_config import ServiceConfig
+from aws.osml.model_runner.inference.endpoint_factory import FeatureDetectorFactory
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
@@ -36,21 +35,21 @@ def setup_result_tile_workers(
         tile_workers = []
 
         # Start polling workers
-        for i in range(1):  # AsyncServiceConfig.polling_workers):
+        for i in range(ServiceConfig.polling_workers):
 
             # Set up our feature table to work with the region quest
             feature_table = FeatureTable(
-                AsyncServiceConfig.feature_table,
+                ServiceConfig.feature_table,
                 tile_request.tile_size,
                 tile_request.tile_overlap,
             )
 
             # Set up our feature table to work with the region quest
-            region_request_table = RegionRequestTable(AsyncServiceConfig.region_request_table)
+            region_request_table = RegionRequestTable(ServiceConfig.region_request_table)
 
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed
-            feature_detector = EnhancedFeatureDetectorFactory(
+            feature_detector = FeatureDetectorFactory(
                 endpoint=tile_request.model_name,
                 endpoint_mode=tile_request.model_invoke_mode,
                 assumed_credentials=model_invocation_credentials,
@@ -107,11 +106,11 @@ def setup_submission_tile_workers(
         tile_queue: Queue = Queue()
         tile_workers = []
 
-        for i in range(int(AsyncServiceConfig.workers)):
+        for i in range(int(ServiceConfig.submission_workers)):
 
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed
-            feature_detector = EnhancedFeatureDetectorFactory(
+            feature_detector = FeatureDetectorFactory(
                 endpoint=region_request.model_name,
                 endpoint_mode=region_request.model_invoke_mode,
                 assumed_credentials=model_invocation_credentials,

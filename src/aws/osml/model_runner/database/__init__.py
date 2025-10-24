@@ -21,3 +21,4 @@ from .exceptions import (
 from .feature_table import FeatureTable
 from .job_table import JobItem, JobTable
 from .region_request_table import RegionRequestItem, RegionRequestTable
+from .tile_request_table import TileRequestItem, TileRequestTable

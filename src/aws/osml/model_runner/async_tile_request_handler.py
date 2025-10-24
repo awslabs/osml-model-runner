@@ -10,17 +10,13 @@ from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
 
 from aws.osml.gdal import load_gdal_dataset
-from aws.osml.model_runner.database import JobTable
-from aws.osml.model_runner.app_config import MetricLabels
+from aws.osml.model_runner.database import JobTable, TileRequestTable, TileRequestItem
+from aws.osml.model_runner.app_config import MetricLabels, ServiceConfig
 from aws.osml.model_runner.common import RequestStatus
-from aws.osml.model_runner.api import get_image_path
-
-from .database import TileRequestTable, TileRequestItem
-from .async_app_config import AsyncServiceConfig
-from .api import TileRequest
-from .status import TileStatusMonitor
-from .workers import setup_result_tile_workers
-from .errors import ProcessTileException
+from aws.osml.model_runner.api import get_image_path, TileRequest
+from aws.osml.model_runner.status import TileStatusMonitor
+from aws.osml.model_runner.tile_worker import setup_result_tile_workers
+from aws.osml.model_runner.exceptions import ProcessTileException
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
@@ -80,7 +76,7 @@ class TileRequestHandler:
                 "tile_request_item": tile_request_item.__dict__,
                 "image_id": tile_request_item.image_id,  # Add image_id for caching
                 "sensor_model": sensor_model,
-                "elevation_model": AsyncServiceConfig.elevation_model,
+                "elevation_model": ServiceConfig.elevation_model,
                 "timestamp": time.time(),
             }
             self._work_queue.put(request_data)

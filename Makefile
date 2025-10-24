@@ -1,28 +1,39 @@
 AWS_ACCOUNT_ID		:= $(shell aws sts get-caller-identity --query Account --output text)
-TAG 				:= stable 
+TAG 				:= stable
+PYTHON_BINARY       := python3.13
+PIP_BINARY          := pip3.13
 
 local_build: ecr_login
 	docker build \
 		--target runner \
 		-f docker/Dockerfile \
 		--build-arg BASE_IMG=$(GDAL_BASE_IMG) \
+		--build-arg PYTHON_BINARY=${PYTHON_BINARY} \
+		--build-arg PIP_BINARY=${PIP_BINARY} \
 		-t $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_DEFAULT_REGION).amazonaws.com/ie-model-runner:$(TAG) \
 		.
 
 publish_local_build: local_build
-	docker push $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_DEFAULT_REGION).amazonaws.com/ie-model-runner:$(TAG) 
+	docker push $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_DEFAULT_REGION).amazonaws.com/ie-model-runner:$(TAG)
 
 ecr_login:
 	aws ecr get-login-password --region $(AWS_DEFAULT_REGION) | docker login --username AWS --password-stdin $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_DEFAULT_REGION).amazonaws.com
 
-docker_test: 
-	docker build --target unit-test -f docker/Dockerfile -t ie-model-runner:test .
+docker_test:
+	docker build \
+		--target unit-test \
+		-f docker/Dockerfile \
+		--build-arg BASE_IMG=$(GDAL_BASE_IMG) \
+		--build-arg PYTHON_BINARY=${PYTHON_BINARY} \
+		--build-arg PIP_BINARY=${PIP_BINARY} \
+		-t ie-model-runner:test .
 	docker run --rm -it ie-model-runner:test
+
+# --entrypoint /bin/bash \
 
 run_interactive: local_build
 	docker run -it \
 		--rm \
-		--entrypoint /bin/bash \
 		-e AWS_DEFAULT_REGION="us-west-2" \
 		-e WORKERS="4" \
 		-e WORKERS_PER_CPU="1" \

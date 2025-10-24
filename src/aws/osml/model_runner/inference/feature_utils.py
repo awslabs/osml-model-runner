@@ -179,7 +179,7 @@ def get_source_property(image_location: str, image_extension: str, dataset: gdal
 
     :return: the source dictionary property to attach to features
     """
-    # Build a source property for features 
+    # Build a source property for features
     # NOTE: Add in to enable a minimum sourceMetadata file.
     source_property = {
         "sourceMetadata": [
@@ -222,6 +222,7 @@ def get_source_property(image_location: str, image_extension: str, dataset: gdal
         logger.warning(f"Source metadata not available for {image_extension} image extension!")
 
     return source_property
+
 
 def get_extents(ds: gdal.Dataset, sm: SensorModel) -> Dict[str, Any]:
     """

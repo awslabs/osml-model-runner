@@ -18,6 +18,8 @@ ENV PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}
 ARG PYTHON_BINARY=python3.13
 ARG PIP_BINARY=pip3.13
 
+ENV PYTHON_BINARY=${PYTHON_BINARY}
+
 # Justification: we switch to a non-root user before running the container in any capacity,
 # but a parsing error prevents semgrep from detecting that.
 # We pass this same check in checkov.
@@ -44,28 +46,20 @@ ENV C_INCLUDE_PATH=/usr/include/gdal
 # Upgrade pip
 RUN ${PIP_BINARY} install \
     --no-cache-dir \
-    --index-url ${PIP_INDEX_URL} \ 
+    --index-url ${PIP_INDEX_URL} \
     --trusted-host ${PIP_TRUSTED_HOST} \
-    pip -U 
+    pip -U
 
 # install the model runner application from source
 RUN ${PYTHON_BINARY} -m pip install \
     --no-cache-dir \
-    --index-url ${PIP_INDEX_URL} \ 
+    --index-url ${PIP_INDEX_URL} \
     --trusted-host ${PIP_TRUSTED_HOST} \
     osml-model-runner/.
 
-# install extensions as separate package
-COPY extensions/ /home/extensions/
-RUN python3.11 -m pip install \
-    --no-cache-dir \
-    --index-url ${PIP_INDEX_URL} \
-    --trusted-host https://mirrors.gs.mil \
-    /home/extensions/
-
 # Resolve broken simlinks for gdal python header bindings after python installs.
 RUN ldconfig
-# Clean up old python3.6 install
+# Clean up old python installs
 USER root
 RUN rm -rf /usr/lib/python3.6/site-packages/urllib3* \
            /usr/lib/python3.9 \
@@ -114,13 +108,9 @@ ENV AWS_SECRET_ACCESS_KEY=testing
 ENV AWS_SECURITY_TOKEN=testing
 ENV AWS_SESSION_TOKEN=testing
 
-# Extension configuration
-ENV USE_EXTENSIONS=true
-ENV REQUEST_TYPE=sm_endpoint
-
-RUN python3.11 -m pip install \
+RUN ${PYTHON_BINARY} -m pip install \
     --no-cache-dir \
-    --index-url ${PIP_INDEX_URL} \ 
+    --index-url ${PIP_INDEX_URL} \
     --trusted-host ${PIP_TRUSTED_HOST} \
     -r /home/osml-model-runner/test/requirements-test.txt
 

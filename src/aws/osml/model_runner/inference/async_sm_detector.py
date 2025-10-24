@@ -16,11 +16,10 @@ from geojson import FeatureCollection
 from aws.osml.model_runner.common import Timer
 from aws.osml.model_runner.inference.detector import Detector
 from aws.osml.model_runner.inference.sm_detector import SMDetector
-
-from ..errors import ExtensionConfigurationError
-from ..async_app_config import AsyncServiceConfig
-from ..s3 import S3Manager, S3OperationError
-from ..api import ExtendedModelInvokeMode
+from aws.osml.model_runner.app_config import ServiceConfig
+from aws.osml.model_runner.api import ModelInvokeMode
+from aws.osml.model_runner.utilities import S3Manager, S3OperationError
+from aws.osml.model_runner.exceptions import ExtensionConfigurationError
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +34,6 @@ class AsyncSMDetector(SMDetector):
     polling for completion, and comprehensive error management while maintaining full
     compatibility with the base SMDetector interface.
     """
-
-    model_invoke_mode = ExtendedModelInvokeMode.SM_ENDPOINT_ASYNC
 
     def __init__(
         self,
@@ -53,7 +50,7 @@ class AsyncSMDetector(SMDetector):
         super().__init__(endpoint, assumed_credentials)  # type: ignore
 
         # Initialize async configuration
-        self.async_config = AsyncServiceConfig.async_endpoint_config
+        self.async_config = ServiceConfig.async_endpoint_config
 
         logger.debug(f"AsyncSMDetector initialized for endpoint: {endpoint}")
 
@@ -152,7 +149,7 @@ class AsyncSMDetectorBuilder:
         """
         self.endpoint = endpoint
         self.assumed_credentials = assumed_credentials or {}
-        self.async_config = AsyncServiceConfig.async_endpoint_config
+        self.async_config = ServiceConfig.async_endpoint_config
 
         logger.debug(f"AsyncSMDetectorBuilder initialized for endpoint: {endpoint}")
 

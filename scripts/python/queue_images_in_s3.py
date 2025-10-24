@@ -43,8 +43,6 @@ if __name__ == "__main__":
         }
 
         sqs_client.send_message(
-            QueueUrl="https://sqs.{0}.amazonaws.com/{1}/ImageRequestQueue".format(
-                REGION, ACCOUNT_NUMBER
-            ),
+            QueueUrl="https://sqs.{0}.amazonaws.com/{1}/ImageRequestQueue".format(REGION, ACCOUNT_NUMBER),
             MessageBody=json.dumps(message_body),
         )

@@ -11,6 +11,7 @@ from .status_message import StatusMessage
 
 logger = logging.getLogger(__name__)
 
+
 class RegionStatusMonitor(BaseStatusMonitor):
     """
     RegionStatusMonitor is responsible for monitoring and publishing the status of region processing requests.

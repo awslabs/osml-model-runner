@@ -3,14 +3,8 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-yaml
-        files: ^extensions/
-        exclude: ^extensions/tests/|^extensions/docs/
       - id: end-of-file-fixer
-        files: ^extensions/
-        exclude: ^extensions/tests/|^extensions/docs/
       - id: trailing-whitespace
-        files: ^extensions/
-        exclude: ^extensions/tests/|^extensions/docs/
 
   - repo: https://github.com/psf/black
     rev: 25.1.0
@@ -18,18 +12,13 @@ repos:
       - id: black
         args: ["--line-length=125"]
         types: [file, python]
-        files: ^extensions/
-        exclude: ^extensions/tests/|^extensions/docs/
 
-  # - repo: https://github.com/PyCQA/isort
-  #   rev: 6.0.1
-  #   hooks:
-  #     - id: isort
-  #       args: ["--line-length=125", "--profile=black"]
-  #       types: [file, python]
-  #       files: ^extensions/
-  #       exclude: ^extensions/tests/|^extensions/docs/
-  #       skip_glob: ["**/__init__.py"] 
+  - repo: https://github.com/PyCQA/isort
+    rev: 6.0.1
+    hooks:
+      - id: isort
+        args: ["--line-length=125", "--profile=black"]
+        types: [file, python]
 
   - repo: https://github.com/PyCQA/flake8
     rev: 7.3.0
@@ -37,16 +26,12 @@ repos:
       - id: flake8
         args: ["--ignore=E203,W503,W605", "--max-line-length=125"]
         types: [file, python]
-        files: ^extensions/
-        exclude: ^extensions/tests/|^extensions/docs/
 
   - repo: https://github.com/hhatto/autopep8
     rev: v2.3.2
     hooks:
       - id: autopep8
         types: [file, python]
-        files: ^extensions/
-        exclude: ^extensions/tests/|^extensions/docs/
 
   - repo: https://github.com/aws-samples/automated-security-helper
     rev: 'v3.0.0'
@@ -55,8 +40,6 @@ repos:
           stages: [ manual ]
           # uncomment the line below if using "finch" on MacOS
           # args: [ "-f" ]
-          files: ^extensions/
-          exclude: ^extensions/tests/|^extensions/docs/
 
   # - repo: https://github.com/sbrunner/pre-commit-copyright
   #   rev: 1.6.1
@@ -74,10 +57,7 @@ repos:
   #           pyproject.toml|
   #           setup.cfg|
   #           setup.py|
-  #           py.typed|
-  #           docs/|
-  #           tests/|
-  #           test/
+  #           py.typed
   #         )$
   #     - id: copyright-required
   #       name: require copyright
@@ -92,8 +72,5 @@ repos:
   #           pyproject.toml|
   #           setup.cfg|
   #           setup.py|
-  #           py.typed|
-  #           docs/|
-  #           tests/|
-  #           test/
+  #           py.typed
   #         )$

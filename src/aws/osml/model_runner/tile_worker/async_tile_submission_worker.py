@@ -5,12 +5,11 @@ from typing import Any, Dict, Optional
 from queue import Empty, Queue
 
 from aws_embedded_metrics.metric_scope import metric_scope
+from aws.osml.model_runner.app_config import ServiceConfig
 
-from ..s3 import S3Manager
-from ..database import TileRequestTable
-from ..detectors import AsyncSMDetector
-from ..metrics import AsyncMetricsTracker
-from ..async_app_config import AsyncServiceConfig
+from aws.osml.model_runner.utilities import S3Manager
+from aws.osml.model_runner.database import TileRequestTable
+from aws.osml.model_runner.inference.async_sm_detector import AsyncSMDetector
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
@@ -32,7 +31,6 @@ class AsyncSubmissionWorker(Thread):
         worker_id: int,
         tile_queue: Queue,
         feature_detector: AsyncSMDetector,
-        metrics_tracker: Optional[AsyncMetricsTracker] = None,
         tile_request_table: Optional[TileRequestTable] = None,
     ):
         """
@@ -41,19 +39,17 @@ class AsyncSubmissionWorker(Thread):
         :param worker_id: Unique identifier for this worker
         :param tile_queue: Queue containing tiles to process
         :param feature_detector: AsyncSMDetector instance for submissions
-        :param metrics_tracker: Optional metrics tracker
         :param tile_request_table: Optional TileRequestTable for tracking tile status
         """
         super().__init__(name=f"AsyncSubmissionWorker-{worker_id}")
         self.worker_id = worker_id
         self.tile_queue = tile_queue
         self.feature_detector = feature_detector
-        self.metrics_tracker = metrics_tracker
         self.failed_tile_count = 0
         self.processed_tile_count = 0
         self.running = True
 
-        self.tile_request_table = TileRequestTable(AsyncServiceConfig.tile_request_table)
+        self.tile_request_table = TileRequestTable(ServiceConfig.tile_request_table)
 
         logger.debug(f"AsyncSubmissionWorker-{worker_id} initialized")
 
@@ -131,10 +127,6 @@ class AsyncSubmissionWorker(Thread):
         try:
             logger.info(f"AsyncSubmissionWorker-{self.worker_id} processing tile: {tile_info.get('region')}")
 
-            # Track submission timing
-            if self.metrics_tracker:
-                self.metrics_tracker.start_timer("AsyncSubmissionTime")
-
             # Generate unique key for S3 input
             input_key = S3_MANAGER.generate_unique_key("input")
 
@@ -178,9 +170,6 @@ class AsyncSubmissionWorker(Thread):
                     )
                 except Exception as update_e:
                     logger.warning(f"Failed to update tile status to FAILED: {update_e}")
-
-            if self.metrics_tracker:
-                self.metrics_tracker.increment_counter("TileSubmissionFailures")
 
             return False
 

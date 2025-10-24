@@ -13,6 +13,30 @@ from aws.osml.photogrammetry import DigitalElevationModel, ElevationModel, Gener
 
 
 @dataclass
+class AsyncEndpointConfig:
+    """
+    Configuration class for async SageMaker endpoint settings.
+
+    This class provides comprehensive configuration options for async endpoint operations
+    including S3 bucket settings, polling parameters, and worker pool optimization.
+    """
+
+    # Load other environment variables with current values as defaults
+    input_bucket = os.getenv("ARTIFACT_BUCKET")
+    input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", "async-inference/input/")
+    max_wait_time = int(os.getenv("ASYNC_SM_MAX_WAIT_TIME", 3600))  # Maximum wait time in seconds
+    max_retries = int(os.getenv("ASYNC_SM_MAX_RETRIES", 3))  # For S3 operations
+
+    submission_workers = int(os.getenv("ASYNC_SM_SUBMISSION_WORKERS", 4))  # Number of workers for submitting async requests
+    polling_workers = int(os.getenv("ASYNC_SM_POLLING_WORKERS", 2))  # Number of workers for polling results
+
+    @staticmethod
+    def get_input_s3_uri(input_bucket: str, input_prefix: str, key: str) -> str:
+        """Generate input S3 URI for the given key."""
+        return f"s3://{input_bucket}/{input_prefix}{key}"
+
+
+@dataclass
 class ServiceConfig:
     """
     ServiceConfig is a dataclass meant to house the high-level configuration settings required for Model Runner to
@@ -22,15 +46,29 @@ class ServiceConfig:
     """
 
     # Required env configuration
+
+    # region
     aws_region: str = os.environ["AWS_DEFAULT_REGION"]
+
+    # image/region/tile tables
     job_table: str = os.environ["JOB_TABLE"]
     region_request_table: str = os.environ["REGION_REQUEST_TABLE"]
+    tile_request_table: str = os.environ["TILE_REQUEST_TABLE"]
     endpoint_statistics_table = os.environ["ENDPOINT_TABLE"]
+
+    # feature table
     feature_table: str = os.environ["FEATURE_TABLE"]
+
+    # image/region/tile queues
     image_queue: str = os.environ["IMAGE_QUEUE"]
     region_queue: str = os.environ["REGION_QUEUE"]
+    tile_queue: str = os.environ.get("TILE_QUEUE")
+
+    # workers
     workers_per_cpu: str = os.environ["WORKERS_PER_CPU"]
     workers: str = os.environ["WORKERS"]
+
+    # Optional parameters
 
     # Optional elevation data
     elevation_data_location: Optional[str] = os.getenv("ELEVATION_DATA_LOCATION")
@@ -41,9 +79,12 @@ class ServiceConfig:
     elevation_data_max_long_deg: Optional[float] = float(os.getenv("ELEVATION_DATA_MAX_LONG_DEG", "180.0"))
     elevation_model: Optional[ElevationModel] = field(init=False, default=None)
 
-    # Optional env configuration
+    # Optional status topics
     image_status_topic: Optional[str] = os.getenv("IMAGE_STATUS_TOPIC")
     region_status_topic: Optional[str] = os.getenv("REGION_STATUS_TOPIC")
+    tile_status_topic: Optional[str] = os.getenv("TILE_STATUS_TOPIC")
+
+    # Optional env variables
     cp_api_endpoint: Optional[str] = os.getenv("API_ENDPOINT")
     self_throttling: bool = (
         os.getenv("SM_SELF_THROTTLING", "False") == "True" or os.getenv("SM_SELF_THROTTLING", "False") == "true"
@@ -62,6 +103,9 @@ class ServiceConfig:
 
     # Metrics configuration
     metrics_config: Configuration = field(init=False, default=None)
+
+    # async endpoint config
+    async_endpoint_config: AsyncEndpointConfig = field(default=AsyncEndpointConfig)
 
     def __post_init__(self):
         """
@@ -83,7 +127,7 @@ class ServiceConfig:
                     min_latitude_degrees=ServiceConfig.elevation_data_min_lat_deg,
                     max_latitude_degrees=ServiceConfig.elevation_data_max_lat_deg,
                     min_longitude_degrees=ServiceConfig.elevation_data_min_long_deg,
-                    max_longitude_degrees=ServiceConfig.elevation_data_max_long_deg
+                    max_longitude_degrees=ServiceConfig.elevation_data_max_long_deg,
                 ),
                 GDALDigitalElevationModelTileFactory(self.elevation_data_location),
             )

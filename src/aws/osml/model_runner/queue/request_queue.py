@@ -11,6 +11,7 @@ from aws.osml.model_runner.app_config import BotoConfig
 
 logger = logging.getLogger(__name__)
 
+
 class RequestQueue:
     def __init__(
         self,

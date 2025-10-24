@@ -247,7 +247,10 @@ class ImageRequestHandler:
         )
 
         # If the image is finished then complete it
-        if self.job_table.is_image_request_complete(job_item):
+        image_is_done, region_complete, region_failures = self.job_table.is_image_request_complete(
+            self.region_request_table, job_item
+        )
+        if image_is_done:
             image_format = str(raster_dataset.GetDriver().ShortName).upper()
             self.complete_image_request(first_region_request, image_format, raster_dataset, sensor_model)
 

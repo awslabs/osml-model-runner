@@ -4,6 +4,7 @@ import ast
 import json
 import logging
 import tempfile
+import uuid
 from pathlib import Path
 from queue import Queue
 from secrets import token_hex
@@ -26,7 +27,7 @@ from aws.osml.model_runner.common import (
     Timer,
     get_credentials_for_assumed_role,
 )
-from aws.osml.model_runner.database import FeatureTable, RegionRequestItem, RegionRequestTable
+from aws.osml.model_runner.database import FeatureTable, RegionRequestItem, RegionRequestTable, TileRequestItem
 from aws.osml.model_runner.inference import FeatureSelector
 from aws.osml.model_runner.inference.endpoint_factory import FeatureDetectorFactory
 from aws.osml.photogrammetry import ElevationModel, SensorModel
@@ -96,57 +97,27 @@ def setup_tile_workers(
         raise SetupTileWorkersException("Failed to setup tile workers!") from err
 
 
-def process_tiles(
-    tiling_strategy: TilingStrategy,
-    region_request_item: RegionRequestItem,
-    tile_queue: Queue,
-    tile_workers: List[TileWorker],
-    raster_dataset: gdal.Dataset,
-    sensor_model: Optional[SensorModel] = None,
-) -> Tuple[int, int]:
-    """
-    Loads a GDAL dataset into memory and processes it with a pool of tile workers.
+class TileProcessor:
+    def __init__(self):
+        pass
 
-    :param tiling_strategy: the approach used to decompose the region into tiles for the ML model
-    :param region_request_item: RegionRequestItem = the region request to update.
-    :param tile_queue: Queue = keeps the image in the queue for processing
-    :param tile_workers: List[TileWorker] = the list of tile workers
-    :param raster_dataset: gdal.Dataset = the raster dataset containing the region
-    :param sensor_model: Optional[SensorModel] = the sensor model for this raster dataset
+    def handle_tile(self):
 
-    :return: Tuple[int, int, List[ImageRegion]] = number of tiles processed, number of tiles with an error
-    """
+        # Put the image info on the tile worker queue allowing each tile to be
+        # processed in parallel.
+        image_info = {
+            "image_path": tmp_image_path,
+            "region": tile_bounds,
+            "image_id": region_request_item.image_id,
+            "job_id": region_request_item.job_id,
+            "region_id": region_request_item.region_id,
+        }
 
-    # Grab completed tiles from region item
-    # Explicitly cast to Tuple[Tuple[int, int], Tuple[int, int]]
-    # Ensure the bounds have exactly two integers before converting
-    region_bounds: Tuple[Tuple[int, int], Tuple[int, int]] = (
-        (region_request_item.region_bounds[0][0], region_request_item.region_bounds[0][1]),
-        (region_request_item.region_bounds[1][0], region_request_item.region_bounds[1][1]),
-    )
+        # Place the image info onto our processing queue
+        tile_queue.put(image_info)
 
-    # Explicitly cast tile_size to Tuple[int, int]
-    tile_size: Tuple[int, int] = (region_request_item.tile_size[0], region_request_item.tile_size[1])
+    def process_tile_array(self):
 
-    # Explicitly cast tile_overlap to Tuple[int, int]
-    tile_overlap: Tuple[int, int] = (region_request_item.tile_overlap[0], region_request_item.tile_overlap[1])
-
-    tile_array = tiling_strategy.compute_tiles(region_bounds, tile_size, tile_overlap)
-
-    if region_request_item.succeeded_tiles is not None:
-        # Filter ImageRegions based on matching in succeeded_tiles
-        filtered_regions = [
-            region
-            for region in tile_array
-            if [[region[0][0], region[0][1]], [region[1][0], region[1][1]]] not in region_request_item.succeeded_tiles
-        ]
-        if len(tile_array) != len(tile_array):
-            logger.debug(f"{len(tile_array) - len(tile_array)} tiles have already been processed!")
-
-        tile_array = filtered_regions
-
-    total_tile_count = len(tile_array)
-    try:
         # This will update the GDAL configuration options to use the security credentials for
         # this request. Any GDAL managed AWS calls (i.e. incrementally fetching pixels from a
         # dataset stored in S3) within this "with" statement will be made using customer
@@ -187,43 +158,117 @@ def process_tiles(
                     if not absolute_tile_path:
                         continue
 
-                    # Put the image info on the tile worker queue allowing each tile to be
-                    # processed in parallel.
-                    image_info = {
-                        "image_path": tmp_image_path,
-                        "region": tile_bounds,
-                        "image_id": region_request_item.image_id,
-                        "job_id": region_request_item.job_id,
-                        "region_id": region_request_item.region_id,
-                    }
-
-                    # Place the image info onto our processing queue
-                    tile_queue.put(image_info)
+                    self.handle_tile()
 
                 # Put enough empty messages on the queue to shut down the workers
                 for i in range(len(tile_workers)):
                     tile_queue.put(None)
 
-                # Ensure the wait for tile workers happens within the context where we create
-                # the temp directory. If the context is exited before all workers return then
-                # the directory will be deleted, and we will potentially lose tiles.
-                # Wait for all the workers to finish gracefully before we clean up the temp directory
-                tile_error_count = 0
-                for worker in tile_workers:
-                    worker.join()
-                    tile_error_count += worker.failed_tile_count
+    def process_tiles(
+        self,
+        tiling_strategy: TilingStrategy,
+        region_request_item: RegionRequestItem,
+        tile_queue: Queue,
+        tile_workers: List[TileWorker],
+        raster_dataset: gdal.Dataset,
+        sensor_model: Optional[SensorModel] = None,
+    ) -> Tuple[int, int]:
+        """
+        Loads a GDAL dataset into memory and processes it with a pool of tile workers.
 
-        logger.debug(
-            (
-                f"Model Runner Stats Processed {total_tile_count} image tiles for "
-                f"region {region_request_item.region_bounds}. {tile_error_count} tiles failed to process."
-            )
+        :param tiling_strategy: the approach used to decompose the region into tiles for the ML model
+        :param region_request_item: RegionRequestItem = the region request to update.
+        :param tile_queue: Queue = keeps the image in the queue for processing
+        :param tile_workers: List[TileWorker] = the list of tile workers
+        :param raster_dataset: gdal.Dataset = the raster dataset containing the region
+        :param sensor_model: Optional[SensorModel] = the sensor model for this raster dataset
+
+        :return: Tuple[int, int, List[ImageRegion]] = number of tiles processed, number of tiles with an error
+        """
+
+        # Grab completed tiles from region item
+        # Explicitly cast to Tuple[Tuple[int, int], Tuple[int, int]]
+        # Ensure the bounds have exactly two integers before converting
+        region_bounds: Tuple[Tuple[int, int], Tuple[int, int]] = (
+            (region_request_item.region_bounds[0][0], region_request_item.region_bounds[0][1]),
+            (region_request_item.region_bounds[1][0], region_request_item.region_bounds[1][1]),
         )
-    except Exception as err:
-        logger.exception(f"File processing tiles: {err}")
-        raise ProcessTilesException("Failed to process tiles!") from err
 
-    return total_tile_count, tile_error_count
+        # Explicitly cast tile_size to Tuple[int, int]
+        tile_size: Tuple[int, int] = (region_request_item.tile_size[0], region_request_item.tile_size[1])
+
+        # Explicitly cast tile_overlap to Tuple[int, int]
+        tile_overlap: Tuple[int, int] = (region_request_item.tile_overlap[0], region_request_item.tile_overlap[1])
+
+        tile_array = tiling_strategy.compute_tiles(region_bounds, tile_size, tile_overlap)
+
+        if region_request_item.succeeded_tiles is not None:
+            # Filter ImageRegions based on matching in succeeded_tiles
+            filtered_regions = [
+                region
+                for region in tile_array
+                if [[region[0][0], region[0][1]], [region[1][0], region[1][1]]] not in region_request_item.succeeded_tiles
+            ]
+            if len(tile_array) != len(tile_array):
+                logger.debug(f"{len(tile_array) - len(tile_array)} tiles have already been processed!")
+
+            tile_array = filtered_regions
+
+        total_tile_count = len(tile_array)
+        try:
+            self.process_tile_array(tile_array)
+
+            # Ensure the wait for tile workers happens within the context where we create
+            # the temp directory. If the context is exited before all workers return then
+            # the directory will be deleted, and we will potentially lose tiles.
+            # Wait for all the workers to finish gracefully before we clean up the temp directory
+            tile_error_count = 0
+            for worker in tile_workers:
+                worker.join()
+                tile_error_count += worker.failed_tile_count
+
+            logger.debug(
+                (
+                    f"Model Runner Stats Processed {total_tile_count} image tiles for "
+                    f"region {region_request_item.region_bounds}. {tile_error_count} tiles failed to process."
+                )
+            )
+        except Exception as err:
+            logger.exception(f"File processing tiles: {err}")
+            raise ProcessTilesException("Failed to process tiles!") from err
+
+        return total_tile_count, tile_error_count
+
+
+class AsyncTileProcessor(TileProcessor):
+    def __init__(self, tile_queue, region_request_item):
+        self.tiles_submitted = 0
+        self.tile_queue = tile_queue
+        self.region_request_item = region_request_item
+
+    def handle_tile(self):
+        # Create image info
+        tile_request = TileRequest(
+            tile_id=str(uuid.uuid4()),
+            region_id=self.region_request_item.region_id,
+            image_id=self.region_request_item.image_id,
+            job_id=self.region_request_item.job_id,
+            image_path=str(tmp_image_path.absolute()),
+            image_url=region_request.image_url,
+            tile_bounds=tile_bounds,
+            model_invocation_role=region_request.model_invocation_role,
+            tile_size=region_request.tile_size,
+            tile_overlap=region_request.tile_overlap,
+            model_invoke_mode=str(region_request.model_invoke_mode),
+            model_name=region_request.model_name,
+            image_read_role=region_request.image_read_role,
+        )
+
+        # Add tile to tracking database
+        tile_request_item = TileRequestItem.from_tile_request(tile_request)
+        self.tile_request_table.start_tile_request(tile_request_item)
+        self.tile_queue.put(tile_request.__dict__)
+        self.tiles_submitted += 1
 
 
 @metric_scope

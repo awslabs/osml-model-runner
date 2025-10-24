@@ -4,6 +4,7 @@
 # __init__.py file.
 # flake8: noqa
 
+from .async_sm_detector import AsyncSMDetector, AsyncSMDetectorBuilder
 from .detector import Detector
 from .endpoint_factory import FeatureDetectorFactory
 from .feature_selection import FeatureSelector
