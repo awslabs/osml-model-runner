@@ -57,17 +57,10 @@ RUN ${PYTHON_BINARY} -m pip install \
     --trusted-host ${PIP_TRUSTED_HOST} \
     osml-model-runner/.
 
-# install extensions as separate package
-COPY extensions/ /home/extensions/
-RUN python3.11 -m pip install \
-    --no-cache-dir \
-    --index-url ${PIP_INDEX_URL} \ 
-    --trusted-host https://mirrors.gs.mil \
-    /home/extensions/
 
-# Resolve broken simlinks for gdal python header bindings after python installs. 
-RUN ldconfig 
-# Clean up old python3.6 install
+# Resolve broken simlinks for gdal python header bindings after python installs.
+RUN ldconfig
+# Clean up old python installs
 USER root
 RUN rm -rf /usr/lib/python3.6/site-packages/urllib3* \
            /usr/lib/python3.9 \
@@ -87,6 +80,8 @@ RUN echo '#!/bin/bash' > /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
 USER 1000
+
+ENV CODEGURU_PROFILING_GROUP=mr-profiler
 
 ENTRYPOINT ["/entrypoint.sh"]
 
@@ -116,10 +111,8 @@ ENV AWS_SECRET_ACCESS_KEY=testing
 ENV AWS_SECURITY_TOKEN=testing
 ENV AWS_SESSION_TOKEN=testing
 
-# Extension configuration
-ENV USE_EXTENSIONS=true
 
-RUN python3.11 -m pip install \
+RUN ${PYTHON_BINARY} -m pip install \
     --no-cache-dir \
     --index-url ${PIP_INDEX_URL} \
     --trusted-host ${PIP_TRUSTED_HOST} \
@@ -138,4 +131,5 @@ USER 1000
 
 ENTRYPOINT ["/test-entrypoint.sh"]
 CMD ["--durations=10", "--cov-config", ".coveragerc", "--cov", "aws.osml.model_runner"] 
+
 #checkov:skip=CKV_DOCKER_2:HEALTHCHECK to be added later.

@@ -5,6 +5,7 @@ import ast
 import json
 import logging
 import tempfile
+import uuid
 from pathlib import Path
 from queue import Queue
 from secrets import token_hex

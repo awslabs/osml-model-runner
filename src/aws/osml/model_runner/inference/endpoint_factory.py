@@ -40,3 +40,4 @@ class FeatureDetectorFactory:
         if self.endpoint_mode == ModelInvokeMode.SM_ENDPOINT_ASYNC:
             return AsyncSMDetectorBuilder(endpoint=self.endpoint, assumed_credentials=self.assumed_credentials).build()
         raise ValueError(f"Unknown endpoint mode: {self.endpoint_mode}")
+

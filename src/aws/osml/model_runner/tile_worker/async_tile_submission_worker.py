@@ -6,6 +6,7 @@ from threading import Thread
 from typing import Any, Dict, Optional
 
 from aws_embedded_metrics.metric_scope import metric_scope
+from aws.osml.model_runner.app_config import ServiceConfig
 
 from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.database import TileRequestTable

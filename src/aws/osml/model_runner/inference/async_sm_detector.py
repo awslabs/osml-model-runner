@@ -16,7 +16,11 @@ from aws.osml.model_runner.common import Timer
 from aws.osml.model_runner.exceptions import ExtensionConfigurationError
 from aws.osml.model_runner.inference.detector import Detector
 from aws.osml.model_runner.inference.sm_detector import SMDetector
+
+from aws.osml.model_runner.app_config import ServiceConfig
+from aws.osml.model_runner.api import ModelInvokeMode
 from aws.osml.model_runner.utilities import S3Manager, S3OperationError
+from aws.osml.model_runner.exceptions import ExtensionConfigurationError
 
 logger = logging.getLogger(__name__)
 

@@ -55,8 +55,6 @@ def map_signals(model_runner: ModelRunner) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument("--disable-extensions", action="store_true", 
-                       help="Disable extensions even if available and configured")
     return parser.parse_args()
 
 
@@ -73,17 +71,14 @@ def main() -> int:
         
         # Configure logging first
         configure_logging(args.verbose)
-        
-        # Set up extensions if available
-        setup_extensions(args)
-        
+
         # Create and configure model runner
         model_runner = ModelRunner()
 
         logger.info(f"Running model runner version: {model_runner}")
 
         map_signals(model_runner)
-        # setup_code_profiling()
+        setup_code_profiling()
 
         model_runner.run()
         
