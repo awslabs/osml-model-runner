@@ -18,7 +18,7 @@
  *     "prodLike": false,  // Optional: defaults to false if not specified
  *     "isAdc": false      // Optional: defaults to false if not specified
  *   },
- *   "vpcConfig": {
+ *   "networkConfig": {
  *     "vpcId": "vpc-abc123",  // Optional: if not provided, a new VPC will be created
  *     "targetSubnets": ["subnet-12345", "subnet-67890"],  // Required when vpcId is provided: specific subnets to use
  *     "securityGroupId": "sg-1234567890abcdef0"  // Optional: security group for test endpoints
@@ -29,7 +29,7 @@
  *     "ECS_TASK_MEMORY": 4096
  *   },
  *   "deployTestModels": true,  // Optional: whether to deploy test models stack
- *   "testEndpointsConfig": {
+ *   "testModelsConfig": {
  *     "BUILD_FROM_SOURCE": true,  // Optional: build containers from source instead of pulling from Docker Hub
  *     "CONTAINER_URI": "awsosml/osml-models:latest"  // Optional: container image to use
  *   }
@@ -41,8 +41,9 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { ModelRunnerDataplaneConfig } from "../../lib/constructs/model-runner/model-runner-dataplane";
-import { TestEndpointsConfig } from "../../lib/constructs/test-models/test-endpoints";
+import { DataplaneConfig } from "../../lib/constructs/model-runner/dataplane";
+import { TestModelsConfig } from "../../lib/constructs/integration-test/test-models";
+import { NetworkConfig } from "../../lib/constructs/model-runner/network";
 
 /**
  * Represents the structure of the deployment configuration file.
@@ -62,24 +63,17 @@ export interface DeploymentConfig {
     /** Whether this is an ADC (Application Data Center) environment. Defaults to false if not specified. */
     isAdc?: boolean;
   };
-  /** VPC configuration. If vpcId is provided, an existing VPC will be imported. Otherwise, a new VPC will be created. */
-  vpcConfig?: {
-    /** The ID of the VPC to import. If not provided, a new VPC will be created. */
-    vpcId?: string;
-    /** Target subnet IDs to use. Required when vpcId is provided. */
-    targetSubnets?: string[];
-    /** Security group ID to use for test endpoints. If not provided, no security group will be used. */
-    securityGroupId?: string;
-  };
+  /** Networking configuration. If VPC_ID is provided, an existing VPC will be imported. Otherwise, a new VPC will be created. */
+  networkConfig?: NetworkConfig;
 
   /** Optional Dataplane configuration. */
-  dataplaneConfig?: ModelRunnerDataplaneConfig;
+  dataplaneConfig?: DataplaneConfig;
 
-  /** Whether to deploy the test models stack. */
-  deployTestModels?: boolean;
+  /** Whether to deploy integration test infrastructure (test models and test imagery stacks). */
+  deployIntegrationTests?: boolean;
 
-  /** Optional Test Endpoints configuration. */
-  testEndpointsConfig?: TestEndpointsConfig;
+  /** Optional Test Models configuration. */
+  testModelsConfig?: TestModelsConfig;
 }
 
 /**
@@ -271,46 +265,50 @@ export function loadDeploymentConfig(): DeploymentConfig {
     validateStringField(parsed.account.region, "account.region")
   );
 
-  // Parse and validate VPC configuration
-  let vpcConfig: DeploymentConfig['vpcConfig'] = undefined;
-  if (parsed.vpcConfig && typeof parsed.vpcConfig === 'object') {
-    vpcConfig = {};
+  // Parse and validate networking configuration
+  let networkConfig: DeploymentConfig['networkConfig'] = undefined;
+  if (parsed.networkConfig && typeof parsed.networkConfig === 'object') {
+    // Convert the parsed networkConfig to the format expected by NetworkConfig
+    const networkConfigData: any = {};
 
-    // Validate VPC ID if provided
-    if (parsed.vpcConfig.vpcId !== undefined && parsed.vpcConfig.vpcId !== null) {
-      vpcConfig.vpcId = validateVpcId(
-        validateStringField(parsed.vpcConfig.vpcId, "vpcConfig.vpcId")
+    // Map vpcId to VPC_ID
+    if (parsed.networkConfig.vpcId !== undefined && parsed.networkConfig.vpcId !== null) {
+      networkConfigData.VPC_ID = validateVpcId(
+        validateStringField(parsed.networkConfig.vpcId, "networkConfig.vpcId")
       );
     }
 
-    // Validate target subnets if provided
-    if (parsed.vpcConfig.targetSubnets !== undefined && parsed.vpcConfig.targetSubnets !== null) {
-      if (Array.isArray(parsed.vpcConfig.targetSubnets)) {
-        vpcConfig.targetSubnets = parsed.vpcConfig.targetSubnets.map((subnetId: any, index: number) =>
-          validateStringField(subnetId, `vpcConfig.targetSubnets[${index}]`)
+    // Map targetSubnets to TARGET_SUBNETS
+    if (parsed.networkConfig.targetSubnets !== undefined && parsed.networkConfig.targetSubnets !== null) {
+      if (Array.isArray(parsed.networkConfig.targetSubnets)) {
+        networkConfigData.TARGET_SUBNETS = parsed.networkConfig.targetSubnets.map((subnetId: any, index: number) =>
+          validateStringField(subnetId, `networkConfig.targetSubnets[${index}]`)
         );
       } else {
         throw new DeploymentConfigError(
-          "Field 'vpcConfig.targetSubnets' must be an array",
-          "vpcConfig.targetSubnets"
+          "Field 'networkConfig.targetSubnets' must be an array",
+          "networkConfig.targetSubnets"
         );
       }
     }
 
-    // Validate security group ID if provided
-    if (parsed.vpcConfig.securityGroupId !== undefined && parsed.vpcConfig.securityGroupId !== null) {
-      vpcConfig.securityGroupId = validateSecurityGroupId(
-        validateStringField(parsed.vpcConfig.securityGroupId, "vpcConfig.securityGroupId")
+    // Map securityGroupId to SECURITY_GROUP_ID
+    if (parsed.networkConfig.securityGroupId !== undefined && parsed.networkConfig.securityGroupId !== null) {
+      networkConfigData.SECURITY_GROUP_ID = validateSecurityGroupId(
+        validateStringField(parsed.networkConfig.securityGroupId, "networkConfig.securityGroupId")
       );
     }
 
-    // Validate that targetSubnets is required when vpcId is provided
-    if (vpcConfig.vpcId && (!vpcConfig.targetSubnets || vpcConfig.targetSubnets.length === 0)) {
+    // Validate that TARGET_SUBNETS is required when VPC_ID is provided
+    if (networkConfigData.VPC_ID && (!networkConfigData.TARGET_SUBNETS || networkConfigData.TARGET_SUBNETS.length === 0)) {
       throw new DeploymentConfigError(
         "When vpcId is provided, targetSubnets must also be specified with at least one subnet ID",
-        "vpcConfig.targetSubnets"
+        "networkConfig.targetSubnets"
       );
     }
+
+    // Create NetworkConfig instance
+    networkConfig = new NetworkConfig(networkConfigData);
   }
 
   // Parse optional Dataplane configuration
@@ -319,16 +317,16 @@ export function loadDeploymentConfig(): DeploymentConfig {
     dataplaneConfig = parsed.dataplaneConfig;
   }
 
-  // Parse optional deployTestModels flag
-  let deployTestModels: boolean = false;
-  if (parsed.deployTestModels !== undefined && typeof parsed.deployTestModels === 'boolean') {
-    deployTestModels = parsed.deployTestModels;
+  // Parse optional deployIntegrationTests flag
+  let deployIntegrationTests: boolean = false;
+  if (parsed.deployIntegrationTests !== undefined && typeof parsed.deployIntegrationTests === 'boolean') {
+    deployIntegrationTests = parsed.deployIntegrationTests;
   }
 
-  // Parse optional testEndpointsConfig
-  let testEndpointsConfig: TestEndpointsConfig | undefined = undefined;
-  if (parsed.testEndpointsConfig && typeof parsed.testEndpointsConfig === 'object') {
-    testEndpointsConfig = new TestEndpointsConfig(parsed.testEndpointsConfig);
+  // Parse optional testModelsConfig
+  let testModelsConfig: TestModelsConfig | undefined = undefined;
+  if (parsed.testModelsConfig && typeof parsed.testModelsConfig === 'object') {
+    testModelsConfig = new TestModelsConfig(parsed.testModelsConfig);
   }
 
   const validatedConfig: DeploymentConfig = {
@@ -339,10 +337,10 @@ export function loadDeploymentConfig(): DeploymentConfig {
       prodLike: parsed.account.prodLike ?? false,
       isAdc: parsed.account.isAdc ?? false
     },
-    vpcConfig,
+    networkConfig,
     dataplaneConfig: dataplaneConfig,
-    deployTestModels: deployTestModels,
-    testEndpointsConfig: testEndpointsConfig
+    deployIntegrationTests: deployIntegrationTests,
+    testModelsConfig: testModelsConfig
   };
 
   // Only log non-sensitive configuration details (prevent duplicate logging)

@@ -4,7 +4,7 @@
 
 import { RemovalPolicy } from "aws-cdk-lib";
 import { IRole } from "aws-cdk-lib/aws-iam";
-import { IVpc, SubnetSelection } from "aws-cdk-lib/aws-ec2";
+import { IVpc, ISecurityGroup, SubnetSelection } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
 
 import { BaseConfig, ConfigType, OSMLAccount } from "../types";
@@ -16,7 +16,7 @@ import { FloodEndpoint, FloodEndpointConfig } from "./flood-endpoint";
 /**
  * Configuration class for defining endpoints for OSML model endpoints.
  */
-export class TestEndpointsConfig extends BaseConfig {
+export class TestModelsConfig extends BaseConfig {
   /**
    * Whether to build container resources from source.
    * @default false
@@ -195,9 +195,9 @@ export class TestEndpointsConfig extends BaseConfig {
 /**
  * Represents the properties required to configure an MR (Model Router) model endpoints.
  *
- * @interface TestEndpointsProps
+ * @interface TestModelsProps
  */
-export interface TestEndpointsProps {
+export interface TestModelsProps {
   /**
    * The OSML (OversightML) account associated with the model endpoints.
    *
@@ -220,18 +220,18 @@ export interface TestEndpointsProps {
   selectedSubnets: SubnetSelection;
 
   /**
-   * The default security group ID for the VPC.
+   * The default security group for the VPC.
    *
-   * @type {string}
+   * @type {ISecurityGroup}
    */
-  defaultSecurityGroup?: string;
+  securityGroup?: ISecurityGroup;
 
   /**
    * (Optional) Configuration settings for test model endpoints.
    *
-   * @type {TestEndpointsConfig}
+   * @type {TestModelsConifg}
    */
-  config?: TestEndpointsConfig;
+  config?: TestModelsConfig;
 
   /**
    * (Optional) A Role to use for the SMEndpoints.
@@ -244,7 +244,7 @@ export interface TestEndpointsProps {
 /**
  * Represents an AWS CDK Construct for managing Model Registry (MR) endpoints.
  */
-export class TestEndpoints extends Construct {
+export class TestModels extends Construct {
   /**
    * The removal policy for the construct.
    */
@@ -253,17 +253,12 @@ export class TestEndpoints extends Construct {
   /**
    * Configuration for MR Model Endpoints.
    */
-  public config: TestEndpointsConfig;
+  public config: TestModelsConfig;
 
   /**
    * Optional HTTP Endpoint role for MR operations.
    */
   public httpEndpointRole?: IRole;
-
-  /**
-   * Security Group ID associated with the endpoints.
-   */
-  public securityGroupId: string;
 
   // Resource classes
   /** The container resources. */
@@ -279,20 +274,17 @@ export class TestEndpoints extends Construct {
    * Creates an TestEndpoints construct.
    * @param {Construct} scope - The scope/stack in which to define this construct.
    * @param {string} id - The id of this construct within the current scope.
-   * @param {TestEndpointsProps} props - The properties of this construct.
+   * @param {TestModelsProps} props - The properties of this construct.
    * @returns TestEndpoints - The TestEndpoints construct.
    */
-  constructor(scope: Construct, id: string, props: TestEndpointsProps) {
+  constructor(scope: Construct, id: string, props: TestModelsProps) {
     super(scope, id);
 
     // Initialize configuration and basic properties
-    this.config = props.config ?? new TestEndpointsConfig();
+    this.config = props.config ?? new TestModelsConfig();
     this.removalPolicy = props.account.prodLike
       ? RemovalPolicy.RETAIN
       : RemovalPolicy.DESTROY;
-
-    // Determine security group ID
-    this.securityGroupId = this.config.SECURITY_GROUP_ID ?? props.defaultSecurityGroup ?? "";
 
     // Create resource classes
     this.container = this.createContainer(props);
@@ -307,7 +299,7 @@ export class TestEndpoints extends Construct {
    * @param props - The TestEndpoints properties
    * @returns The container resources
    */
-  private createContainer(props: TestEndpointsProps): ModelContainer {
+  private createContainer(props: TestModelsProps): ModelContainer {
     return new ModelContainer(this, "Container", {
       account: props.account,
       buildFromSource: this.config.BUILD_FROM_SOURCE,
@@ -328,7 +320,7 @@ export class TestEndpoints extends Construct {
    * @param props - The TestEndpoints properties
    * @returns The SageMaker role
    */
-  private createSageMakerRole(props: TestEndpointsProps): SageMakerRole {
+  private createSageMakerRole(props: TestModelsProps): SageMakerRole {
     return new SageMakerRole(this, "SageMakerRole", {
       account: props.account,
       roleName: "SageMakerRole",
@@ -345,20 +337,20 @@ export class TestEndpoints extends Construct {
    * @param props - The TestEndpoints properties
    * @returns The centerpoint model endpoint
    */
-  private createCenterpointEndpoint(props: TestEndpointsProps): CenterpointEndpoint | undefined {
+  private createCenterpointEndpoint(props: TestModelsProps): CenterpointEndpoint | undefined {
     if (this.config.DEPLOY_SM_CENTERPOINT_ENDPOINT) {
       return new CenterpointEndpoint(this, "CenterpointEndpoint", {
         account: props.account,
         vpc: props.vpc,
         selectedSubnets: props.selectedSubnets,
-        defaultSecurityGroup: props.defaultSecurityGroup,
+        securityGroup: props.securityGroup,
         smRole: this.smRole.role,
         container: this.container,
         config: new CenterpointEndpointConfig({
           DEPLOY_SM_CENTERPOINT_ENDPOINT: this.config.DEPLOY_SM_CENTERPOINT_ENDPOINT,
           SM_CENTER_POINT_MODEL: this.config.SM_CENTER_POINT_MODEL,
           SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
-          SECURITY_GROUP_ID: this.securityGroupId
+          SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? ""
         })
       });
     }
@@ -371,20 +363,20 @@ export class TestEndpoints extends Construct {
    * @param props - The TestEndpoints properties
    * @returns The flood model endpoint
    */
-  private createFloodEndpoint(props: TestEndpointsProps): FloodEndpoint | undefined {
+  private createFloodEndpoint(props: TestModelsProps): FloodEndpoint | undefined {
     if (this.config.DEPLOY_SM_FLOOD_ENDPOINT) {
       return new FloodEndpoint(this, "FloodEndpoint", {
         account: props.account,
         vpc: props.vpc,
         selectedSubnets: props.selectedSubnets,
-        defaultSecurityGroup: props.defaultSecurityGroup,
+        securityGroup: props.securityGroup,
         smRole: this.smRole.role,
         container: this.container,
         config: new FloodEndpointConfig({
           DEPLOY_SM_FLOOD_ENDPOINT: this.config.DEPLOY_SM_FLOOD_ENDPOINT,
           SM_FLOOD_MODEL: this.config.SM_FLOOD_MODEL,
           SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
-          SECURITY_GROUP_ID: this.securityGroupId
+          SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? ""
         })
       });
     }

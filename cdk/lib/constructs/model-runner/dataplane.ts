@@ -4,7 +4,7 @@
 
 import { RemovalPolicy } from "aws-cdk-lib";
 import { ISecurityGroup, IVpc, SecurityGroup } from "aws-cdk-lib/aws-ec2";
-import { IRole, Role } from "aws-cdk-lib/aws-iam";
+import { Role } from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 
 import { OSMLAccount, BaseConfig, ConfigType, RegionalConfig } from "../types";
@@ -16,12 +16,12 @@ import { Autoscaling } from "./autoscaling";
 import { Sinks } from "./sinks";
 
 /**
- * Configuration class for ModelRunnerDataplane Construct.
+ * Configuration class for Dataplane Construct.
  *
  * This class provides a strongly-typed configuration interface for the
  * Model Runner dataplane, with validation and default values.
  */
-export class ModelRunnerDataplaneConfig extends BaseConfig {
+export class DataplaneConfig extends BaseConfig {
   /** Whether to build container resources from source. */
   public readonly BUILD_FROM_SOURCE: boolean;
   /** The namespace for metrics. */
@@ -118,9 +118,9 @@ export class ModelRunnerDataplaneConfig extends BaseConfig {
   public readonly SQS_REGION_STATUS_QUEUE: string;
 
   /**
-   * Constructor for ModelRunnerDataplaneConfig.
+   * Constructor for DataplaneConfig.
    *
-   * @param config - The configuration object for ModelRunnerDataplane
+   * @param config - The configuration object for Dataplane
    */
   constructor(config: Partial<ConfigType> = {}) {
     const mergedConfig = {
@@ -214,28 +214,28 @@ export class ModelRunnerDataplaneConfig extends BaseConfig {
 }
 
 /**
- * Interface representing properties for configuring the ModelRunnerDataplane Construct.
+ * Interface representing properties for configuring the Dataplane Construct.
  */
-export interface ModelRunnerDataplaneProps {
+export interface DataplaneProps {
   /** The OSML deployment account. */
   readonly account: OSMLAccount;
-  /** The VPC (Virtual Private Cloud) for the ModelRunnerDataplane. */
+  /** The VPC (Virtual Private Cloud) for the Dataplane. */
   readonly vpc: IVpc;
-  /** Custom configuration for the ModelRunnerDataplane Construct (optional). */
-  readonly config?: ModelRunnerDataplaneConfig;
+  /** Custom configuration for the Dataplane Construct (optional). */
+  readonly config?: DataplaneConfig;
 }
 
 /**
- * Represents the ModelRunnerDataplane construct responsible for managing the data plane
+ * Represents the Dataplane construct responsible for managing the data plane
  * of the model runner application. It handles various AWS resources and configurations
  * required for the application's operation.
  *
  * This refactored version uses separate resource classes to improve maintainability
  * and reduce complexity.
  */
-export class ModelRunnerDataplane extends Construct {
-  /** The configuration for the ModelRunnerDataplane. */
-  public readonly config: ModelRunnerDataplaneConfig;
+export class Dataplane extends Construct {
+  /** The configuration for the Dataplane. */
+  public readonly config: DataplaneConfig;
   /** The removal policy for resources created by this construct. */
   public readonly removalPolicy: RemovalPolicy;
   /** The regional S3 endpoint. */
@@ -260,13 +260,13 @@ export class ModelRunnerDataplane extends Construct {
   public readonly sinks: Sinks;
 
   /**
-   * Constructs an instance of ModelRunnerDataplane.
+   * Constructs an instance of Dataplane.
    *
    * @param scope - The scope/stack in which to define this construct
    * @param id - The id of this construct within the current scope
    * @param props - The properties of this construct
    */
-  constructor(scope: Construct, id: string, props: ModelRunnerDataplaneProps) {
+  constructor(scope: Construct, id: string, props: DataplaneProps) {
     super(scope, id);
 
     // Initialize configuration and basic properties
@@ -287,40 +287,40 @@ export class ModelRunnerDataplane extends Construct {
   /**
    * Initializes the configuration.
    *
-   * @param props - The ModelRunnerDataplane properties
+   * @param props - The Dataplane properties
    * @returns The initialized configuration
    */
-  private initializeConfig(props: ModelRunnerDataplaneProps): ModelRunnerDataplaneConfig {
-    return new ModelRunnerDataplaneConfig(props.config);
+  private initializeConfig(props: DataplaneProps): DataplaneConfig {
+    return new DataplaneConfig(props.config);
   }
 
   /**
    * Initializes the removal policy based on account type.
    *
-   * @param props - The ModelRunnerDataplane properties
+   * @param props - The Dataplane properties
    * @returns The removal policy
    */
-  private initializeRemovalPolicy(props: ModelRunnerDataplaneProps): RemovalPolicy {
+  private initializeRemovalPolicy(props: DataplaneProps): RemovalPolicy {
     return props.account.prodLike ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY;
   }
 
   /**
    * Initializes the regional S3 endpoint.
    *
-   * @param props - The ModelRunnerDataplane properties
+   * @param props - The Dataplane properties
    * @returns The regional S3 endpoint
    */
-  private initializeRegionalS3Endpoint(props: ModelRunnerDataplaneProps): string {
+  private initializeRegionalS3Endpoint(props: DataplaneProps): string {
     return RegionalConfig.getConfig(props.account.region).s3Endpoint;
   }
 
   /**
    * Initializes security groups if specified.
    *
-   * @param props - The ModelRunnerDataplane properties
+   * @param props - The Dataplane properties
    * @returns The security groups or undefined
    */
-  private initializeSecurityGroups(props: ModelRunnerDataplaneProps): ISecurityGroup[] | undefined {
+  private initializeSecurityGroups(props: DataplaneProps): ISecurityGroup[] | undefined {
     if (this.config.ECS_SECURITY_GROUP_ID) {
       return [
         SecurityGroup.fromSecurityGroupId(
@@ -337,10 +337,10 @@ export class ModelRunnerDataplane extends Construct {
   /**
    * Creates the database tables.
    *
-   * @param props - The ModelRunnerDataplane properties
+   * @param props - The Dataplane properties
    * @returns The database tables
    */
-  private createDatabaseTables(props: ModelRunnerDataplaneProps): DatabaseTables {
+  private createDatabaseTables(props: DataplaneProps): DatabaseTables {
     return new DatabaseTables(this, "DatabaseTables", {
       account: props.account,
       config: this.config,
@@ -351,10 +351,10 @@ export class ModelRunnerDataplane extends Construct {
   /**
    * Creates the messaging resources.
    *
-   * @param props - The ModelRunnerDataplane properties
+   * @param props - The Dataplane properties
    * @returns The messaging resources
    */
-  private createMessaging(props: ModelRunnerDataplaneProps): Messaging {
+  private createMessaging(props: DataplaneProps): Messaging {
     return new Messaging(this, "Messaging", {
       account: props.account,
       config: this.config
@@ -364,10 +364,10 @@ export class ModelRunnerDataplane extends Construct {
   /**
    * Creates the ECS service resources.
    *
-   * @param props - The ModelRunnerDataplane properties
+   * @param props - The Dataplane properties
    * @returns The ECS service resources
    */
-  private createECSService(props: ModelRunnerDataplaneProps): ECSService {
+  private createECSService(props: DataplaneProps): ECSService {
     // Get existing roles if specified in config
     const existingTaskRole = this.config.ECS_TASK_ROLE_NAME
       ? Role.fromRoleName(
@@ -412,10 +412,10 @@ export class ModelRunnerDataplane extends Construct {
   /**
    * Creates the monitoring dashboard.
    *
-   * @param props - The ModelRunnerDataplane properties
+   * @param props - The Dataplane properties
    * @returns The monitoring dashboard or undefined
    */
-  private createMonitoring(props: ModelRunnerDataplaneProps): Monitoring | undefined {
+  private createMonitoring(props: DataplaneProps): Monitoring | undefined {
     if (this.config.MR_ENABLE_MONITORING) {
       return new Monitoring(this, "Monitoring", {
         account: props.account,
@@ -433,10 +433,10 @@ export class ModelRunnerDataplane extends Construct {
   /**
    * Creates the autoscaling configuration.
    *
-   * @param props - The ModelRunnerDataplane properties
+   * @param props - The Dataplane properties
    * @returns The autoscaling configuration
    */
-  private createAutoscaling(props: ModelRunnerDataplaneProps): Autoscaling {
+  private createAutoscaling(props: DataplaneProps): Autoscaling {
     return new Autoscaling(this, "Autoscaling", {
       account: props.account,
       config: this.config,
@@ -451,10 +451,10 @@ export class ModelRunnerDataplane extends Construct {
   /**
    * Creates the output sinks.
    *
-   * @param props - The ModelRunnerDataplane properties
+   * @param props - The Dataplane properties
    * @returns The output sinks
    */
-  private createSinks(props: ModelRunnerDataplaneProps): Sinks {
+  private createSinks(props: DataplaneProps): Sinks {
     return new Sinks(this, "Sinks", {
       account: props.account,
       config: this.config,

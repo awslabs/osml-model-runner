@@ -16,7 +16,7 @@ import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 
 import { OSMLAccount } from "../types";
-import { ModelRunnerDataplaneConfig } from "./model-runner-dataplane";
+import { DataplaneConfig } from "./dataplane";
 
 /**
  * Interface for MR Monitoring Props.
@@ -69,9 +69,9 @@ export interface MonitoringProps {
   /**
    * The model runner dataplane configuration.
    *
-   * @type {ModelRunnerDataplaneConfig}
+   * @type {DataplaneConfig}
    */
-  mrDataplaneConfig: ModelRunnerDataplaneConfig;
+  mrDataplaneConfig: DataplaneConfig;
 }
 
 /**

@@ -3,11 +3,11 @@
  */
 
 import { IRole } from "aws-cdk-lib/aws-iam";
-import { IVpc, SubnetSelection } from "aws-cdk-lib/aws-ec2";
+import { IVpc, ISecurityGroup, SubnetSelection } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
 
 import { OSMLAccount, BaseConfig, ConfigType } from "../types";
-import { SageMakerEndpoint, SageMakerEndpointConfig } from "./sagemaker-endpoint";
+import { SageMakerInference, SageMakerInferenceConfig } from "./sagemaker-inference";
 import { ModelContainer } from "./model-container";
 
 /**
@@ -61,8 +61,8 @@ export interface CenterpointEndpointProps {
   readonly vpc: IVpc;
   /** The selected subnets within the VPC for deployment. */
   readonly selectedSubnets: SubnetSelection;
-  /** The default security group ID for the VPC. */
-  readonly defaultSecurityGroup?: string;
+  /** The default security group for the VPC. */
+  readonly securityGroup?: ISecurityGroup;
   /** The SageMaker execution role. */
   readonly smRole: IRole;
   /** The OSML container. */
@@ -79,7 +79,7 @@ export class CenterpointEndpoint extends Construct {
   /** The configuration for the CenterpointEndpoint. */
   public readonly config: CenterpointEndpointConfig;
   /** The centerpoint model endpoint. */
-  public readonly endpoint?: SageMakerEndpoint;
+  public readonly endpoint?: SageMakerInference;
 
   /**
    * Constructs an instance of CenterpointEndpoint.
@@ -96,11 +96,8 @@ export class CenterpointEndpoint extends Construct {
 
     // Only create the endpoint if deployment is enabled
     if (this.config.DEPLOY_SM_CENTERPOINT_ENDPOINT) {
-      // Determine security group ID
-      const securityGroupId = this.config.SECURITY_GROUP_ID ?? props.defaultSecurityGroup ?? "";
-
       // Create the centerpoint model endpoint
-      this.endpoint = new SageMakerEndpoint(
+      this.endpoint = new SageMakerInference(
         this,
         "CenterpointModelEndpoint",
         {
@@ -110,11 +107,11 @@ export class CenterpointEndpoint extends Construct {
           instanceType: this.config.SM_CPU_INSTANCE_TYPE,
           subnetIds: props.selectedSubnets.subnets?.map((subnet) => subnet.subnetId) ?? [],
           config: [
-            new SageMakerEndpointConfig({
+            new SageMakerInferenceConfig({
               CONTAINER_ENV: {
                 MODEL_SELECTION: this.config.SM_CENTER_POINT_MODEL
               },
-              SECURITY_GROUP_ID: securityGroupId,
+              SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? "",
               REPOSITORY_ACCESS_MODE: props.container.repositoryAccessMode
             })
           ]

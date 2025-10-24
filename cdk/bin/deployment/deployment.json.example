@@ -6,7 +6,7 @@
     "prodLike": false,
     "isAdc": false
   },
-  "vpcConfig": {
+  "networkConfig": {
     "vpcId": "vpc-abc123def",
     "targetSubnets": ["subnet-12345", "subnet-67890"],
     "securityGroupId": "sg-1234567890abcdef0"
@@ -14,8 +14,8 @@
   "dataplaneConfig": {
     "BUILD_FROM_SOURCE": true
   },
-  "deployTestModels": true,
-  "testEndpointsConfig": {
+  "deployIntegrationTests": true,
+  "testModelsConfig": {
     "BUILD_FROM_SOURCE": true
   }
 }

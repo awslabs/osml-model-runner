@@ -37,49 +37,48 @@ Update the contents:
     "prodLike": <true/false>,
     "isAdc": <true/false>
   },
-  "vpcConfig": {
+  "networkConfig": {
     "vpcId": "<YOUR-VPC-ID>",
     "targetSubnets": ["subnet-12345", "subnet-67890"],
     "securityGroupId": "sg-1234567890abcdef0"
   },
-  "deployTestModels": <true/false>
+  "deployIntegrationTests": <true/false>
 }
 ```
 
 💡 This file is validated at runtime to ensure all required fields are provided. Deployment will fail if any required fields are missing or invalid.
 
-### Test Models Stack Configuration
+### Integration Tests Configuration
 
-The `deployTestModels` flag controls whether to deploy an additional stack containing test model endpoints for development and testing purposes. When set to `true`, this creates:
+The `deployIntegrationTests` flag controls whether to deploy additional stacks containing integration test infrastructure for development and testing purposes. When set to `true`, this creates:
 
-- **SageMaker Endpoints**: Centerpoint, flood, and multi-container model endpoints
-- **HTTP Endpoints**: Test HTTP endpoints for model inference
-- **Container Resources**: Model containers and IAM roles
-- **VPC Resources**: Dedicated VPC for test models (if not using existing VPC)
+- **Test Models Stack**: SageMaker endpoints, HTTP endpoints, and container resources for test models
+- **Test Imagery Stack**: S3 bucket and image deployment for test imagery
+- **Shared VPC**: Both stacks share the same VPC as the main model runner stack for consistent networking
 
 **Example configuration:**
 
 ```json
 {
-  "deployTestModels": true
+  "deployIntegrationTests": true
 }
 ```
 
-**Note**: Both the main model runner stack and test models stack share the same VPC. This ensures consistent networking and reduces resource duplication.
+**Note**: The integration test stacks share the same VPC as the main model runner stack. This ensures consistent networking and reduces resource duplication.
 
 ### VPC Configuration
 
-The CDK application creates a shared VPC that is used by both the main model runner stack and the test models stack (when enabled). VPC configuration is handled through the `vpcConfig` section in your deployment.json:
+The CDK application creates a shared VPC that is used by both the main model runner stack and the test models stack (when enabled). VPC configuration is handled through the `networkConfig` section in your deployment.json:
 
-- **If `vpcConfig.vpcId` is provided**: Uses the existing VPC with the specified ID
-- **If `vpcConfig.vpcId` is not provided**: Creates a new VPC using `ModelRunnerVpc` with sensible defaults:
+- **If `networkConfig.vpcId` is provided**: Uses the existing VPC with the specified ID
+- **If `networkConfig.vpcId` is not provided**: Creates a new VPC using `Network` with sensible defaults:
   - Public and private subnets across 2 availability zones
   - NAT Gateway for private subnet internet access
   - CIDR block: `10.0.0.0/16`
 
 **VPC Configuration Options:**
 
-When using an existing VPC (`vpcConfig.vpcId` provided), you can also specify:
+When using an existing VPC (`networkConfig.vpcId` provided), you can also specify:
 
 - **`targetSubnets`**: Array of specific subnet IDs to use for test endpoints
 - **`securityGroupId`**: Security group ID to use for test endpoints
@@ -91,26 +90,26 @@ When using an existing VPC (`vpcConfig.vpcId` provided), you can also specify:
 {
   "projectName": "my-project",
   "account": { "id": "123456789012", "region": "us-west-2", "prodLike": false, "isAdc": false },
-  "deployTestModels": true
+  "deployIntegrationTests": true
 }
 
 // Use existing VPC with specific subnets and security group
 {
   "projectName": "my-project",
   "account": { "id": "123456789012", "region": "us-west-2", "prodLike": false, "isAdc": false },
-  "vpcConfig": {
+  "networkConfig": {
     "vpcId": "vpc-abc123",
     "targetSubnets": ["subnet-12345", "subnet-67890"],
     "securityGroupId": "sg-1234567890abcdef0"
   },
-  "deployTestModels": true
+  "deployIntegrationTests": true
 }
 ```
 
 **Benefits of the shared VPC approach:**
 
 - **Resource Efficiency**: Single VPC shared between main and test model stacks reduces resource duplication
-- **Consistent Networking**: Both stacks use the same network configuration and security groups
+- **Consistent Network**: Both stacks use the same network configuration and security groups
 - **Simplified Management**: Single VPC to manage instead of multiple separate VPCs
 - **Security**: Private subnets provide additional network isolation for your workloads
 
@@ -118,9 +117,9 @@ This ensures efficient resource usage across both stacks while maintaining prope
 
 ### Model Runner Dataplane Configuration
 
-The CDK stack demonstrates the Model Runner Dataplane deployment. All configuration is centralized in the `deployment.json` file through the optional `dataplaneConfig` section, which uses the `ModelRunnerDataplaneConfig` type from the local constructs, eliminating the need to modify TypeScript code for customization.
+The CDK stack demonstrates the Model Runner Dataplane deployment. All configuration is centralized in the `deployment.json` file through the optional `dataplaneConfig` section, which uses the `DataplaneConfig` type from the local constructs, eliminating the need to modify TypeScript code for customization.
 
-For the complete list of configuration parameters and their defaults, refer to the `ModelRunnerDataplaneConfig` class in `lib/constructs/model-runner-dataplane.ts`.
+For the complete list of configuration parameters and their defaults, refer to the `DataplaneConfig` class in `lib/constructs/model-runner/dataplane.ts`.
 
 #### Example: Custom Configuration
 
@@ -182,6 +181,23 @@ This command will:
 - Synthesize the CloudFormation template
 - Deploy the infrastructure to your AWS account
 
+**Note**: CDK will display the changes that will be made and prompt you to approve them before proceeding with the deployment. Review the changes carefully and type `y` to confirm the deployment.
+
+#### Automated Deployment
+
+For automated deployments or CI/CD pipelines, we recommend using:
+
+```bash
+cdk deploy --all --require-approval never --concurrency 3
+```
+
+This command will:
+
+- Deploy all stacks in the application
+- Skip interactive approval prompts
+- Automatically proceed with deployment changes
+- Deploy multiple stacks in parallel (up to 3 concurrent deployments)
+
 ---
 
 ## 🧱 Project Structure
@@ -195,12 +211,12 @@ cdk
 │       ├── deployment.json.example   # Template for creating new configs
 │       └── load-deployment.ts        # Configuration loader and validator
 ├── lib/
-│   ├── model-runner-stack.ts        # Root CDK stack
-│   ├── test-models-stack.ts         # Test models CDK stack
+│   ├── model-runner-stack.ts         # Root CDK stack
+│   ├── test-models-stack.ts          # Test models CDK stack
 │   └── constructs/                   # Modular construct classes
 │       ├── types.ts                  # Common types and interfaces
-│       ├── model-runner-dataplane.ts # Main ModelRunnerDataplane construct
-│       ├── model-runner-vpc.ts       # ModelRunnerVpc - VPC and networking resources
+│       ├── dataplane.ts              # Main Dataplane construct
+│       ├── network.ts                # Network - VPC and networking resources
 │       ├── database-tables.ts        # DatabaseTables - DynamoDB tables
 │       ├── messaging.ts              # Messaging - SQS queues and SNS topics
 │       ├── ecs-service.ts            # ECSService - ECS cluster, services, and roles
@@ -222,7 +238,7 @@ This CDK project uses a **modular construct architecture** that separates concer
 
 - **`types.ts`** - Common interfaces and configuration types
 - **`ModelRunnerDataplane`** - Main orchestrator that combines all resources
-- **`ModelRunnerVpc`** - Manages VPC creation or import (shared between stacks)
+- **`Network`** - Manages VPC creation or import (shared between stacks)
 - **`DatabaseTables`** - Manages DynamoDB tables and backup configuration
 - **`Messaging`** - Handles SQS queues and SNS topics for async communication
 - **`Containers`** - Manages ECS cluster, task definitions, and Fargate services
@@ -234,12 +250,14 @@ This CDK project uses a **modular construct architecture** that separates concer
 
 When `deployTestModels` is enabled, additional constructs are deployed:
 
-- **`TestEndpoints`** - Main orchestrator for test model endpoints
+- **`TestModels`** - Main orchestrator for test model endpoints
 - **`ModelContainer`** - Container resources for test models
 - **`SageMakerRole`** - IAM roles for SageMaker endpoints
 - **`CenterpointEndpoint`** - SageMaker endpoint for centerpoint model
-- **`FloodEndpoint`** - SageMaker endpoint for flood model
-- **`MultiContainerEndpoint`** - Multi-container SageMaker endpoint
+
+When `deployTestImagery` is enabled, additional constructs are deployed:
+
+- **`TestImagery`** - S3 bucket and image deployment for test imagery
 
 ### Benefits
 

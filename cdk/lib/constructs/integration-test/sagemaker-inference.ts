@@ -39,9 +39,9 @@ export interface ContainerDefinition {
 }
 
 /**
- * Configuration class for SageMakerEndpoint Construct.
+ * Configuration class for SageMakerInference Construct.
  */
-export class SageMakerEndpointConfig extends BaseConfig {
+export class SageMakerInferenceConfig extends BaseConfig {
   /**
    * The initial number of instances to run for the endpoint.
    * @default 1
@@ -82,8 +82,8 @@ export class SageMakerEndpointConfig extends BaseConfig {
    */
   public REPOSITORY_ACCESS_MODE: string;
   /**
-   * Creates an instance of SageMakerEndpointConfig.
-   * @param config - The configuration object for SageMakerEndpoint.
+ * Creates an instance of SageMakerInferenceConfig.
+ * @param config - The configuration object for SageMakerInference.
    */
   constructor(config: ConfigType = {}) {
     super({
@@ -118,11 +118,11 @@ export class SageMakerEndpointConfig extends BaseConfig {
 }
 
 /**
- * Represents the properties required to configure an OSML model endpoint.
+ * Represents the properties required to configure an OSML model inference endpoint.
  *
- * @interface SageMakerEndpointProps
+ * @interface SageMakerInferenceProps
  */
-export interface SageMakerEndpointProps {
+export interface SageMakerInferenceProps {
   /**
    * The Amazon Resource Name (ARN) of the role that provides permissions for the endpoint.
    *
@@ -159,17 +159,17 @@ export interface SageMakerEndpointProps {
   subnetIds: string[];
 
   /**
-   * (Optional) Configuration settings for SageMakerEndpoint resources.
-   *
-   * @type {SageMakerEndpointConfig}
-   */
-  config?: SageMakerEndpointConfig | SageMakerEndpointConfig[];
+ * (Optional) Configuration settings for SageMakerInference resources.
+ *
+ * @type {SageMakerInferenceConfig}
+ */
+  config?: SageMakerInferenceConfig | SageMakerInferenceConfig[];
 }
 
 /**
- * Represents an AWS SageMaker endpoint for a specified model.
+ * Represents an AWS SageMaker inference endpoint for a specified model.
  */
-export class SageMakerEndpoint extends Construct {
+export class SageMakerInference extends Construct {
   /**
    * The SageMaker endpoint configuration.
    */
@@ -181,24 +181,24 @@ export class SageMakerEndpoint extends Construct {
   public endpoint: CfnEndpoint;
 
   /**
-   * The configuration for the SageMakerEndpoint.
-   */
-  public config: SageMakerEndpointConfig[];
+ * The configuration for the SageMakerInference.
+ */
+  public config: SageMakerInferenceConfig[];
 
   /**
-   * Creates a SageMaker endpoint for the specified model.
-   *
-   * @param {Construct} scope - The scope/stack in which to define this construct.
-   * @param {string} id - The id of this construct within the current scope.
-   * @param {SageMakerEndpointProps} props - The properties of this construct.
-   * @returns SageMakerEndpoint - The SageMakerEndpoint construct.
+ * Creates a SageMaker inference endpoint for the specified model.
+ *
+ * @param {Construct} scope - The scope/stack in which to define this construct.
+ * @param {string} id - The id of this construct within the current scope.
+ * @param {SageMakerInferenceProps} props - The properties of this construct.
+ * @returns SageMakerInference - The SageMakerInference construct.
    */
-  constructor(scope: Construct, id: string, props: SageMakerEndpointProps) {
+  constructor(scope: Construct, id: string, props: SageMakerInferenceProps) {
     super(scope, id);
 
     // Check if a custom configuration was provided for the model container
     if (!props.config) {
-      this.config = [new SageMakerEndpointConfig()];
+      this.config = [new SageMakerInferenceConfig()];
     } else if (Array.isArray(props.config)) {
       this.config = props.config;
     } else {

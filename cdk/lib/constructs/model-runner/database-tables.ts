@@ -7,7 +7,7 @@ import { BackupPlan, BackupPlanRule, BackupResource, BackupVault } from "aws-cdk
 import { Construct } from "constructs";
 
 import { OSMLAccount } from "../types";
-import { ModelRunnerDataplaneConfig } from "./model-runner-dataplane";
+import { DataplaneConfig } from "./dataplane";
 import { AttributeType, BillingMode, Table, TableEncryption } from "aws-cdk-lib/aws-dynamodb";
 
 /**
@@ -17,7 +17,7 @@ export interface DatabaseTablesProps {
   /** The OSML account configuration. */
   readonly account: OSMLAccount;
   /** The MR dataplane configuration. */
-  readonly config: ModelRunnerDataplaneConfig;
+  readonly config: DataplaneConfig;
   /** The removal policy for resources. */
   readonly removalPolicy: RemovalPolicy;
 }

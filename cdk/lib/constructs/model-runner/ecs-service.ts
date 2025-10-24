@@ -23,7 +23,7 @@ import { ITopic } from "aws-cdk-lib/aws-sns";
 import { Construct } from "constructs";
 
 import { OSMLAccount } from "../types";
-import { ModelRunnerDataplaneConfig } from "./model-runner-dataplane";
+import { DataplaneConfig } from "./dataplane";
 import { Platform } from "aws-cdk-lib/aws-ecr-assets";
 import { ECSRoles } from "./ecs-roles";
 
@@ -37,7 +37,7 @@ export interface ECSServiceProps {
   /** The VPC configuration. */
   readonly vpc: IVpc;
   /** The MR dataplane configuration. */
-  readonly config: ModelRunnerDataplaneConfig;
+  readonly config: DataplaneConfig;
   /** Optional ECS task role. If not provided, will be created. */
   readonly taskRole?: IRole;
   /** Optional ECS execution role. If not provided, will be created. */
@@ -193,7 +193,7 @@ export class ECSService extends Construct {
       vpc: props.vpc,
       containerInsightsV2: props.account.prodLike
         ? ContainerInsights.ENABLED
-        : ContainerInsights.DISABLED
+        : ContainerInsights.ENHANCED
     });
   }
 

@@ -3,11 +3,11 @@
  */
 
 import { IRole } from "aws-cdk-lib/aws-iam";
-import { IVpc, SubnetSelection } from "aws-cdk-lib/aws-ec2";
+import { IVpc, ISecurityGroup, SubnetSelection } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
 
 import { OSMLAccount, BaseConfig, ConfigType } from "../types";
-import { SageMakerEndpoint, SageMakerEndpointConfig } from "./sagemaker-endpoint";
+import { SageMakerInference, SageMakerInferenceConfig } from "./sagemaker-inference";
 import { ModelContainer } from "./model-container";
 
 /**
@@ -61,8 +61,8 @@ export interface FloodEndpointProps {
   readonly vpc: IVpc;
   /** The selected subnets within the VPC for deployment. */
   readonly selectedSubnets: SubnetSelection;
-  /** The default security group ID for the VPC. */
-  readonly defaultSecurityGroup?: string;
+  /** The default security group for the VPC. */
+  readonly securityGroup?: ISecurityGroup;
   /** The SageMaker execution role. */
   readonly smRole: IRole;
   /** The OSML container. */
@@ -79,7 +79,7 @@ export class FloodEndpoint extends Construct {
   /** The configuration for the FloodEndpoint. */
   public readonly config: FloodEndpointConfig;
   /** The flood model endpoint. */
-  public readonly endpoint?: SageMakerEndpoint;
+  public readonly endpoint?: SageMakerInference;
 
   /**
    * Constructs an instance of FloodEndpoint.
@@ -97,10 +97,10 @@ export class FloodEndpoint extends Construct {
     // Only create the endpoint if deployment is enabled
     if (this.config.DEPLOY_SM_FLOOD_ENDPOINT) {
       // Determine security group ID
-      const securityGroupId = this.config.SECURITY_GROUP_ID ?? props.defaultSecurityGroup ?? "";
+      const securityGroupId = this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? "";
 
       // Create the flood model endpoint with multiple variants
-      this.endpoint = new SageMakerEndpoint(
+      this.endpoint = new SageMakerInference(
         this,
         "FloodModelEndpoint",
         {
@@ -110,7 +110,7 @@ export class FloodEndpoint extends Construct {
           instanceType: this.config.SM_CPU_INSTANCE_TYPE,
           subnetIds: props.selectedSubnets.subnets?.map((subnet) => subnet.subnetId) ?? [],
           config: [
-            new SageMakerEndpointConfig({
+            new SageMakerInferenceConfig({
               VARIANT_NAME: "flood-50",
               CONTAINER_ENV: {
                 FLOOD_VOLUME: 50,
@@ -119,7 +119,7 @@ export class FloodEndpoint extends Construct {
               SECURITY_GROUP_ID: securityGroupId,
               REPOSITORY_ACCESS_MODE: props.container.repositoryAccessMode
             }),
-            new SageMakerEndpointConfig({
+            new SageMakerInferenceConfig({
               VARIANT_NAME: "flood-100",
               CONTAINER_ENV: {
                 FLOOD_VOLUME: 100,

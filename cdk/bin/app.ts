@@ -12,10 +12,13 @@
  *
  */
 
-import { App } from "aws-cdk-lib";
-import { Vpc, IVpc, SubnetType, SubnetFilter } from "aws-cdk-lib/aws-ec2";
+import { App, Stack } from "aws-cdk-lib";
+import { Vpc, IVpc } from "aws-cdk-lib/aws-ec2";
 import { ModelRunnerStack } from "../lib/model-runner-stack";
 import { TestModelsStack } from "../lib/test-models-stack";
+import { TestImageryStack } from "../lib/test-imagery-stack";
+import { NetworkStack } from "../lib/network-stack";
+import { SageMakerRole } from "../lib/constructs/integration-test/sagemaker-role";
 import { loadDeploymentConfig } from "./deployment/load-deployment";
 
 // -----------------------------------------------------------------------------
@@ -24,36 +27,52 @@ import { loadDeploymentConfig } from "./deployment/load-deployment";
 
 const app = new App();
 
-/**
- * Load and validate deployment configuration from deployment.json.
- *
- * This includes:
- * - Project name
- * - AWS account ID and region
- * - VPC and S3 workspace configuration
- */
+// -----------------------------------------------------------------------------
+// Load the user provided deployment configuration.
+// -----------------------------------------------------------------------------
+
 const deployment = loadDeploymentConfig();
+
+// -----------------------------------------------------------------------------
+// If we are deploying the SMEndpoints then we require this stack to correctly
+// clean up the deployment. This is a workaround until SM cleans up ENI's correctly.
+// Once the ticket bellow is resolved this can be removed.
+// https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/1327
+// -----------------------------------------------------------------------------
+
+let sagemakerRoleStack: Stack | undefined;
+let sagemakerRole: SageMakerRole | undefined;
+if (deployment.deployIntegrationTests) {
+  // Create a dedicated stack for the SageMaker role
+  sagemakerRoleStack = new Stack(app, `${deployment.projectName}-SageMakerRole`, {
+    env: {
+      account: deployment.account.id,
+      region: deployment.account.region
+    }
+  });
+  sagemakerRole = new SageMakerRole(sagemakerRoleStack, "SageMakerRole", {
+    account: deployment.account,
+    roleName: `${deployment.projectName}-SageMakerRole`
+  });
+}
 
 // -----------------------------------------------------------------------------
 // Create VPC (only if importing existing VPC)
 // -----------------------------------------------------------------------------
 
-// Only import VPC if vpcId is provided - otherwise let ModelRunnerStack create it
 let vpc: IVpc | undefined;
-
-if (deployment.vpcConfig?.vpcId) {
+if (deployment.networkConfig?.VPC_ID) {
   // Import existing VPC
   vpc = Vpc.fromLookup(app, "SharedVPC", {
-    vpcId: deployment.vpcConfig.vpcId
+    vpcId: deployment.networkConfig.VPC_ID
   });
 }
 
 // -----------------------------------------------------------------------------
-// Define and Deploy the ModelRunnerStack
+// Deploy the network stack.
 // -----------------------------------------------------------------------------
 
-// ModelRunnerStack will handle VPC creation and TestModelsStack creation internally
-new ModelRunnerStack(app, `${deployment.projectName}-ModelRunner`, {
+const networkStack = new NetworkStack(app, `${deployment.projectName}-Network`, {
   env: {
     account: deployment.account.id,
     region: deployment.account.region
@@ -61,3 +80,57 @@ new ModelRunnerStack(app, `${deployment.projectName}-ModelRunner`, {
   deployment: deployment,
   vpc: vpc
 });
+
+// -----------------------------------------------------------------------------
+// Add dependency on the SageMaker role stack if it exists. This is part of the workaround
+// mentioned above that allows ENI's to be cleaned up correctly.
+// -----------------------------------------------------------------------------
+
+if (sagemakerRoleStack) {
+  networkStack.node.addDependency(sagemakerRoleStack);
+}
+
+// -----------------------------------------------------------------------------
+// Deploy the ModelRunnerStack
+// -----------------------------------------------------------------------------
+
+const modelRunnerStack = new ModelRunnerStack(app, `${deployment.projectName}-ModelRunner`, {
+  env: {
+    account: deployment.account.id,
+    region: deployment.account.region
+  },
+  deployment: deployment,
+  vpc: networkStack.network.vpc
+});
+modelRunnerStack.node.addDependency(networkStack);
+
+// -----------------------------------------------------------------------------
+// Deploy the TestModelsStack and TestImageryStack (if integration tests enabled)
+// -----------------------------------------------------------------------------
+
+if (deployment.deployIntegrationTests) {
+  const testModelsStack = new TestModelsStack(app, `${deployment.projectName}-TestModels`, {
+    env: {
+      account: deployment.account.id,
+      region: deployment.account.region
+    },
+    deployment: deployment,
+    vpc: networkStack.network.vpc,
+    selectedSubnets: networkStack.network.selectedSubnets,
+    securityGroup: networkStack.network.securityGroup,
+    testModelsConfig: deployment.testModelsConfig,
+    sagemakerRole: sagemakerRole?.role
+  });
+  testModelsStack.node.addDependency(networkStack);
+  testModelsStack.node.addDependency(sagemakerRoleStack!);
+
+  const testImageryStack = new TestImageryStack(app, `${deployment.projectName}-TestImagery`, {
+    env: {
+      account: deployment.account.id,
+      region: deployment.account.region
+    },
+    deployment: deployment,
+    vpc: networkStack.network.vpc
+  });
+  testImageryStack.node.addDependency(networkStack);
+}

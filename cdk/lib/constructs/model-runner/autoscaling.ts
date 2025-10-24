@@ -11,7 +11,7 @@ import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 
 import { OSMLAccount } from "../types";
-import { ModelRunnerDataplaneConfig } from "./model-runner-dataplane";
+import { DataplaneConfig } from "./dataplane";
 
 /**
  * Properties for creating autoscaling resources.
@@ -20,7 +20,7 @@ export interface AutoscalingProps {
   /** The OSML account configuration. */
   readonly account: OSMLAccount;
   /** The MR dataplane configuration. */
-  readonly config: ModelRunnerDataplaneConfig;
+  readonly config: DataplaneConfig;
   /** The Fargate service to autoscale. */
   readonly fargateService: FargateService;
   /** The ECS task role. */

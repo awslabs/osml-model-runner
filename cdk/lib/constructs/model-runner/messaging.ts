@@ -9,7 +9,7 @@ import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 
 import { OSMLAccount } from "../types";
-import { ModelRunnerDataplaneConfig } from "./model-runner-dataplane";
+import { DataplaneConfig } from "./dataplane";
 
 /**
  * Properties for creating messaging resources.
@@ -18,7 +18,7 @@ export interface MessagingProps {
   /** The OSML account configuration. */
   readonly account: OSMLAccount;
   /** The MR dataplane configuration. */
-  readonly config: ModelRunnerDataplaneConfig;
+  readonly config: DataplaneConfig;
 }
 
 /**

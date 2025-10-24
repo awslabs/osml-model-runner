@@ -13,8 +13,9 @@
 
 import { Stack, StackProps } from "aws-cdk-lib";
 import { IVpc, ISecurityGroup, SubnetSelection } from "aws-cdk-lib/aws-ec2";
+import { IRole } from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
-import { TestEndpoints, TestEndpointsConfig } from "./constructs/test-models/test-endpoints";
+import { TestModels, TestModelsConfig } from "./constructs/integration-test/test-models";
 import { DeploymentConfig } from "../bin/deployment/load-deployment";
 
 /**
@@ -29,8 +30,10 @@ export interface TestModelsStackProps extends StackProps {
   selectedSubnets: SubnetSelection;
   /** Optional security group to use for the test endpoints. If not provided, one will be created. */
   securityGroup?: ISecurityGroup;
-  /** Optional configuration for test endpoints. */
-  testEndpointsConfig?: TestEndpointsConfig;
+  /** Optional configuration for test models. */
+  testModelsConfig?: TestModelsConfig;
+  /** Optional SageMaker role to use for the test endpoints. If not provided, one will be created. */
+  sagemakerRole?: IRole;
 }
 
 /**
@@ -38,7 +41,7 @@ export interface TestModelsStackProps extends StackProps {
  */
 export class TestModelsStack extends Stack {
   /** The test endpoints construct. */
-  public readonly testEndpoints: TestEndpoints;
+  public readonly testEndpoints: TestModels;
 
   /**
    * Creates a new TestModelsStack.
@@ -51,7 +54,7 @@ export class TestModelsStack extends Stack {
     super(scope, id, props);
 
     // Create the test endpoints construct using the provided VPC and optional security group
-    this.testEndpoints = new TestEndpoints(this, "TestEndpoints", {
+    this.testEndpoints = new TestModels(this, "TestEndpoints", {
       account: {
         id: props.deployment.account.id,
         region: props.deployment.account.region,
@@ -60,8 +63,9 @@ export class TestModelsStack extends Stack {
       },
       vpc: props.vpc,
       selectedSubnets: props.selectedSubnets,
-      defaultSecurityGroup: props.securityGroup?.securityGroupId,
-      config: props.testEndpointsConfig
+      securityGroup: props.securityGroup,
+      config: props.testModelsConfig,
+      smRole: props.sagemakerRole
     });
   }
 }
