@@ -1,0 +1,28 @@
+[
+  {
+    "name": "Centerpoint Basic Test",
+    "image_uri": "s3://mr-test-imagery-975050113711/small.tif",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "/Users/drduhe/Github/osml-model-runner/test/data/sample_centerpoint_model_output.geojson",
+    "validate_results": true,
+    "timeout_minutes": 30
+  },
+  {
+    "name": "Centerpoint HTTP Test",
+    "image_uri": "s3://mr-test-imagery-975050113711/small.tif",
+    "model_name": "centerpoint",
+    "endpoint_type": "HTTP_ENDPOINT",
+    "expected_output": "/Users/drduhe/Github/osml-model-runner/test/data/sample_centerpoint_model_output.geojson",
+    "validate_results": true,
+    "timeout_minutes": 30
+  },
+  {
+    "name": "Centerpoint Large Image Test",
+    "image_uri": "s3://mr-test-imagery-975050113711/large.tif",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "validate_results": false,
+    "timeout_minutes": 60
+  }
+]

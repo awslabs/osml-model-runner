@@ -41,39 +41,39 @@ export abstract class BaseConfig {
 export class RegionalConfig {
   private static readonly configs: Record<string, any> = {
     'us-east-1': {
-      s3Endpoint: 'https://s3.amazonaws.com',
+      s3Endpoint: 's3.amazonaws.com',
       maxVpcAzs: 3
     },
     'us-west-2': {
-      s3Endpoint: 'https://s3.us-west-2.amazonaws.com',
+      s3Endpoint: 's3.us-west-2.amazonaws.com',
       maxVpcAzs: 3
     },
     'us-west-1': {
-      s3Endpoint: 'https://s3.us-west-1.amazonaws.com',
+      s3Endpoint: 's3.us-west-1.amazonaws.com',
       maxVpcAzs: 2
     },
     'eu-west-1': {
-      s3Endpoint: 'https://s3.eu-west-1.amazonaws.com',
+      s3Endpoint: 's3.eu-west-1.amazonaws.com',
       maxVpcAzs: 3
     },
     'ap-southeast-1': {
-      s3Endpoint: 'https://s3.ap-southeast-1.amazonaws.com',
+      s3Endpoint: 's3.ap-southeast-1.amazonaws.com',
       maxVpcAzs: 3
     },
     'us-gov-west-1': {
-      s3Endpoint: 'https://s3.us-gov-west-1.amazonaws.com',
+      s3Endpoint: 's3.us-gov-west-1.amazonaws.com',
       maxVpcAzs: 2
     },
     'us-gov-east-1': {
-      s3Endpoint: 'https://s3.us-gov-east-1.amazonaws.com',
+      s3Endpoint: 's3.us-gov-east-1.amazonaws.com',
       maxVpcAzs: 2
     },
     'us-isob-east-1': {
-      s3Endpoint: 'https://s3.us-isob-east-1.sc2s.sgov.gov',
+      s3Endpoint: 's3.us-isob-east-1.sc2s.sgov.gov',
       maxVpcAzs: 2
     },
     'us-iso-east-1': {
-      s3Endpoint: 'https://s3.us-iso-east-1.c2s.ic.gov',
+      s3Endpoint: 's3.us-iso-east-1.c2s.ic.gov',
       maxVpcAzs: 2
     }
   };

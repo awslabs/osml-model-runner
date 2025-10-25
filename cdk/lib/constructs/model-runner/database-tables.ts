@@ -131,13 +131,8 @@ export class DatabaseTables extends Construct {
       billingMode: BillingMode.PAY_PER_REQUEST,
       removalPolicy: props.removalPolicy || RemovalPolicy.DESTROY,
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      encryption: TableEncryption.AWS_MANAGED
-    });
-
-    // Add TTL attribute
-    table.addGlobalSecondaryIndex({
-      indexName: "ttl-gsi",
-      partitionKey: { name: props.config.DDB_TTL_ATTRIBUTE, type: AttributeType.STRING }
+      encryption: TableEncryption.AWS_MANAGED,
+      timeToLiveAttribute: props.config.DDB_TTL_ATTRIBUTE
     });
 
     return table;
@@ -150,7 +145,7 @@ export class DatabaseTables extends Construct {
    * @returns The created OSMLTable
    */
   private createEndpointStatisticsTable(props: DatabaseTablesProps): Table {
-    const table = new Table(this, "EndpointProcessingTable", {
+    return new Table(this, "EndpointProcessingTable", {
       tableName: props.config.DDB_ENDPOINT_PROCESSING_TABLE,
       partitionKey: {
         name: "hash_key",
@@ -159,16 +154,9 @@ export class DatabaseTables extends Construct {
       billingMode: BillingMode.PAY_PER_REQUEST,
       removalPolicy: props.removalPolicy || RemovalPolicy.DESTROY,
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      encryption: TableEncryption.AWS_MANAGED
+      encryption: TableEncryption.AWS_MANAGED,
+      timeToLiveAttribute: props.config.DDB_TTL_ATTRIBUTE
     });
-
-    // Add TTL attribute
-    table.addGlobalSecondaryIndex({
-      indexName: "ttl-gsi",
-      partitionKey: { name: props.config.DDB_TTL_ATTRIBUTE, type: AttributeType.STRING }
-    });
-
-    return table;
   }
 
   /**
@@ -178,7 +166,7 @@ export class DatabaseTables extends Construct {
    * @returns The created OSMLTable
    */
   private createRegionRequestTable(props: DatabaseTablesProps): Table {
-    const table = new Table(this, "RegionRequestTable", {
+    return new Table(this, "RegionRequestTable", {
       tableName: props.config.DDB_REGION_REQUEST_TABLE,
       partitionKey: {
         name: "image_id",
@@ -191,16 +179,9 @@ export class DatabaseTables extends Construct {
       billingMode: BillingMode.PAY_PER_REQUEST,
       removalPolicy: props.removalPolicy || RemovalPolicy.DESTROY,
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      encryption: TableEncryption.AWS_MANAGED
+      encryption: TableEncryption.AWS_MANAGED,
+      timeToLiveAttribute: props.config.DDB_TTL_ATTRIBUTE
     });
-
-    // Add TTL attribute
-    table.addGlobalSecondaryIndex({
-      indexName: "ttl-gsi",
-      partitionKey: { name: props.config.DDB_TTL_ATTRIBUTE, type: AttributeType.STRING }
-    });
-
-    return table;
   }
 
   /**
