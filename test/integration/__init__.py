@@ -12,19 +12,13 @@ This package provides comprehensive integration testing capabilities including:
 
 from .utils import (
     OSMLConfig,
-    OSMLLoadTestConfig,
     count_features,
-    get_all_clients,
-    run_model_on_image,
     validate_expected_feature_count,
     validate_features_match,
 )
 
 __all__ = [
     "OSMLConfig",
-    "OSMLLoadTestConfig",
-    "get_all_clients",
-    "run_model_on_image",
     "validate_features_match",
     "count_features",
     "validate_expected_feature_count",

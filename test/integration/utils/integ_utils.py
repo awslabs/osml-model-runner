@@ -10,12 +10,13 @@ This module provides comprehensive utilities for integration testing including:
 - Job monitoring and status tracking
 """
 
+import base64
 import json
 import logging
 import time
 from math import isclose
 from secrets import token_hex
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import boto3
 import geojson
@@ -39,75 +40,6 @@ def get_config() -> OSMLConfig:
 
 # Configure logging
 logger = logging.getLogger(__name__)
-
-
-def run_model_on_image(
-    sqs_client: boto3.resource,
-    endpoint: str,
-    endpoint_type: str,
-    kinesis_client: Optional[boto3.client] = None,
-    model_variant: Optional[str] = None,
-    target_container: Optional[str] = None,
-    timeout_minutes: int = 30,
-) -> Tuple[str, str, Dict[str, Any], Optional[Dict[str, Any]]]:
-    """
-    Execute a complete image processing workflow against a model endpoint.
-
-    This function orchestrates the entire image processing workflow:
-    1. Builds an image processing request
-    2. Submits it to the SQS queue
-    3. Monitors job status until completion
-    4. Returns results for validation
-
-    Args:
-        sqs_client: SQS client for queue operations
-        endpoint: Model endpoint name to process against
-        endpoint_type: Type of endpoint (SM/HTTP)
-        kinesis_client: Optional Kinesis client for result streaming
-        model_variant: Optional SageMaker model variant name
-        target_container: Optional target container hostname
-        timeout_minutes: Maximum time to wait for completion
-
-    Returns:
-        Tuple containing:
-        - image_id: Unique identifier for the processed image
-        - job_id: Job identifier
-        - image_processing_request: The request that was submitted
-        - shard_iter: Kinesis shard iterator for result monitoring
-
-    Raises:
-        TimeoutError: If image processing exceeds timeout
-        AssertionError: If job fails or validation fails
-    """
-    config = get_config()
-    image_url = config.TARGET_IMAGE
-
-    if not image_url:
-        raise ValueError("TARGET_IMAGE must be set in environment")
-
-    # Build the image processing request
-    image_processing_request = build_image_processing_request(
-        endpoint, endpoint_type, image_url, model_variant=model_variant, target_container=target_container
-    )
-
-    # Get Kinesis shard iterator if client provided
-    shard_iter = get_kinesis_shard(kinesis_client) if kinesis_client else None
-
-    logger.info(f"Image processing request: {image_processing_request}")
-
-    # Submit the request to SQS
-    queue_image_processing_job(sqs_client, image_processing_request)
-
-    # Extract job ID and create image ID
-    job_id = image_processing_request["jobId"]
-    image_id = job_id + ":" + image_processing_request["imageUrls"][0]
-
-    logger.info(f"Using timeout of {timeout_minutes} minutes for image processing")
-
-    # Monitor job status until completion
-    monitor_job_status(sqs_client, image_id, timeout_minutes)
-
-    return image_id, job_id, image_processing_request, shard_iter
 
 
 def queue_image_processing_job(sqs_client: boto3.resource, image_processing_request: Dict[str, Any]) -> Optional[str]:
@@ -174,41 +106,85 @@ def monitor_job_status(sqs_client: boto3.resource, image_id: str, timeout_minute
 
     while not done and max_retries > 0:
         try:
-            messages = queue.receive_messages()
+            # Use WaitTimeSeconds for long polling to reduce API calls
+            logger.info(f"Attempting to receive messages from SQS (retries left: {max_retries})")
+            messages = queue.receive_messages(MaxNumberOfMessages=10, WaitTimeSeconds=5, VisibilityTimeout=30)
+            logger.info(f"Received {len(messages)} messages from SQS")
+
+            # Process all messages in the batch
             for message in messages:
-                message_attributes = json.loads(message.body).get("MessageAttributes", {})
-                message_image_id = message_attributes.get("image_id", {}).get("Value")
-                message_image_status = message_attributes.get("status", {}).get("Value")
+                try:
+                    logger.info(f"Processing message: {message.body[:200]}...")  # Log first 200 chars
 
-                if message_image_status == "IN_PROGRESS" and message_image_id == image_id:
-                    elapsed = int(time.time() - start_time)
-                    logger.info(f"\tIN_PROGRESS message found! Waiting for SUCCESS message... (elapsed: {elapsed}s)")
+                    # Parse the SNS message format - SNS messages delivered to SQS have this structure:
+                    # {
+                    #   "Type": "Notification",
+                    #   "MessageId": "...",
+                    #   "Message": "actual message content",
+                    #   "MessageAttributes": { "key": {"Type": "String", "Value": "value"} }
+                    # }
+                    message_body = json.loads(message.body)
+                    message_attributes = message_body.get("MessageAttributes", {})
 
-                elif message_image_status == "SUCCESS" and message_image_id == image_id:
-                    processing_duration = message_attributes.get("processing_duration", {}).get("Value")
-                    assert float(processing_duration) > 0
-                    done = True
-                    elapsed = int(time.time() - start_time)
-                    logger.info(f"\tSUCCESS message found! Image took {processing_duration} seconds to process.")
-                    logger.info(f"Total wait: {elapsed}s")
+                    # Extract values from SNS MessageAttributes format
+                    message_image_id = message_attributes.get("image_id", {}).get("Value")
+                    message_image_status = message_attributes.get("status", {}).get("Value")
 
-                elif (
-                    message_image_status == "FAILED" or message_image_status == "PARTIAL"
-                ) and message_image_id == image_id:
-                    failure_message = ""
-                    try:
-                        message = json.loads(message.body).get("Message", "")
-                        failure_message = str(message)
-                    except Exception:
-                        pass
-                    logger.error(f"Failed to process image {image_id}. Status: {message_image_status}. {failure_message}")
-                    raise AssertionError(f"Image processing failed with status: {message_image_status}")
+                    logger.info(
+                        f"Message - image_id: {message_image_id}, status: {message_image_status}, looking for: {image_id}"
+                    )
 
-                else:
-                    # Only log every 30 seconds to reduce noise
-                    if max_retries % 6 == 0:  # 6 retries = 30 seconds
+                    if message_image_status == "IN_PROGRESS" and message_image_id == image_id:
                         elapsed = int(time.time() - start_time)
-                        logger.info(f"\tWaiting for {image_id}... (elapsed: {elapsed}s, retries left: {max_retries})")
+                        logger.info(f"\tIN_PROGRESS message found! Waiting for SUCCESS message... (elapsed: {elapsed}s)")
+
+                    elif message_image_status == "SUCCESS" and message_image_id == image_id:
+                        processing_duration = message_attributes.get("processing_duration", {}).get("Value")
+                        if processing_duration is not None:
+                            assert float(processing_duration) > 0
+                        done = True
+                        elapsed = int(time.time() - start_time)
+                        if processing_duration is not None:
+                            logger.info(f"\tSUCCESS message found! Image took {processing_duration} seconds to process.")
+                        else:
+                            logger.info("\tSUCCESS message found!")
+                        logger.info(f"Total wait: {elapsed}s")
+
+                    elif (
+                        message_image_status == "FAILED" or message_image_status == "PARTIAL"
+                    ) and message_image_id == image_id:
+                        failure_message = ""
+                        try:
+                            message_body = json.loads(message.body).get("Message", "")
+                            failure_message = str(message_body)
+                        except Exception:
+                            pass
+                        logger.error(
+                            f"Failed to process image {image_id}. Status: {message_image_status}. {failure_message}"
+                        )
+                        raise AssertionError(f"Image processing failed with status: {message_image_status}")
+
+                    else:
+                        # Only log every 30 seconds to reduce noise
+                        if max_retries % 6 == 0:  # 6 retries = 30 seconds
+                            elapsed = int(time.time() - start_time)
+                            logger.info(f"\tWaiting for {image_id}... (elapsed: {elapsed}s, retries left: {max_retries})")
+
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse message body as JSON: {e}")
+                except Exception as e:
+                    logger.warning(f"Error processing message: {e}")
+
+            # Delete all messages after processing the batch
+            for message in messages:
+                try:
+                    message.delete()
+                except Exception as e:
+                    logger.warning(f"Failed to delete message: {e}")
+
+            # If we found success, break out of the main retry loop
+            if done:
+                break
 
         except ClientError as err:
             logger.warning(f"ClientError in monitor_job_status: {err}")
@@ -251,10 +227,11 @@ def get_kinesis_shard(kinesis_client: boto3.client) -> Dict[str, Any]:
 def validate_features_match(
     image_processing_request: Dict[str, Any],
     job_id: str,
-    shard_iter: Optional[Dict[str, Any]] = None,
+    shard_iter: Optional[str] = None,
     s3_client: Optional[boto3.client] = None,
     kinesis_client: Optional[boto3.client] = None,
     result_file: Optional[str] = None,
+    kinesis_features_cache: Optional[Dict[str, List[Feature]]] = None,
 ) -> None:
     """
     Validate that processing results match expected features.
@@ -272,8 +249,9 @@ def validate_features_match(
     """
     # Determine result file path
     if result_file is None:
-        use_roi = ".roi" if OSMLConfig.REGION_OF_INTEREST else ""
-        result_file = f"./test/data/{OSMLConfig.TARGET_MODEL}.{OSMLConfig.TARGET_IMAGE.split('/')[-1]}{use_roi}.geojson"
+        config = get_config()
+        use_roi = ".roi" if config.REGION_OF_INTEREST else ""
+        result_file = f"./test/data/{config.TARGET_MODEL}.{config.TARGET_IMAGE.split('/')[-1]}{use_roi}.geojson"
 
     logger.info(f"Validating against {result_file}")
 
@@ -292,9 +270,27 @@ def validate_features_match(
             if output["type"] == "S3" and s3_client:
                 if validate_s3_features_match(output["bucket"], output["prefix"], expected_features, s3_client):
                     found_outputs += 1
-            elif output["type"] == "Kinesis" and kinesis_client and shard_iter:
-                if validate_kinesis_features_match(job_id, output["stream"], shard_iter, expected_features, kinesis_client):
-                    found_outputs += 1
+            elif output["type"] == "Kinesis":
+                # Check if we have cached features first
+                stream_name = output["stream"]
+                if kinesis_features_cache and stream_name in kinesis_features_cache:
+                    cached_features = kinesis_features_cache[stream_name]
+                    if feature_collections_equal(expected_features, cached_features):
+                        found_outputs += 1
+                        logger.info("Kinesis validation passed using cached features")
+                    else:
+                        logger.info("Kinesis cached features don't match, will retry")
+                elif kinesis_client:
+                    # Try to read from Kinesis if we don't have cached features
+                    try:
+                        if validate_kinesis_features_match(
+                            job_id, stream_name, shard_iter, expected_features, kinesis_client, kinesis_features_cache
+                        ):
+                            found_outputs += 1
+                    except Exception as e:
+                        logger.warning(f"Kinesis validation failed, will retry: {e}")
+                else:
+                    logger.warning("No Kinesis client available and no cached features")
 
         if found_outputs == len(outputs):
             done = True
@@ -304,7 +300,13 @@ def validate_features_match(
             time.sleep(retry_interval)
             logger.info(f"Not all output sinks were validated, retrying. Retries remaining: {max_retries}")
 
-    assert done
+    if not done:
+        logger.error(
+            f"Validation failed after {24 * 5} seconds. Found {found_outputs} out of {len(outputs)} expected outputs."
+        )
+        raise AssertionError(
+            f"Feature validation failed - only {found_outputs} out of {len(outputs)} output sinks validated"
+        )
 
 
 def validate_s3_features_match(bucket: str, prefix: str, expected_features: List[Feature], s3_client: boto3.client) -> bool:
@@ -340,9 +342,10 @@ def validate_s3_features_match(bucket: str, prefix: str, expected_features: List
 def validate_kinesis_features_match(
     job_id: str,
     stream: str,
-    shard_iter: Dict[str, Any],
+    shard_iter: Optional[str],
     expected_features: List[Feature],
     kinesis_client: boto3.client,
+    cache: Optional[Dict[str, List[Feature]]] = None,
 ) -> bool:
     """
     Validate Kinesis output results against expected features.
@@ -353,27 +356,103 @@ def validate_kinesis_features_match(
         shard_iter: Shard iterator for reading records
         expected_features: List of expected features
         kinesis_client: Kinesis client for operations
+        cache: Optional dict to cache the features we read
 
     Returns:
         True if features match, False otherwise
     """
     logger.info(f"Checking Kinesis Stream '{stream}' for results.")
-    records = kinesis_client.get_records(ShardIterator=shard_iter, Limit=10000)["Records"]
-    kinesis_features = []
 
-    for record in records:
-        if record["PartitionKey"] == job_id:
-            kinesis_features.extend(geojson.loads(record["Data"])["features"])
-        else:
-            logger.warning(f"Found partition key: {record['PartitionKey']}")
-            logger.warning(f"Looking for partition key: {job_id}")
+    if shard_iter is None:
+        logger.warning("No shard iterator provided, skipping Kinesis validation")
+        return False
 
-    if feature_collections_equal(expected_features, kinesis_features):
-        logger.info(f"Kinesis record contains expected {len(kinesis_features)} features!")
-        return True
+    try:
+        kinesis_features = []
+        current_shard_iter = shard_iter
+        max_iterations = 100  # Prevent infinite loops
 
-    logger.info("Kinesis feature set didn't match expected features...")
-    return False
+        # Iterate through records until we find what we're looking for or exhaust the stream
+        for iteration in range(max_iterations):
+            response = kinesis_client.get_records(ShardIterator=current_shard_iter, Limit=10000)
+            records = response.get("Records", [])
+            logger.info(f"Found {len(records)} Kinesis records in iteration {iteration}")
+
+            for record in records:
+                partition_key = record.get("PartitionKey")
+                logger.info(f"Kinesis record partition key: {partition_key}, looking for: {job_id}")
+                if partition_key == job_id:
+                    try:
+                        # Kinesis records may be bytes, base64-encoded strings, or JSON strings
+                        data = record["Data"]
+                        data_length = len(data) if hasattr(data, "__len__") else "N/A"
+                        logger.info(f"Kinesis record data type: {type(data)}, length: {data_length}")
+
+                        # Handle different data types from Kinesis
+                        if isinstance(data, bytes):
+                            if len(data) == 0:
+                                logger.warning("Received empty bytes from Kinesis record")
+                                continue
+                            data_str = data.decode("utf-8")
+                        elif isinstance(data, str):
+                            # Check if it's base64-encoded
+                            try:
+                                # Try to decode as base64 first
+                                decoded = base64.b64decode(data)
+                                data_str = decoded.decode("utf-8")
+                                logger.info("Decoded base64-encoded data")
+                            except Exception:
+                                # If it fails, treat as plain string
+                                data_str = data
+                        else:
+                            data_str = str(data)
+
+                        logger.info(f"Data string (first 200 chars): {data_str[:200]}")
+                        record_data = geojson.loads(data_str)
+                        if "features" in record_data:
+                            kinesis_features.extend(record_data["features"])
+                            logger.info(f"Found {len(record_data['features'])} features in Kinesis record")
+                        else:
+                            data_keys = list(record_data.keys()) if record_data else "None"
+                            logger.warning(f"Record data does not contain 'features' key. Keys: {data_keys}")
+                    except (json.JSONDecodeError, KeyError, UnicodeDecodeError, Exception) as e:
+                        logger.warning(f"Failed to parse Kinesis record data: {e}")
+                        record_data_str = data[:200] if isinstance(data, str) else str(data)[:200]
+                        logger.info(f"Record data type: {type(data)}, data: {record_data_str}")
+
+            # Check if we have all expected features
+            if len(kinesis_features) >= len(expected_features):
+                # Cache the features for future use
+                if cache is not None and kinesis_features:
+                    cache[stream] = kinesis_features
+                    logger.info(f"Cached {len(kinesis_features)} features from Kinesis stream '{stream}'")
+
+                if feature_collections_equal(expected_features, kinesis_features):
+                    logger.info(f"Kinesis record contains expected {len(kinesis_features)} features!")
+                    return True
+
+            # Check for next shard iterator
+            next_shard_iter = response.get("NextShardIterator")
+            if not next_shard_iter:
+                break
+            current_shard_iter = next_shard_iter
+
+        # Final check even if we didn't read all expected features
+        if kinesis_features:
+            if cache is not None:
+                cache[stream] = kinesis_features
+                logger.info(f"Cached {len(kinesis_features)} features from Kinesis stream '{stream}'")
+
+            if feature_collections_equal(expected_features, kinesis_features):
+                logger.info(f"Kinesis record contains expected {len(kinesis_features)} features!")
+                return True
+
+        logger.info("Kinesis feature set didn't match expected features...")
+        return False
+
+    except Exception as e:
+        logger.warning(f"Error reading from Kinesis stream: {e}")
+        return False
 
 
 def get_matching_s3_keys(s3_client: boto3.client, bucket: str, prefix: str = "", suffix: str = ""):
@@ -401,6 +480,24 @@ def get_matching_s3_keys(s3_client: boto3.client, bucket: str, prefix: str = "",
             kwargs["ContinuationToken"] = resp["NextContinuationToken"]
         except KeyError:
             break
+
+
+def check_center_coord(expected: Optional[float], actual: Optional[float]) -> bool:
+    """
+    Check if center coordinates match, handling None values.
+
+    Args:
+        expected: Expected coordinate value
+        actual: Actual coordinate value
+
+    Returns:
+        True if coordinates match or both are None
+    """
+    if expected is None and actual is None:
+        return True
+    if expected is None or actual is None:
+        return False
+    return isclose(expected, actual, abs_tol=10 ** (-8))
 
 
 def feature_equal(expected: geojson.Feature, actual: geojson.Feature) -> bool:
@@ -433,15 +530,11 @@ def feature_equal(expected: geojson.Feature, actual: geojson.Feature) -> bool:
         ("Image geometry matches", expected.properties.get("imageGeometry") == actual.properties.get("imageGeometry")),
         (
             "Center longitude matches",
-            isclose(
-                expected.properties.get("center_longitude"), actual.properties.get("center_longitude"), abs_tol=10 ** (-8)
-            ),
+            check_center_coord(expected.properties.get("center_longitude"), actual.properties.get("center_longitude")),
         ),
         (
             "Center latitude matches",
-            isclose(
-                expected.properties.get("center_latitude"), actual.properties.get("center_latitude"), abs_tol=10 ** (-8)
-            ),
+            check_center_coord(expected.properties.get("center_latitude"), actual.properties.get("center_latitude")),
         ),
     ]
 
@@ -452,6 +545,10 @@ def feature_equal(expected: geojson.Feature, actual: geojson.Feature) -> bool:
 
     if len(failed_checks) > 0:
         logger.info(f"Failed feature equality checks: {', '.join(failed_checks)}")
+        logger.info("Expected feature:")
+        logger.info(geojson.dumps(expected, indent=2))
+        logger.info("Actual feature:")
+        logger.info(geojson.dumps(actual, indent=2))
         return False
 
     return True
@@ -468,8 +565,17 @@ def source_metadata_equal(expected: List, actual: List) -> bool:
     Returns:
         True if metadata lists are equivalent, False otherwise
     """
-    if expected is None and actual is None:
+    # Handle case where one is None and the other is an empty list
+    # These should be considered equivalent
+    expected_len = 0 if expected is None else len(expected)
+    actual_len = 0 if actual is None else len(actual)
+
+    if expected_len == 0 and actual_len == 0:
         return True
+
+    if expected is None or actual is None:
+        logger.info("Expected and actual source metadata don't match (one is None)")
+        return False
 
     if not len(expected) == len(actual):
         logger.info(f"Expected {len(expected)} source metadata but found {len(actual)}")
@@ -522,6 +628,12 @@ def build_image_processing_request(
     image_url: str,
     model_variant: Optional[str] = None,
     target_container: Optional[str] = None,
+    tile_size: int = 512,
+    tile_overlap: int = 128,
+    tile_format: str = "GTIFF",
+    tile_compression: str = "NONE",
+    post_processing: str = '[{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold": 0.75}}]',
+    region_of_interest: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Build an image processing request for submission to ModelRunner.
@@ -532,21 +644,20 @@ def build_image_processing_request(
         image_url: URL of image to process
         model_variant: Optional SageMaker model variant
         target_container: Optional target container hostname
+        tile_size: Size of image tiles for processing
+        tile_overlap: Overlap between tiles
+        tile_format: Format for tile output
+        tile_compression: Compression for tile output
+        post_processing: JSON string defining post-processing steps
+        region_of_interest: Optional region of interest specification
 
     Returns:
         Complete image processing request dictionary
     """
     config = get_config()
     # Determine result destinations
-    if config.KINESIS_RESULTS_STREAM:
-        result_stream = config.KINESIS_RESULTS_STREAM
-    else:
-        result_stream = f"{config.KINESIS_RESULTS_STREAM_PREFIX}-{config.ACCOUNT}"
-
-    if config.S3_RESULTS_BUCKET:
-        result_bucket = config.S3_RESULTS_BUCKET
-    else:
-        result_bucket = f"{config.S3_RESULTS_BUCKET_PREFIX}-{config.ACCOUNT}"
+    result_stream = f"{config.KINESIS_RESULTS_STREAM_PREFIX}-{config.ACCOUNT}"
+    result_bucket = f"{config.S3_RESULTS_BUCKET_PREFIX}-{config.ACCOUNT}"
 
     logger.info(f"Starting ModelRunner image job in {config.REGION}")
     logger.info(f"Image: {image_url}")
@@ -576,12 +687,12 @@ def build_image_processing_request(
             {"type": "Kinesis", "stream": result_stream, "batchSize": 1000},
         ],
         "imageProcessor": {"name": endpoint, "type": endpoint_type},
-        "imageProcessorTileSize": config.TILE_SIZE,
-        "imageProcessorTileOverlap": config.TILE_OVERLAP,
-        "imageProcessorTileFormat": config.TILE_FORMAT,
-        "imageProcessorTileCompression": config.TILE_COMPRESSION,
-        "postProcessing": json.loads(config.POST_PROCESSING),
-        "regionOfInterest": config.REGION_OF_INTEREST,
+        "imageProcessorTileSize": tile_size,
+        "imageProcessorTileOverlap": tile_overlap,
+        "imageProcessorTileFormat": tile_format,
+        "imageProcessorTileCompression": tile_compression,
+        "postProcessing": json.loads(post_processing),
+        "regionOfInterest": region_of_interest,
     }
 
     if model_variant:

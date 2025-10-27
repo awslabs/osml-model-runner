@@ -1,0 +1,47 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "193ca21caf8b7a0ae6c82e0feca23336",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-87.887812, 42.94243, 0.0],
+            [-87.887812, 42.942099, 0.0],
+            [-87.888143, 42.942099, 0.0],
+            [-87.888143, 42.94243, 0.0],
+            [-87.887812, 42.94243, 0.0]
+          ]
+        ]
+      },
+      "properties": {
+        "imageGeometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [307.2, 204.8],
+              [307.2, 307.2],
+              [204.8, 307.2],
+              [204.8, 204.8],
+              [307.2, 204.8]
+            ]
+          ]
+        },
+        "featureClasses": [
+          {
+            "iri": "sample_object",
+            "score": 1.0
+          }
+        ],
+        "center_longitude": -87.88797724445423,
+        "center_latitude": 42.942264242922214,
+        "inferenceMetadata": {
+          "jobId": "test-job-id",
+          "inferenceDT": "2025-01-01T00:00:00Z"
+        }
+      }
+    }
+  ]
+}
