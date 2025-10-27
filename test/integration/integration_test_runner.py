@@ -17,6 +17,7 @@ import os
 import sys
 import time
 from datetime import datetime
+from math import isclose
 from secrets import token_hex
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -64,10 +65,156 @@ if "WORKERS" not in os.environ:
     os.environ["WORKERS"] = "1"
 
 # Now import modules that depend on the project root being in path
-from test.integration.utils.config import OSMLConfig  # noqa: E402
-from test.integration.utils.integ_utils import feature_collections_equal  # noqa: E402
+from test.integration.config import OSMLConfig  # noqa: E402
 
 from aws.osml.model_runner.api.image_request import ImageRequest  # noqa: E402
+
+
+def check_center_coord(expected: Optional[float], actual: Optional[float]) -> bool:
+    """
+    Check if center coordinates match, handling None values.
+
+    Args:
+        expected: Expected coordinate value
+        actual: Actual coordinate value
+
+    Returns:
+        True if coordinates match or both are None
+    """
+    if expected is None and actual is None:
+        return True
+    if expected is None or actual is None:
+        return False
+
+    return isclose(expected, actual, abs_tol=10 ** (-8))
+
+
+def source_metadata_equal(expected: List, actual: List) -> bool:
+    """
+    Compare source metadata lists for equality.
+
+    Args:
+        expected: Expected source metadata
+        actual: Actual source metadata
+
+    Returns:
+        True if metadata lists are equivalent, False otherwise
+    """
+    logger = logging.getLogger(__name__)
+
+    # Handle case where one is None and the other is an empty list
+    # These should be considered equivalent
+    expected_len = 0 if expected is None else len(expected)
+    actual_len = 0 if actual is None else len(actual)
+
+    if expected_len == 0 and actual_len == 0:
+        return True
+
+    if expected is None or actual is None:
+        logger.info("Expected and actual source metadata don't match (one is None)")
+        return False
+
+    if not len(expected) == len(actual):
+        logger.info(f"Expected {len(expected)} source metadata but found {len(actual)}")
+        return False
+
+    for expected_source_metadata, actual_source_metadata in zip(expected, actual):
+        is_equal = set({"location", "sourceDT"}).issuperset(
+            k for (k, v) in expected_source_metadata.items() ^ actual_source_metadata.items()
+        )
+
+        if not is_equal:
+            logger.info(f"Source metadata {expected_source_metadata} does not match actual {actual_source_metadata}")
+            return False
+
+    return True
+
+
+def feature_equal(expected: geojson.Feature, actual: geojson.Feature) -> bool:
+    """
+    Compare two GeoJSON features for equality.
+
+    Args:
+        expected: Expected feature
+        actual: Actual feature to compare
+
+    Returns:
+        True if features are equivalent, False otherwise
+    """
+    logger = logging.getLogger(__name__)
+
+    actual_pixel_coords = actual.get("properties", {}).get("detection", {}).get("pixelCoordinates")
+    expected_pixel_coords = expected.get("properties", {}).get("detection", {}).get("pixelCoordinates")
+
+    geojson_checks = [
+        ("Feature type matches", expected.type == actual.type),
+        ("Geometry matches", expected.geometry == actual.geometry),
+        ("Pixel coordinates match", expected_pixel_coords == actual_pixel_coords),
+        ("Inference metadata exists", expected.properties.get("inferenceMetadata") is not None),
+        (
+            "Source metadata matches",
+            source_metadata_equal(expected.properties.get("sourceMetadata"), actual.properties.get("sourceMetadata")),
+        ),
+        (
+            "Feature detection class matches",
+            expected.properties.get("featureClasses") == actual.properties.get("featureClasses"),
+        ),
+        ("Image geometry matches", expected.properties.get("imageGeometry") == actual.properties.get("imageGeometry")),
+        (
+            "Center longitude matches",
+            check_center_coord(expected.properties.get("center_longitude"), actual.properties.get("center_longitude")),
+        ),
+        (
+            "Center latitude matches",
+            check_center_coord(expected.properties.get("center_latitude"), actual.properties.get("center_latitude")),
+        ),
+    ]
+
+    failed_checks = []
+    for check, result in geojson_checks:
+        if not result:
+            failed_checks.append(check)
+
+    if len(failed_checks) > 0:
+        logger.info(f"Failed feature equality checks: {', '.join(failed_checks)}")
+        logger.info("Expected feature:")
+        logger.info(geojson.dumps(expected, indent=2))
+        logger.info("Actual feature:")
+        logger.info(geojson.dumps(actual, indent=2))
+        return False
+
+    return True
+
+
+def feature_collections_equal(expected: List[geojson.Feature], actual: List[geojson.Feature]) -> bool:
+    """
+    Compare two feature collections for equality.
+
+    Args:
+        expected: Expected feature collection
+        actual: Actual feature collection
+
+    Returns:
+        True if collections are equivalent, False otherwise
+    """
+    logger = logging.getLogger(__name__)
+
+    if not len(expected) == len(actual):
+        logger.info(f"Expected {len(expected)} features but found {len(actual)}")
+        return False
+
+    # Sort features by image geometry for consistent comparison
+    expected.sort(key=lambda x: str(x.get("properties", {}).get("imageGeometry", {})))
+    actual.sort(key=lambda x: str(x.get("properties", {}).get("imageGeometry", {})))
+
+    for expected_feature, actual_feature in zip(expected, actual):
+        if not feature_equal(expected_feature, actual_feature):
+            logger.info(expected_feature)
+            logger.info("does not match actual")
+            logger.info(actual_feature)
+            return False
+
+    return True
 
 
 def resolve_path(path: str) -> str:

@@ -34,13 +34,9 @@ python test/integration/integration_test_runner.py --suite test_suites/centerpoi
 ```text
 test/integration/
 ├── integration_test_runner.py     # Unified test runner (supports single tests and test suites)
-├── test_suites/                   # JSON test suite definitions
-│   ├── centerpoint_tests.json
-│   └── osml-model-runner.code-workspace
-└── utils/                         # Utility functions
-    ├── __init__.py
-    ├── config.py
-    └── integ_utils.py
+├── config.py                      # Configuration management
+└── test_suites/                   # JSON test suite definitions
+    ├── centerpoint_tests.json
 ```
 
 ## Test Suite Format
