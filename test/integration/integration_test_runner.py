@@ -10,14 +10,12 @@ without external dependencies on scripts/integration/test.py.
 """
 
 import argparse
-import base64
 import json
 import logging
 import os
 import sys
 import time
 from datetime import datetime
-from math import isclose
 from secrets import token_hex
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -66,181 +64,9 @@ if "WORKERS" not in os.environ:
 
 # Now import modules that depend on the project root being in path
 from test.integration.config import OSMLConfig  # noqa: E402
+from test.integration.feature_validator import FeatureValidator  # noqa: E402
 
 from aws.osml.model_runner.api.image_request import ImageRequest  # noqa: E402
-
-
-def check_center_coord(expected: Optional[float], actual: Optional[float]) -> bool:
-    """
-    Check if center coordinates match, handling None values.
-
-    Args:
-        expected: Expected coordinate value
-        actual: Actual coordinate value
-
-    Returns:
-        True if coordinates match or both are None
-    """
-    if expected is None and actual is None:
-        return True
-    if expected is None or actual is None:
-        return False
-
-    return isclose(expected, actual, abs_tol=10 ** (-8))
-
-
-def source_metadata_equal(expected: List, actual: List) -> bool:
-    """
-    Compare source metadata lists for equality.
-
-    Args:
-        expected: Expected source metadata
-        actual: Actual source metadata
-
-    Returns:
-        True if metadata lists are equivalent, False otherwise
-    """
-    logger = logging.getLogger(__name__)
-
-    # Handle case where one is None and the other is an empty list
-    # These should be considered equivalent
-    expected_len = 0 if expected is None else len(expected)
-    actual_len = 0 if actual is None else len(actual)
-
-    if expected_len == 0 and actual_len == 0:
-        return True
-
-    if expected is None or actual is None:
-        logger.info("Expected and actual source metadata don't match (one is None)")
-        return False
-
-    if not len(expected) == len(actual):
-        logger.info(f"Expected {len(expected)} source metadata but found {len(actual)}")
-        return False
-
-    for expected_source_metadata, actual_source_metadata in zip(expected, actual):
-        is_equal = set({"location", "sourceDT"}).issuperset(
-            k for (k, v) in expected_source_metadata.items() ^ actual_source_metadata.items()
-        )
-
-        if not is_equal:
-            logger.info(f"Source metadata {expected_source_metadata} does not match actual {actual_source_metadata}")
-            return False
-
-    return True
-
-
-def feature_equal(expected: geojson.Feature, actual: geojson.Feature) -> bool:
-    """
-    Compare two GeoJSON features for equality.
-
-    Args:
-        expected: Expected feature
-        actual: Actual feature to compare
-
-    Returns:
-        True if features are equivalent, False otherwise
-    """
-    logger = logging.getLogger(__name__)
-
-    actual_pixel_coords = actual.get("properties", {}).get("detection", {}).get("pixelCoordinates")
-    expected_pixel_coords = expected.get("properties", {}).get("detection", {}).get("pixelCoordinates")
-
-    geojson_checks = [
-        ("Feature type matches", expected.type == actual.type),
-        ("Geometry matches", expected.geometry == actual.geometry),
-        ("Pixel coordinates match", expected_pixel_coords == actual_pixel_coords),
-        ("Inference metadata exists", expected.properties.get("inferenceMetadata") is not None),
-        (
-            "Source metadata matches",
-            source_metadata_equal(expected.properties.get("sourceMetadata"), actual.properties.get("sourceMetadata")),
-        ),
-        (
-            "Feature detection class matches",
-            expected.properties.get("featureClasses") == actual.properties.get("featureClasses"),
-        ),
-        ("Image geometry matches", expected.properties.get("imageGeometry") == actual.properties.get("imageGeometry")),
-        (
-            "Center longitude matches",
-            check_center_coord(expected.properties.get("center_longitude"), actual.properties.get("center_longitude")),
-        ),
-        (
-            "Center latitude matches",
-            check_center_coord(expected.properties.get("center_latitude"), actual.properties.get("center_latitude")),
-        ),
-    ]
-
-    failed_checks = []
-    for check, result in geojson_checks:
-        if not result:
-            failed_checks.append(check)
-
-    if len(failed_checks) > 0:
-        logger.info(f"Failed feature equality checks: {', '.join(failed_checks)}")
-        logger.info("Expected feature:")
-        logger.info(geojson.dumps(expected, indent=2))
-        logger.info("Actual feature:")
-        logger.info(geojson.dumps(actual, indent=2))
-        return False
-
-    return True
-
-
-def feature_collections_equal(expected: List[geojson.Feature], actual: List[geojson.Feature]) -> bool:
-    """
-    Compare two feature collections for equality.
-
-    Args:
-        expected: Expected feature collection
-        actual: Actual feature collection
-
-    Returns:
-        True if collections are equivalent, False otherwise
-    """
-    logger = logging.getLogger(__name__)
-
-    if not len(expected) == len(actual):
-        logger.info(f"Expected {len(expected)} features but found {len(actual)}")
-        return False
-
-    # Sort features by image geometry for consistent comparison
-    expected.sort(key=lambda x: str(x.get("properties", {}).get("imageGeometry", {})))
-    actual.sort(key=lambda x: str(x.get("properties", {}).get("imageGeometry", {})))
-
-    for expected_feature, actual_feature in zip(expected, actual):
-        if not feature_equal(expected_feature, actual_feature):
-            logger.info(expected_feature)
-            logger.info("does not match actual")
-            logger.info(actual_feature)
-            return False
-
-    return True
-
-
-def resolve_path(path: str) -> str:
-    """
-    Resolve a path relative to the script directory.
-
-    If the path is already absolute, return it as-is.
-    If the path is relative, resolve it relative to the script directory.
-
-    Args:
-        path: The path to resolve
-
-    Returns:
-        The resolved absolute path
-    """
-    if os.path.isabs(path):
-        return path
-
-    # If the path starts with 'test/integration/', it's already relative to project root
-    # so we need to resolve it relative to project root, not script directory
-    if path.startswith("test/integration/"):
-        project_root = os.path.join(SCRIPT_DIR, "../..")
-        return os.path.join(project_root, path)
-
-    # Otherwise, resolve relative to script directory
-    return os.path.join(SCRIPT_DIR, path)
 
 
 class IntegrationTestRunner:
@@ -257,6 +83,7 @@ class IntegrationTestRunner:
         self.logger = logging.getLogger(__name__)
         self.clients = self._get_aws_clients()
         self.config = OSMLConfig()
+        self.validator = FeatureValidator()
 
     def setup_logging(self, verbose: bool = False) -> None:
         """Set up logging configuration."""
@@ -369,7 +196,7 @@ class IntegrationTestRunner:
             # Validate results if expected output is provided
             if expected_output_path:
                 # Resolve the expected output path relative to script directory
-                resolved_expected_path = resolve_path(expected_output_path)
+                resolved_expected_path = os.path.abspath(expected_output_path)
                 if os.path.exists(resolved_expected_path):
                     self.logger.info("\n🔍 Validating results...")
 
@@ -668,20 +495,27 @@ class IntegrationTestRunner:
 
             for output in outputs:
                 if output["type"] == "S3" and self.clients["s3"]:
-                    if self._validate_s3_features_match(output["bucket"], output["prefix"], expected_features):
+                    if self.validator.validate_s3_features(
+                        self.clients["s3"], output["bucket"], output["prefix"], expected_features
+                    ):
                         found_outputs += 1
                 elif output["type"] == "Kinesis":
                     # Check if we have cached features first
                     stream_name = output["stream"]
                     if kinesis_features_cache and stream_name in kinesis_features_cache:
                         cached_features = kinesis_features_cache[stream_name]
-                        if feature_collections_equal(expected_features, cached_features):
+                        if self.validator.feature_collections_equal(expected_features, cached_features):
                             found_outputs += 1
                     elif self.clients["kinesis"]:
                         # Try to read from Kinesis if we don't have cached features
                         try:
-                            if self._validate_kinesis_features_match(
-                                job_id, stream_name, shard_iter, expected_features, kinesis_features_cache
+                            if self.validator.validate_kinesis_features(
+                                self.clients["kinesis"],
+                                job_id,
+                                stream_name,
+                                shard_iter,
+                                expected_features,
+                                kinesis_features_cache,
                             ):
                                 found_outputs += 1
                         except Exception:
@@ -768,150 +602,6 @@ class IntegrationTestRunner:
                 break
 
         return items
-
-    def _validate_s3_features_match(self, bucket: str, prefix: str, expected_features: List[Feature]) -> bool:
-        """
-        Validate S3 output results against expected features.
-
-        Args:
-            bucket: S3 bucket name
-            prefix: S3 object prefix
-            expected_features: List of expected features
-
-        Returns:
-            True if features match, False otherwise
-        """
-        for object_key in self._get_matching_s3_keys(bucket, prefix=prefix, suffix=".geojson"):
-            s3_output = self.clients["s3"].get_object(Bucket=bucket, Key=object_key)
-            contents = s3_output["Body"].read()
-            s3_features = geojson.loads(contents.decode("utf-8"))["features"]
-
-            if feature_collections_equal(expected_features, s3_features):
-                self.logger.info(f"  ✓ S3: {len(s3_features)} features validated")
-                return True
-
-        return False
-
-    def _validate_kinesis_features_match(
-        self,
-        job_id: str,
-        stream: str,
-        shard_iter: Optional[str],
-        expected_features: List[Feature],
-        cache: Optional[Dict[str, List[Feature]]] = None,
-    ) -> bool:
-        """
-        Validate Kinesis output results against expected features.
-
-        Args:
-            job_id: Job ID for result correlation
-            stream: Kinesis stream name
-            shard_iter: Shard iterator for reading records
-            expected_features: List of expected features
-            cache: Optional dict to cache the features we read
-
-        Returns:
-            True if features match, False otherwise
-        """
-        if shard_iter is None:
-            return False
-
-        try:
-            kinesis_features = []
-            current_shard_iter = shard_iter
-            max_iterations = 100  # Prevent infinite loops
-
-            # Iterate through records until we find what we're looking for or exhaust the stream
-            for iteration in range(max_iterations):
-                response = self.clients["kinesis"].get_records(ShardIterator=current_shard_iter, Limit=10000)
-                records = response.get("Records", [])
-
-                for record in records:
-                    partition_key = record.get("PartitionKey")
-                    if partition_key == job_id:
-                        try:
-                            # Kinesis records may be bytes, base64-encoded strings, or JSON strings
-                            data = record["Data"]
-
-                            # Handle different data types from Kinesis
-                            if isinstance(data, bytes):
-                                if len(data) == 0:
-                                    continue
-                                data_str = data.decode("utf-8")
-                            elif isinstance(data, str):
-                                # Check if it's base64-encoded
-                                try:
-                                    # Try to decode as base64 first
-                                    decoded = base64.b64decode(data)
-                                    data_str = decoded.decode("utf-8")
-                                except Exception:
-                                    # If it fails, treat as plain string
-                                    data_str = data
-                            else:
-                                data_str = str(data)
-
-                            record_data = geojson.loads(data_str)
-                            if "features" in record_data:
-                                kinesis_features.extend(record_data["features"])
-
-                        except (json.JSONDecodeError, KeyError, UnicodeDecodeError, Exception) as e:
-                            self.logger.debug(f"Failed to parse Kinesis record data: {e}")
-
-                # Check if we have all expected features
-                if len(kinesis_features) >= len(expected_features):
-                    # Cache the features for future use
-                    if cache is not None and kinesis_features:
-                        cache[stream] = kinesis_features
-
-                    if feature_collections_equal(expected_features, kinesis_features):
-                        self.logger.info(f"  ✓ Kinesis: {len(kinesis_features)} features validated")
-                        return True
-
-                # Check for next shard iterator
-                next_shard_iter = response.get("NextShardIterator")
-                if not next_shard_iter:
-                    break
-                current_shard_iter = next_shard_iter
-
-            # Final check even if we didn't read all expected features
-            if kinesis_features:
-                if cache is not None:
-                    cache[stream] = kinesis_features
-
-                if feature_collections_equal(expected_features, kinesis_features):
-                    self.logger.info(f"  ✓ Kinesis: {len(kinesis_features)} features validated")
-                    return True
-
-            return False
-
-        except Exception as e:
-            self.logger.debug(f"Error reading from Kinesis stream: {e}")
-            return False
-
-    def _get_matching_s3_keys(self, bucket: str, prefix: str = "", suffix: str = ""):
-        """
-        Generate S3 object keys matching the given criteria.
-
-        Args:
-            bucket: S3 bucket name
-            prefix: Object key prefix filter
-            suffix: Object key suffix filter
-
-        Yields:
-            str: Matching S3 object keys
-        """
-        kwargs = {"Bucket": bucket, "Prefix": prefix}
-        while True:
-            resp = self.clients["s3"].list_objects_v2(**kwargs)
-            for obj in resp["Contents"]:
-                key = obj["Key"]
-                if key.endswith(suffix):
-                    yield key
-
-            try:
-                kwargs["ContinuationToken"] = resp["NextContinuationToken"]
-            except KeyError:
-                break
 
     def _create_image_request_from_test_case(self, test_case: Dict[str, Any]) -> ImageRequest:
         """
@@ -1061,7 +751,7 @@ def main():
     # Run tests
     if args.suite:
         # Load test suite - resolve path relative to script directory
-        resolved_suite_path = resolve_path(args.suite)
+        resolved_suite_path = os.path.abspath(args.suite)
         with open(resolved_suite_path, "r") as f:
             test_cases = json.load(f)
 
