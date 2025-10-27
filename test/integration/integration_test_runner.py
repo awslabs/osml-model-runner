@@ -31,8 +31,9 @@ if _src_dir not in sys.path:
 # Get the script directory for resolving relative paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Set required environment variables for ServiceConfig before importing OSML modules
-# These are needed because ServiceConfig accesses os.environ[] at class definition time
+# Set required environment variables for AWS resources
+# These environment variables define the SQS queues, DynamoDB tables, and other AWS resources
+# that the integration tests will interact with
 import boto3  # noqa: E402
 import geojson  # noqa: E402
 from boto3 import dynamodb  # noqa: E402
@@ -65,8 +66,7 @@ if "WORKERS" not in os.environ:
 # Now import modules that depend on the project root being in path
 from test.integration.config import OSMLConfig  # noqa: E402
 from test.integration.feature_validator import FeatureValidator  # noqa: E402
-
-from aws.osml.model_runner.api.image_request import ImageRequest  # noqa: E402
+from test.integration.integration_types import ImageRequest, ModelInvokeMode  # noqa: E402
 
 
 class IntegrationTestRunner:
@@ -148,7 +148,7 @@ class IntegrationTestRunner:
                 target_container = image_request.model_endpoint_parameters.get("TargetContainerHostname")
 
             # Determine endpoint type from model_invoke_mode
-            endpoint_type = "SM_ENDPOINT" if image_request.model_invoke_mode.name == "SM_ENDPOINT" else "HTTP_ENDPOINT"
+            endpoint_type = "SM_ENDPOINT" if image_request.model_invoke_mode.value == "SM_ENDPOINT" else "HTTP_ENDPOINT"
 
             image_processing_request = self._build_image_processing_request(
                 endpoint=image_request.model_name,
@@ -156,14 +156,8 @@ class IntegrationTestRunner:
                 image_url=image_request.image_url,
                 model_variant=model_variant,
                 target_container=target_container,
-                tile_size=(
-                    image_request.tile_size[0] if isinstance(image_request.tile_size, tuple) else image_request.tile_size
-                ),
-                tile_overlap=(
-                    image_request.tile_overlap[0]
-                    if isinstance(image_request.tile_overlap, tuple)
-                    else image_request.tile_overlap
-                ),
+                tile_size=image_request.tile_size_scalar,
+                tile_overlap=image_request.tile_overlap_scalar,
                 tile_format=image_request.tile_format,
                 tile_compression=image_request.tile_compression,
             )
@@ -621,7 +615,6 @@ class IntegrationTestRunner:
 
         # Determine model invoke mode from endpoint type
         endpoint_type = test_case.get("endpoint_type", "SM_ENDPOINT")
-        from aws.osml.model_runner.api.inference import ModelInvokeMode
 
         model_invoke_mode = ModelInvokeMode.SM_ENDPOINT if endpoint_type == "SM_ENDPOINT" else ModelInvokeMode.HTTP_ENDPOINT
 
@@ -760,8 +753,6 @@ def main():
         # Run single test
         # Create ImageRequest from command-line arguments
         from secrets import token_hex
-
-        from aws.osml.model_runner.api.inference import ModelInvokeMode
 
         job_id = token_hex(16)
         image_id = f"{job_id}:{args.image_uri}"
