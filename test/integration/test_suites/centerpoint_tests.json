@@ -1,7 +1,7 @@
 [
   {
     "name": "Centerpoint Basic Test",
-    "image_uri": "s3://mr-test-imagery-975050113711/tile.tif",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/tile.tif",
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
     "expected_output": "test_suites/results/sample_centerpoint_model_output.geojson",

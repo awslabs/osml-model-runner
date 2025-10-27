@@ -31,9 +31,8 @@ if _src_dir not in sys.path:
 # Get the script directory for resolving relative paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Set required environment variables for AWS resources
-# These environment variables define the SQS queues, DynamoDB tables, and other AWS resources
-# that the integration tests will interact with
+# Set required environment variables for ServiceConfig before importing OSML modules
+# These are needed because ServiceConfig accesses os.environ[] at class definition time
 import boto3  # noqa: E402
 import geojson  # noqa: E402
 from boto3 import dynamodb  # noqa: E402
@@ -634,6 +633,26 @@ class IntegrationTestRunner:
             model_endpoint_parameters=model_endpoint_parameters,
         )
 
+    def _replace_placeholders(self, text: str) -> str:
+        """
+        Replace placeholders in text with environment values.
+
+        Supported placeholders:
+        - ${ACCOUNT}: AWS account ID
+
+        Args:
+            text: Text that may contain placeholders
+
+        Returns:
+            Text with placeholders replaced
+        """
+        if "${ACCOUNT}" in text:
+            replaced = text.replace("${ACCOUNT}", self.config.ACCOUNT)
+            if replaced != text:
+                self.logger.info(f"🔄 Replaced ${{ACCOUNT}} placeholder with: {self.config.ACCOUNT}")
+            return replaced
+        return text
+
     def run_test_suite(
         self, test_cases: List[Dict[str, Any]], timeout_minutes: int = 30, delay_between_tests: int = 5
     ) -> Dict[str, Any]:
@@ -648,6 +667,13 @@ class IntegrationTestRunner:
         Returns:
             Dictionary with test results
         """
+        # Replace placeholders in test cases
+        for test_case in test_cases:
+            if "image_uri" in test_case:
+                test_case["image_uri"] = self._replace_placeholders(test_case["image_uri"])
+            if "expected_output" in test_case:
+                test_case["expected_output"] = self._replace_placeholders(test_case.get("expected_output", ""))
+
         self.logger.info(f"\n🧪 Starting test suite: {len(test_cases)} test(s)")
         self.logger.info("=" * 60 + "\n")
 

@@ -2,6 +2,20 @@
 
 This directory contains a unified integration test suite for OSML Model Runner with a clean, simple interface.
 
+## Prerequisites
+
+Install the required dependencies:
+
+```bash
+pip install -r test/integration/requirements.txt
+```
+
+Alternatively, if you're using the project's conda environment:
+
+```bash
+conda env update -f ../../conda/test-models-py310.yml
+```
+
 ## Quick Start
 
 The simplest way to run an integration test:
@@ -16,6 +30,8 @@ python test/integration/integration_test_runner.py s3://mr-test-imagery-97505011
 # Test HTTP endpoint
 python test/integration/integration_test_runner.py s3://my-bucket/image.tif my-model expected.json --http
 ```
+
+**Note**: For test suites, you can use the `${ACCOUNT}` placeholder in JSON configuration files to automatically use your current AWS account ID.
 
 ## Test Suite Execution
 
@@ -34,8 +50,12 @@ python test/integration/integration_test_runner.py --suite test_suites/centerpoi
 ```text
 test/integration/
 ├── integration_test_runner.py     # Unified test runner (supports single tests and test suites)
-├── config.py                      # Configuration management
-└── test_suites/                   # JSON test suite definitions
+├── integration_types.py            # Local type definitions (no dependency on model runner)
+├── config.py                       # Configuration management
+├── feature_validator.py            # GeoJSON feature validation utilities
+├── requirements.txt                # Python dependencies for integration tests
+├── __init__.py                     # Package initialization
+└── test_suites/                    # JSON test suite definitions
     ├── centerpoint_tests.json
 ```
 
@@ -64,6 +84,24 @@ Test suites are defined in JSON format:
 ]
 ```
 
+### Placeholder Support
+
+**Account ID Placeholders**: Test suite configurations support placeholders that are automatically replaced with values from your AWS environment. This allows test configurations to work across different AWS accounts without modification.
+
+Supported placeholders:
+
+- `${ACCOUNT}`: Current AWS account ID (detected from your environment)
+
+Example in `centerpoint_tests.json`:
+
+```json
+{
+  "image_uri": "s3://mr-test-imagery-${ACCOUNT}/tile.tif"
+}
+```
+
+When you run the test suite, `${ACCOUNT}` will be automatically replaced with your current AWS account ID. The test runner will log when placeholders are replaced.
+
 ## Benefits
 
 ✅ **Simple**: Just 2-3 parameters instead of complex configuration
@@ -71,24 +109,14 @@ Test suites are defined in JSON format:
 ✅ **Flexible**: Works with any image URI and model name
 ✅ **Fast**: No complex setup or configuration management
 ✅ **Reliable**: Direct parameter passing eliminates configuration errors
+✅ **Independent**: No dependency on the main model runner package
 
-## Migration from Old System
+## Dependencies
 
-**Old way (complex):**
+The integration tests have minimal dependencies to ensure they can run independently:
 
-```bash
-export TARGET_IMAGE="s3://mr-test-imagery-975050113711/small.tif"
-export TARGET_MODEL="centerpoint"
-export TILE_SIZE="1024"
-export TILE_OVERLAP="0.1"
-# ... many more environment variables
-python3 process_image.py --image small --model centerpoint
-```
+- `boto3` & `botocore`: AWS SDK for interacting with AWS services
+- `geojson`: GeoJSON feature validation and comparison
+- `requests`: HTTP requests for EC2 metadata discovery
 
-**New way (simple):**
-
-```bash
-python test/integration/integration_test_runner.py s3://mr-test-imagery-975050113711/small.tif centerpoint
-```
-
-Much simpler! 🎉
+See `requirements.txt` for specific versions.
