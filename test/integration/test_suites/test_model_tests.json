@@ -1,0 +1,73 @@
+[
+  {
+    "name": "Centerpoint Basic Test",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/tile.tif",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "test_suites/results/sample_centerpoint_model_output.geojson",
+    "validate_results": true,
+    "timeout_minutes": 10
+  },
+  {
+    "name": "Centerpoint Small Test",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "test_suites/results/sample_centerpoint_model_small_output.geojson",
+    "validate_results": true,
+    "timeout_minutes": 10
+  },
+  {
+    "name": "Centerpoint Wbid Test",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/wbid.ntf",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "test_suites/results/sample_centerpoint_model_wbid.ntf.geojson",
+    "validate_results": true,
+    "timeout_minutes": 10
+  },
+  {
+    "name": "Centerpoint Umbra Test",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/sicd-umbra-chip.ntf",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "test_suites/results/sample_centerpoint_model_output.sicd-umbra-chip.ntf.geojson",
+    "validate_results": true,
+    "timeout_minutes": 10
+  },
+  {
+    "name": "Centerpoint Capella Test",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/sicd-capella-chip.ntf",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "test_suites/results/sample_centerpoint_model_output.sicd-capella-chip.ntf.geojson",
+    "validate_results": true,
+    "timeout_minutes": 10
+  },
+  {
+    "name": "Centerpoint Interferometric Test",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/sicd-interferometric-hh.nitf",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "test_suites/results/sample_centerpoint_model_output.sicd-interferometric-hh.nitf.geojson",
+    "validate_results": true,
+    "timeout_minutes": 10
+  },
+  {
+    "name": "Centerpoint Meta Test",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/meta.ntf",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "test_suites/results/sample_centerpoint_model_output.meta.ntf.geojson",
+    "validate_results": true,
+    "timeout_minutes": 10
+  },
+  {
+    "name": "Flood Detection Test",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/large.tif",
+    "model_name": "flood",
+    "endpoint_type": "SM_ENDPOINT",
+    "validate_results": true,
+    "timeout_minutes": 30
+  }
+]

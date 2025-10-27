@@ -12,6 +12,8 @@ import { ModelContainer, ModelContainerConfig } from "./model-container";
 import { SageMakerRole, SageMakerRoleConfig } from "./sagemaker-role";
 import { CenterpointEndpoint, CenterpointEndpointConfig } from "./centerpoint-endpoint";
 import { FloodEndpoint, FloodEndpointConfig } from "./flood-endpoint";
+import { HTTPEndpoint, HTTPEndpointConfig } from "./http-endpoint";
+import { MulticontainerEndpoint, MulticontainerEndpointConfig, ContainerConfig } from "./multicontainer-endpoint";
 
 /**
  * Configuration class for defining endpoints for OSML model endpoints.
@@ -77,6 +79,12 @@ export class TestModelsConfig extends BaseConfig {
    * @default true
    */
   public DEPLOY_MULTI_CONTAINER_ENDPOINT: boolean;
+
+  /**
+   * Whether to deploy the HTTP model endpoint.
+   * @default true
+   */
+  public DEPLOY_HTTP_ENDPOINT: boolean;
 
   /**
    * The CPU allocation for the HTTP endpoint.
@@ -162,6 +170,12 @@ export class TestModelsConfig extends BaseConfig {
   public SM_ROLE_NAME?: string | undefined;
 
   /**
+   * List of models to include in the multi-container endpoint.
+   * @default undefined (uses default: centerpoint and flood)
+   */
+  public MULTI_CONTAINER_MODELS?: ContainerConfig[];
+
+  /**
    * Constructor for TestEndpointsConfig.
    * @param config - The configuration object for TestEndpoints.
    */
@@ -176,6 +190,7 @@ export class TestModelsConfig extends BaseConfig {
       DEPLOY_SM_CENTERPOINT_ENDPOINT: true,
       DEPLOY_SM_FLOOD_ENDPOINT: true,
       DEPLOY_MULTI_CONTAINER_ENDPOINT: true,
+      DEPLOY_HTTP_ENDPOINT: true,
       HTTP_ENDPOINT_CPU: 4096,
       HTTP_ENDPOINT_CONTAINER_PORT: 8080,
       HTTP_ENDPOINT_DOMAIN_NAME: "test-http-model-endpoint",
@@ -269,6 +284,10 @@ export class TestModels extends Construct {
   public readonly centerpointEndpoint?: CenterpointEndpoint;
   /** The flood model endpoint. */
   public readonly floodEndpoint?: FloodEndpoint;
+  /** The HTTP model endpoint. */
+  public readonly httpEndpoint?: HTTPEndpoint;
+  /** The multi-container model endpoint. */
+  public readonly multicontainerEndpoint?: MulticontainerEndpoint;
 
   /**
    * Creates an TestEndpoints construct.
@@ -291,6 +310,8 @@ export class TestModels extends Construct {
     this.smRole = this.createSageMakerRole(props);
     this.centerpointEndpoint = this.createCenterpointEndpoint(props);
     this.floodEndpoint = this.createFloodEndpoint(props);
+    this.httpEndpoint = this.createHTTPEndpoint(props);
+    this.multicontainerEndpoint = this.createMulticontainerEndpoint(props);
   }
 
   /**
@@ -338,23 +359,20 @@ export class TestModels extends Construct {
    * @returns The centerpoint model endpoint
    */
   private createCenterpointEndpoint(props: TestModelsProps): CenterpointEndpoint | undefined {
-    if (this.config.DEPLOY_SM_CENTERPOINT_ENDPOINT) {
-      return new CenterpointEndpoint(this, "CenterpointEndpoint", {
-        account: props.account,
-        vpc: props.vpc,
-        selectedSubnets: props.selectedSubnets,
-        securityGroup: props.securityGroup,
-        smRole: this.smRole.role,
-        container: this.container,
-        config: new CenterpointEndpointConfig({
-          DEPLOY_SM_CENTERPOINT_ENDPOINT: this.config.DEPLOY_SM_CENTERPOINT_ENDPOINT,
-          SM_CENTER_POINT_MODEL: this.config.SM_CENTER_POINT_MODEL,
-          SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
-          SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? ""
-        })
-      });
-    }
-    return undefined;
+    return new CenterpointEndpoint(this, "CenterpointEndpoint", {
+      account: props.account,
+      vpc: props.vpc,
+      selectedSubnets: props.selectedSubnets,
+      securityGroup: props.securityGroup,
+      smRole: this.smRole.role,
+      container: this.container,
+      config: new CenterpointEndpointConfig({
+        DEPLOY_SM_CENTERPOINT_ENDPOINT: this.config.DEPLOY_SM_CENTERPOINT_ENDPOINT,
+        SM_CENTER_POINT_MODEL: this.config.SM_CENTER_POINT_MODEL,
+        SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
+        SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? ""
+      })
+    });
   }
 
   /**
@@ -364,22 +382,71 @@ export class TestModels extends Construct {
    * @returns The flood model endpoint
    */
   private createFloodEndpoint(props: TestModelsProps): FloodEndpoint | undefined {
-    if (this.config.DEPLOY_SM_FLOOD_ENDPOINT) {
-      return new FloodEndpoint(this, "FloodEndpoint", {
-        account: props.account,
-        vpc: props.vpc,
-        selectedSubnets: props.selectedSubnets,
-        securityGroup: props.securityGroup,
-        smRole: this.smRole.role,
-        container: this.container,
-        config: new FloodEndpointConfig({
-          DEPLOY_SM_FLOOD_ENDPOINT: this.config.DEPLOY_SM_FLOOD_ENDPOINT,
-          SM_FLOOD_MODEL: this.config.SM_FLOOD_MODEL,
-          SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
-          SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? ""
-        })
-      });
-    }
-    return undefined;
+    return new FloodEndpoint(this, "FloodEndpoint", {
+      account: props.account,
+      vpc: props.vpc,
+      selectedSubnets: props.selectedSubnets,
+      securityGroup: props.securityGroup,
+      smRole: this.smRole.role,
+      container: this.container,
+      config: new FloodEndpointConfig({
+        DEPLOY_SM_FLOOD_ENDPOINT: this.config.DEPLOY_SM_FLOOD_ENDPOINT,
+        SM_FLOOD_MODEL: this.config.SM_FLOOD_MODEL,
+        SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
+        SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? ""
+      })
+    });
+  }
+
+  /**
+   * Creates the HTTP model endpoint.
+   *
+   * @param props - The TestModels properties
+   * @returns The HTTP model endpoint
+   */
+  private createHTTPEndpoint(props: TestModelsProps): HTTPEndpoint | undefined {
+    return new HTTPEndpoint(this, "HTTPEndpoint", {
+      account: props.account,
+      vpc: props.vpc,
+      selectedSubnets: props.selectedSubnets,
+      securityGroup: props.securityGroup,
+      container: this.container,
+      config: new HTTPEndpointConfig({
+        DEPLOY_HTTP_ENDPOINT: this.config.DEPLOY_HTTP_ENDPOINT,
+        HTTP_ENDPOINT_CPU: this.config.HTTP_ENDPOINT_CPU,
+        HTTP_ENDPOINT_CONTAINER_PORT: this.config.HTTP_ENDPOINT_CONTAINER_PORT,
+        HTTP_ENDPOINT_DOMAIN_NAME: this.config.HTTP_ENDPOINT_DOMAIN_NAME,
+        HTTP_ENDPOINT_NAME: this.config.HTTP_ENDPOINT_NAME,
+        HTTP_ENDPOINT_HOST_PORT: this.config.HTTP_ENDPOINT_HOST_PORT,
+        HTTP_ENDPOINT_HEALTHCHECK_PATH: this.config.HTTP_ENDPOINT_HEALTHCHECK_PATH,
+        HTTP_ENDPOINT_MEMORY: this.config.HTTP_ENDPOINT_MEMORY,
+        HTTP_ENDPOINT_ROLE_NAME: this.config.HTTP_ENDPOINT_ROLE_NAME,
+        SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? ""
+      })
+    });
+  }
+
+  /**
+   * Creates the multi-container model endpoint.
+   *
+   * @param props - The TestModels properties
+   * @returns The multi-container model endpoint
+   */
+  private createMulticontainerEndpoint(props: TestModelsProps): MulticontainerEndpoint | undefined {
+    return new MulticontainerEndpoint(this, "MulticontainerEndpoint", {
+      account: props.account,
+      vpc: props.vpc,
+      selectedSubnets: props.selectedSubnets,
+      securityGroup: props.securityGroup,
+      smRole: this.smRole.role,
+      container: this.container,
+      config: new MulticontainerEndpointConfig({
+        DEPLOY_MULTI_CONTAINER_ENDPOINT: this.config.DEPLOY_MULTI_CONTAINER_ENDPOINT,
+        SM_MULTI_CONTAINER_ENDPOINT: this.config.SM_MULTI_CONTAINER_ENDPOINT,
+        SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
+        SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? "",
+        ...(this.config.MULTI_CONTAINER_MODELS && { MODELS: this.config.MULTI_CONTAINER_MODELS })
+      })
+    });
   }
 }

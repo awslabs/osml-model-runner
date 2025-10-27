@@ -53,8 +53,8 @@ class ImageRequest:
     model_name: str = ""
     model_invoke_mode: ModelInvokeMode = ModelInvokeMode.NONE
     model_endpoint_parameters: Optional[Dict[str, Any]] = None
-    tile_size: tuple = (1024, 1024)
-    tile_overlap: tuple = (50, 50)
+    tile_size: tuple = (512, 512)
+    tile_overlap: tuple = (128, 128)
     tile_format: str = "GTIFF"
     tile_compression: str = "NONE"
 

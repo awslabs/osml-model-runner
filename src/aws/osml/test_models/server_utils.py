@@ -106,19 +106,21 @@ def detect_to_feature(
     :param fixed_object_bbox: Bounding box to transform into a geojson feature
     :return: dict: Dictionary representation of a geojson feature
     """
+
     feature = {
         "type": "Feature",
-        "geometry": {"coordinates": [0.0, 0.0], "type": "Point"},
+        "geometry": None,
         "id": token_hex(16),
         "properties": {
-            "bounds_imcoords": fixed_object_bbox,
-            "detection_score": detection_score,
-            "feature_types": {detection_type: detection_score},
+            "imageGeometry": {"type": "Point", "coordinates": [0.0, 0.0]},
+            "imageBBox": fixed_object_bbox,
+            "featureClasses": [{"iri": detection_type, "score": detection_score}],
+            "modelMetadata": {"modelName": "centerpoint", "ontologyName": "centerpoint", "ontologyVersion": "1.0.0"},
             "image_id": token_hex(16),
         },
     }
 
     if fixed_object_mask is not None:
-        feature["properties"]["geom_imcoords"] = fixed_object_mask
+        feature["properties"]["imageGeometry"] = {"type": "Polygon", "coordinates": [fixed_object_mask]}
 
     return feature

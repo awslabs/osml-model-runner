@@ -109,7 +109,8 @@ export class CenterpointEndpoint extends Construct {
           config: [
             new SageMakerInferenceConfig({
               CONTAINER_ENV: {
-                MODEL_SELECTION: this.config.SM_CENTER_POINT_MODEL
+                MODEL_SELECTION: this.config.SM_CENTER_POINT_MODEL,
+                ENABLE_SEGMENTATION: true,
               },
               SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? "",
               REPOSITORY_ACCESS_MODE: props.container.repositoryAccessMode
