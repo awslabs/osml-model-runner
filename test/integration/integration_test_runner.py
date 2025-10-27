@@ -10,16 +10,24 @@ without external dependencies on scripts/integration/test.py.
 """
 
 import argparse
+import base64
 import json
 import logging
 import os
 import sys
 import time
 from datetime import datetime
+from secrets import token_hex
 from typing import Any, Dict, List, Optional, Tuple
 
 # Add the project root to Python path before importing other modules
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.."))
+_project_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../..")
+sys.path.insert(0, _project_root)
+
+# Also add src directory to path so aws.osml modules can be imported
+_src_dir = os.path.join(_project_root, "src")
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 
 # Get the script directory for resolving relative paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -27,6 +35,10 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # Set required environment variables for ServiceConfig before importing OSML modules
 # These are needed because ServiceConfig accesses os.environ[] at class definition time
 import boto3  # noqa: E402
+import geojson  # noqa: E402
+from boto3 import dynamodb  # noqa: E402
+from botocore.exceptions import ClientError, ParamValidationError  # noqa: E402
+from geojson import Feature  # noqa: E402
 
 if "AWS_DEFAULT_REGION" not in os.environ:
     os.environ["AWS_DEFAULT_REGION"] = os.environ.get("AWS_REGION") or boto3.Session().region_name or "us-east-1"
@@ -52,14 +64,8 @@ if "WORKERS" not in os.environ:
     os.environ["WORKERS"] = "1"
 
 # Now import modules that depend on the project root being in path
-from test.integration.utils.integ_utils import (  # noqa: E402
-    build_image_processing_request,
-    count_features,
-    get_config,
-    monitor_job_status,
-    queue_image_processing_job,
-    validate_features_match,
-)
+from test.integration.utils.config import OSMLConfig  # noqa: E402
+from test.integration.utils.integ_utils import feature_collections_equal  # noqa: E402
 
 from aws.osml.model_runner.api.image_request import ImageRequest  # noqa: E402
 
@@ -103,12 +109,27 @@ class IntegrationTestRunner:
         self.setup_logging(verbose)
         self.logger = logging.getLogger(__name__)
         self.clients = self._get_aws_clients()
-        self.config = get_config()
+        self.config = OSMLConfig()
 
     def setup_logging(self, verbose: bool = False) -> None:
         """Set up logging configuration."""
         level = logging.DEBUG if verbose else logging.INFO
-        logging.basicConfig(level=level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+        # Use a cleaner format: just time and message for INFO, full details for others
+        class InfoFormatter(logging.Formatter):
+            def format(self, record):
+                if record.levelno == logging.INFO:
+                    return record.getMessage()
+                else:
+                    return f"⚠️  {record.getMessage()}"
+
+        handler = logging.StreamHandler()
+        handler.setFormatter(InfoFormatter())
+
+        root_logger = logging.getLogger()
+        root_logger.setLevel(level)
+        root_logger.handlers = []
+        root_logger.addHandler(handler)
 
     def _get_aws_clients(self) -> Dict[str, Any]:
         """Get AWS clients for the test."""
@@ -136,17 +157,15 @@ class IntegrationTestRunner:
         Returns:
             Tuple of (success: bool, results: dict)
         """
-        self.logger.info("=== OSML Integration Test Runner ===")
-        self.logger.info(f"Image URI: {image_request.image_url}")
-        self.logger.info(f"Model Name: {image_request.model_name}")
-        self.logger.info(f"Expected Output: {expected_output_path}")
+        self.logger.info(f"\n{'='*60}")
+        self.logger.info("🧪  OSML Integration Test")
+        self.logger.info(f"{'='*60}")
+        self.logger.info(f"Image: {image_request.image_url}")
+        self.logger.info(f"Model: {image_request.model_name}")
         self.logger.info(f"Timeout: {timeout_minutes} minutes")
-        self.logger.info("=====================================")
+        self.logger.info(f"{'='*60}\n")
 
         try:
-            # Build the image processing request from ImageRequest
-            self.logger.info("Building image processing request...")
-
             # Extract model_variant and target_container from endpoint parameters
             model_variant = None
             target_container = None
@@ -157,7 +176,7 @@ class IntegrationTestRunner:
             # Determine endpoint type from model_invoke_mode
             endpoint_type = "SM_ENDPOINT" if image_request.model_invoke_mode.name == "SM_ENDPOINT" else "HTTP_ENDPOINT"
 
-            image_processing_request = build_image_processing_request(
+            image_processing_request = self._build_image_processing_request(
                 endpoint=image_request.model_name,
                 endpoint_type=endpoint_type,
                 image_url=image_request.image_url,
@@ -179,17 +198,15 @@ class IntegrationTestRunner:
             shard_iter = self._get_kinesis_shard()
 
             # Submit the request
-            self.logger.info("Submitting image processing request...")
-            message_id = queue_image_processing_job(self.clients["sqs"], image_processing_request)
-            self.logger.info(f"Request submitted with message ID: {message_id}")
+            message_id = self._queue_image_processing_job(image_processing_request)
+            self.logger.info(f"📤 Request submitted (message ID: {message_id[:16]}...)")
 
             # Monitor the job
-            self.logger.info("Monitoring job progress...")
             job_id = image_processing_request["jobId"]
             image_id = f"{job_id}:{image_request.image_url}"
 
             # Use the existing monitoring function
-            monitor_job_status(self.clients["sqs"], image_id, timeout_minutes)
+            self._monitor_job_status(image_id, timeout_minutes)
 
             # Collect results
             results = {
@@ -207,36 +224,34 @@ class IntegrationTestRunner:
                 # Resolve the expected output path relative to script directory
                 resolved_expected_path = resolve_path(expected_output_path)
                 if os.path.exists(resolved_expected_path):
-                    self.logger.info(f"Validating against expected output: {resolved_expected_path}")
+                    self.logger.info("\n🔍 Validating results...")
 
                     # Create a cache to store Kinesis features
                     kinesis_cache: Dict[str, List] = {}
 
                     # Validate features match
-                    validate_features_match(
+                    self._validate_features_match(
                         image_processing_request=image_processing_request,
                         job_id=job_id,
                         shard_iter=shard_iter,
-                        s3_client=self.clients["s3"],
-                        kinesis_client=self.clients["kinesis"],
                         result_file=resolved_expected_path,
                         kinesis_features_cache=kinesis_cache,
                     )
 
                     # Count features in DynamoDB
-                    feature_count = count_features(image_id, self.clients["ddb"])
+                    feature_count = self._count_features(image_id)
                     results["feature_count"] = feature_count
                     results["validation"] = "passed"
 
-                    self.logger.info(f"Validation passed with {feature_count} features")
+                    self.logger.info(f"✅ Validation passed with {feature_count} features\n")
                 else:
-                    self.logger.warning(f"Expected output file not found: {resolved_expected_path}")
+                    self.logger.warning(f"⚠️  Expected output file not found: {resolved_expected_path}")
                     results["validation"] = "skipped - file not found"
             else:
-                self.logger.info("No expected output provided - skipping validation")
+                self.logger.info("⏭️  No expected output provided - skipping validation")
                 results["validation"] = "skipped"
 
-            self.logger.info("Integration test completed successfully!")
+            self.logger.info("🎉 Integration test completed successfully!")
             return True, results
 
         except Exception as e:
@@ -250,6 +265,506 @@ class IntegrationTestRunner:
         return self.clients["kinesis"].get_shard_iterator(
             StreamName=stream_name, ShardId=stream_desc["Shards"][0]["ShardId"], ShardIteratorType="LATEST"
         )["ShardIterator"]
+
+    def _build_image_processing_request(
+        self,
+        endpoint: str,
+        endpoint_type: str,
+        image_url: str,
+        model_variant: Optional[str] = None,
+        target_container: Optional[str] = None,
+        tile_size: int = 512,
+        tile_overlap: int = 128,
+        tile_format: str = "GTIFF",
+        tile_compression: str = "NONE",
+        post_processing: str = (
+            '[{"step": "FEATURE_DISTILLATION", ' '"algorithm": {"algorithmType": "NMS", "iouThreshold": 0.75}}]'
+        ),
+        region_of_interest: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Build an image processing request for submission to ModelRunner.
+
+        Args:
+            endpoint: Model endpoint name
+            endpoint_type: Type of endpoint (SM/HTTP)
+            image_url: URL of image to process
+            model_variant: Optional SageMaker model variant
+            target_container: Optional target container hostname
+            tile_size: Size of image tiles for processing
+            tile_overlap: Overlap between tiles
+            tile_format: Format for tile output
+            tile_compression: Compression for tile output
+            post_processing: JSON string defining post-processing steps
+            region_of_interest: Optional region of interest specification
+
+        Returns:
+            Complete image processing request dictionary
+        """
+        # Determine result destinations
+        result_stream = f"{self.config.KINESIS_RESULTS_STREAM_PREFIX}-{self.config.ACCOUNT}"
+        result_bucket = f"{self.config.S3_RESULTS_BUCKET_PREFIX}-{self.config.ACCOUNT}"
+
+        job_id = token_hex(16)
+        job_name = f"test-{job_id}"
+
+        image_processing_request: Dict[str, Any] = {
+            "jobName": job_name,
+            "jobId": job_id,
+            "imageUrls": [image_url],
+            "outputs": [
+                {"type": "S3", "bucket": result_bucket, "prefix": f"{job_name}/"},
+                {"type": "Kinesis", "stream": result_stream, "batchSize": 1000},
+            ],
+            "imageProcessor": {"name": endpoint, "type": endpoint_type},
+            "imageProcessorTileSize": tile_size,
+            "imageProcessorTileOverlap": tile_overlap,
+            "imageProcessorTileFormat": tile_format,
+            "imageProcessorTileCompression": tile_compression,
+            "postProcessing": json.loads(post_processing),
+            "regionOfInterest": region_of_interest,
+        }
+
+        if model_variant:
+            image_processing_request["imageProcessorParameters"] = {"TargetVariant": model_variant}
+
+        if target_container:
+            image_processing_request["imageProcessorParameters"] = {"TargetContainerHostname": target_container}
+
+        return image_processing_request
+
+    def _queue_image_processing_job(self, image_processing_request: Dict[str, Any]) -> Optional[str]:
+        """
+        Submit an image processing request to the SQS queue.
+
+        Args:
+            image_processing_request: The request to submit
+
+            Returns:
+            Message ID of the queued message
+
+        Raises:
+            ClientError: If SQS operation fails
+            ParamValidationError: If request validation fails
+        """
+        try:
+            queue = self.clients["sqs"].get_queue_by_name(
+                QueueName=self.config.SQS_IMAGE_REQUEST_QUEUE, QueueOwnerAWSAccountId=self.config.ACCOUNT
+            )
+            response = queue.send_message(MessageBody=json.dumps(image_processing_request))
+
+            message_id = response.get("MessageId")
+
+            return message_id
+
+        except ClientError as error:
+            self.logger.error(f"Unable to send job request to SQS queue: {self.config.SQS_IMAGE_REQUEST_QUEUE}")
+            self.logger.error(f"{error}")
+            raise
+
+        except ParamValidationError as error:
+            self.logger.error("Invalid SQS API request; validation failed")
+            self.logger.error(f"{error}")
+            raise
+
+    def _monitor_job_status(self, image_id: str, timeout_minutes: int = 30) -> None:
+        """
+        Monitor job status until completion or timeout.
+
+        Args:
+            image_id: Image ID to monitor
+            timeout_minutes: Maximum time to wait for completion
+
+        Raises:
+            TimeoutError: If job doesn't complete within timeout
+            AssertionError: If job fails
+        """
+        done = False
+        max_retries = timeout_minutes * 12  # 12 retries per minute (5 second intervals)
+        retry_interval = 5
+
+        queue = self.clients["sqs"].get_queue_by_name(
+            QueueName=self.config.SQS_IMAGE_STATUS_QUEUE, QueueOwnerAWSAccountId=self.config.ACCOUNT
+        )
+
+        self.logger.info(f"⏳ Monitoring job progress (timeout: {timeout_minutes} minutes)...")
+
+        start_time = time.time()
+
+        while not done and max_retries > 0:
+            try:
+                # Use WaitTimeSeconds for long polling to reduce API calls
+                messages = queue.receive_messages(MaxNumberOfMessages=10, WaitTimeSeconds=5, VisibilityTimeout=30)
+
+                # Process all messages in the batch
+                for message in messages:
+                    try:
+                        # Parse the SNS message format
+                        message_body = json.loads(message.body)
+                        message_attributes = message_body.get("MessageAttributes", {})
+
+                        # Extract values from SNS MessageAttributes format
+                        message_image_id = message_attributes.get("image_id", {}).get("Value")
+                        message_image_status = message_attributes.get("status", {}).get("Value")
+
+                        if message_image_status == "IN_PROGRESS" and message_image_id == image_id:
+                            elapsed = int(time.time() - start_time)
+                            self.logger.info(f"📊 IN_PROGRESS - Image processing started (elapsed: {elapsed}s)")
+
+                        elif message_image_status == "SUCCESS" and message_image_id == image_id:
+                            processing_duration = message_attributes.get("processing_duration", {}).get("Value")
+                            if processing_duration is not None:
+                                assert float(processing_duration) > 0
+                            done = True
+                            elapsed = int(time.time() - start_time)
+                            if processing_duration is not None:
+                                self.logger.info(
+                                    f"\n✅ SUCCESS - Processing completed in "
+                                    f"{processing_duration}s (total wait: {elapsed}s)\n"
+                                )
+                            else:
+                                self.logger.info(f"\n✅ SUCCESS - Processing completed (total wait: {elapsed}s)\n")
+
+                        elif (
+                            message_image_status == "FAILED" or message_image_status == "PARTIAL"
+                        ) and message_image_id == image_id:
+                            failure_message = ""
+                            try:
+                                message_body = json.loads(message.body).get("Message", "")
+                                failure_message = str(message_body)
+                            except Exception:
+                                pass
+                            self.logger.error(
+                                f"❌ FAILED - Image processing failed with status: {message_image_status}. {failure_message}"
+                            )
+                            raise AssertionError(f"Image processing failed with status: {message_image_status}")
+
+                        else:
+                            # Only log every 30 seconds to reduce noise
+                            if max_retries % 12 == 0:  # 12 retries = 60 seconds
+                                elapsed = int(time.time() - start_time)
+                                self.logger.info(f"⏳ Still waiting... (elapsed: {elapsed//60}m {elapsed%60}s)")
+
+                    except json.JSONDecodeError as e:
+                        self.logger.warning(f"Failed to parse message body as JSON: {e}")
+                    except Exception as e:
+                        self.logger.warning(f"Error processing message: {e}")
+
+                # Delete all messages after processing the batch
+                for message in messages:
+                    try:
+                        message.delete()
+                    except Exception as e:
+                        self.logger.warning(f"Failed to delete message: {e}")
+
+                # If we found success, break out of the main retry loop
+                if done:
+                    break
+
+            except ClientError as err:
+                self.logger.warning(f"ClientError in monitor_job_status: {err}")
+                # Don't raise immediately, continue retrying
+
+            except Exception as err:
+                self.logger.error(f"Unexpected error in monitor_job_status: {err}")
+                raise
+
+            max_retries -= 1
+            time.sleep(retry_interval)
+
+        if not done:
+            elapsed = int(time.time() - start_time)
+            self.logger.error(f"Maximum retries reached waiting for {image_id}.")
+            self.logger.error(f"Total time waited: {elapsed} seconds ({timeout_minutes} minutes)")
+            raise TimeoutError(f"Image processing timed out after {timeout_minutes} minutes for image {image_id}")
+
+        assert done
+
+    def _validate_features_match(
+        self,
+        image_processing_request: Dict[str, Any],
+        job_id: str,
+        shard_iter: Optional[str] = None,
+        result_file: Optional[str] = None,
+        kinesis_features_cache: Optional[Dict[str, List[Feature]]] = None,
+    ) -> None:
+        """
+        Validate that processing results match expected features.
+
+        Args:
+            image_processing_request: The original processing request
+            job_id: Job ID for result correlation
+            shard_iter: Kinesis shard iterator for streaming results
+            result_file: Path to expected results file
+            kinesis_features_cache: Optional cache for Kinesis features
+
+        Raises:
+            AssertionError: If results don't match expected features
+        """
+        # Determine result file path
+        if result_file is None:
+            use_roi = ".roi" if self.config.REGION_OF_INTEREST else ""
+            result_file = (
+                f"./test/data/{self.config.TARGET_MODEL}.{self.config.TARGET_IMAGE.split('/')[-1]}{use_roi}.geojson"
+            )
+
+        with open(result_file, "r") as geojson_file:
+            expected_features = geojson.load(geojson_file)["features"]
+
+        max_retries = 24  # 2 minutes with 5-second intervals
+        retry_interval = 5
+        done = False
+
+        while not done and max_retries > 0:
+            outputs: List[Dict[str, Any]] = image_processing_request["outputs"]
+            found_outputs = 0
+
+            for output in outputs:
+                if output["type"] == "S3" and self.clients["s3"]:
+                    if self._validate_s3_features_match(output["bucket"], output["prefix"], expected_features):
+                        found_outputs += 1
+                elif output["type"] == "Kinesis":
+                    # Check if we have cached features first
+                    stream_name = output["stream"]
+                    if kinesis_features_cache and stream_name in kinesis_features_cache:
+                        cached_features = kinesis_features_cache[stream_name]
+                        if feature_collections_equal(expected_features, cached_features):
+                            found_outputs += 1
+                    elif self.clients["kinesis"]:
+                        # Try to read from Kinesis if we don't have cached features
+                        try:
+                            if self._validate_kinesis_features_match(
+                                job_id, stream_name, shard_iter, expected_features, kinesis_features_cache
+                            ):
+                                found_outputs += 1
+                        except Exception:
+                            pass
+                    else:
+                        pass
+
+            if found_outputs == len(outputs):
+                done = True
+            else:
+                max_retries -= 1
+                time.sleep(retry_interval)
+
+        if not done:
+            self.logger.error(
+                f"Validation failed after {24 * 5} seconds. Found {found_outputs} out of {len(outputs)} expected outputs."
+            )
+            raise AssertionError(
+                f"Feature validation failed - only {found_outputs} out of {len(outputs)} output sinks validated"
+            )
+
+    def _count_features(self, image_id: str) -> int:
+        """
+        Count features in DynamoDB for a given image ID.
+
+        Args:
+            image_id: Image ID to count features for
+
+        Returns:
+            Number of features found
+        """
+        ddb_table = self.clients["ddb"].Table(self.config.DDB_FEATURES_TABLE)
+
+        items = self._query_items(ddb_table, "hash_key", image_id, True)
+
+        features: List[Feature] = []
+        for item in items:
+            for feature in item["features"]:
+                features.append(geojson.loads(feature))
+
+        total_features = len(features)
+        return total_features
+
+    def _query_items(
+        self, ddb_table: boto3.resource, hash_key: str, hash_value: str, is_feature_count: bool
+    ) -> List[Dict[str, Any]]:
+        """
+        Query DynamoDB table for items with given hash key/value.
+
+        Args:
+            ddb_table: DynamoDB table resource
+            hash_key: Hash key attribute name
+            hash_value: Hash key value to query for
+            is_feature_count: Whether to append index to hash value
+
+        Returns:
+            List of matching items
+        """
+        items: List[dict] = []
+        max_hash_salt = 50
+
+        for index in range(1, max_hash_salt + 1):
+            hash_value_index = f"{hash_value}-{index}" if is_feature_count else hash_value
+            all_items_retrieved = False
+
+            response = ddb_table.query(
+                ConsistentRead=True,
+                KeyConditionExpression=dynamodb.conditions.Key(hash_key).eq(hash_value_index),
+            )
+
+            while not all_items_retrieved:
+                items.extend(response["Items"])
+
+                if "LastEvaluatedKey" in response:
+                    response = ddb_table.query(
+                        ConsistentRead=True,
+                        KeyConditionExpression=dynamodb.conditions.Key(hash_key).eq(hash_value_index),
+                        ExclusiveStartKey=response["LastEvaluatedKey"],
+                    )
+                else:
+                    all_items_retrieved = True
+
+            if not is_feature_count:
+                break
+
+        return items
+
+    def _validate_s3_features_match(self, bucket: str, prefix: str, expected_features: List[Feature]) -> bool:
+        """
+        Validate S3 output results against expected features.
+
+        Args:
+            bucket: S3 bucket name
+            prefix: S3 object prefix
+            expected_features: List of expected features
+
+        Returns:
+            True if features match, False otherwise
+        """
+        for object_key in self._get_matching_s3_keys(bucket, prefix=prefix, suffix=".geojson"):
+            s3_output = self.clients["s3"].get_object(Bucket=bucket, Key=object_key)
+            contents = s3_output["Body"].read()
+            s3_features = geojson.loads(contents.decode("utf-8"))["features"]
+
+            if feature_collections_equal(expected_features, s3_features):
+                self.logger.info(f"  ✓ S3: {len(s3_features)} features validated")
+                return True
+
+        return False
+
+    def _validate_kinesis_features_match(
+        self,
+        job_id: str,
+        stream: str,
+        shard_iter: Optional[str],
+        expected_features: List[Feature],
+        cache: Optional[Dict[str, List[Feature]]] = None,
+    ) -> bool:
+        """
+        Validate Kinesis output results against expected features.
+
+        Args:
+            job_id: Job ID for result correlation
+            stream: Kinesis stream name
+            shard_iter: Shard iterator for reading records
+            expected_features: List of expected features
+            cache: Optional dict to cache the features we read
+
+        Returns:
+            True if features match, False otherwise
+        """
+        if shard_iter is None:
+            return False
+
+        try:
+            kinesis_features = []
+            current_shard_iter = shard_iter
+            max_iterations = 100  # Prevent infinite loops
+
+            # Iterate through records until we find what we're looking for or exhaust the stream
+            for iteration in range(max_iterations):
+                response = self.clients["kinesis"].get_records(ShardIterator=current_shard_iter, Limit=10000)
+                records = response.get("Records", [])
+
+                for record in records:
+                    partition_key = record.get("PartitionKey")
+                    if partition_key == job_id:
+                        try:
+                            # Kinesis records may be bytes, base64-encoded strings, or JSON strings
+                            data = record["Data"]
+
+                            # Handle different data types from Kinesis
+                            if isinstance(data, bytes):
+                                if len(data) == 0:
+                                    continue
+                                data_str = data.decode("utf-8")
+                            elif isinstance(data, str):
+                                # Check if it's base64-encoded
+                                try:
+                                    # Try to decode as base64 first
+                                    decoded = base64.b64decode(data)
+                                    data_str = decoded.decode("utf-8")
+                                except Exception:
+                                    # If it fails, treat as plain string
+                                    data_str = data
+                            else:
+                                data_str = str(data)
+
+                            record_data = geojson.loads(data_str)
+                            if "features" in record_data:
+                                kinesis_features.extend(record_data["features"])
+
+                        except (json.JSONDecodeError, KeyError, UnicodeDecodeError, Exception) as e:
+                            self.logger.debug(f"Failed to parse Kinesis record data: {e}")
+
+                # Check if we have all expected features
+                if len(kinesis_features) >= len(expected_features):
+                    # Cache the features for future use
+                    if cache is not None and kinesis_features:
+                        cache[stream] = kinesis_features
+
+                    if feature_collections_equal(expected_features, kinesis_features):
+                        self.logger.info(f"  ✓ Kinesis: {len(kinesis_features)} features validated")
+                        return True
+
+                # Check for next shard iterator
+                next_shard_iter = response.get("NextShardIterator")
+                if not next_shard_iter:
+                    break
+                current_shard_iter = next_shard_iter
+
+            # Final check even if we didn't read all expected features
+            if kinesis_features:
+                if cache is not None:
+                    cache[stream] = kinesis_features
+
+                if feature_collections_equal(expected_features, kinesis_features):
+                    self.logger.info(f"  ✓ Kinesis: {len(kinesis_features)} features validated")
+                    return True
+
+            return False
+
+        except Exception as e:
+            self.logger.debug(f"Error reading from Kinesis stream: {e}")
+            return False
+
+    def _get_matching_s3_keys(self, bucket: str, prefix: str = "", suffix: str = ""):
+        """
+        Generate S3 object keys matching the given criteria.
+
+        Args:
+            bucket: S3 bucket name
+            prefix: Object key prefix filter
+            suffix: Object key suffix filter
+
+        Yields:
+            str: Matching S3 object keys
+        """
+        kwargs = {"Bucket": bucket, "Prefix": prefix}
+        while True:
+            resp = self.clients["s3"].list_objects_v2(**kwargs)
+            for obj in resp["Contents"]:
+                key = obj["Key"]
+                if key.endswith(suffix):
+                    yield key
+
+            try:
+                kwargs["ContinuationToken"] = resp["NextContinuationToken"]
+            except KeyError:
+                break
 
     def _create_image_request_from_test_case(self, test_case: Dict[str, Any]) -> ImageRequest:
         """
@@ -303,16 +818,16 @@ class IntegrationTestRunner:
         Returns:
             Dictionary with test results
         """
-        self.logger.info(f"Running test suite with {len(test_cases)} test cases")
+        self.logger.info(f"\n🧪 Starting test suite: {len(test_cases)} test(s)")
+        self.logger.info("=" * 60 + "\n")
 
         results = {"total_tests": len(test_cases), "passed": 0, "failed": 0, "test_results": []}
 
         for i, test_case in enumerate(test_cases, 1):
-            self.logger.info(f"Running test {i}/{len(test_cases)}: {test_case.get('name', 'Unnamed test')}")
+            self.logger.info(f"\n[{i}/{len(test_cases)}] {test_case.get('name', 'Unnamed test')}")
 
             # Add a delay between tests to avoid overwhelming the system
             if i > 1:
-                self.logger.info(f"Waiting {delay_between_tests} seconds before starting next test...")
                 time.sleep(delay_between_tests)
 
             # Create ImageRequest from test case
@@ -331,14 +846,14 @@ class IntegrationTestRunner:
 
             if success:
                 results["passed"] += 1
-                self.logger.info(f"✅ Test {i} PASSED")
+                self.logger.info("  ✅ PASSED")
             else:
                 results["failed"] += 1
-                self.logger.error(f"❌ Test {i} FAILED")
+                self.logger.error("  ❌ FAILED")
 
-            self.logger.info("-" * 50)
-
+        self.logger.info("\n" + "=" * 60)
         self.logger.info(f"Test suite completed: {results['passed']} passed, {results['failed']} failed")
+        self.logger.info("=" * 60 + "\n")
         return results
 
 

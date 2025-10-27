@@ -663,20 +663,22 @@ def build_image_processing_request(
     logger.info(f"Image: {image_url}")
 
     if model_variant:
-        logger.info(f"Type: {endpoint_type}, Model: {endpoint}, Variant: {model_variant}")
+        extra_info = f", Variant: {model_variant}"
     elif target_container:
-        logger.info(f"Type: {endpoint_type}, Model: {endpoint}, Container: {target_container}")
+        extra_info = f", Container: {target_container}"
     else:
-        logger.info(f"Type: {endpoint_type}, Model: {endpoint}")
+        extra_info = ""
+
+    logger.info(f"Type: {endpoint_type}, Model: {endpoint}{extra_info}")
 
     job_id = token_hex(16)
     job_name = f"test-{job_id}"
     logger.info(f"Creating request job_id={job_id}")
 
     # Debug: Log the image URL being used
-    logger.info(f"DEBUG: Image URL being processed: {image_url}")
-    logger.info(f"DEBUG: Image URL type: {type(image_url)}")
-    logger.info(f"DEBUG: Image URL starts with s3://: {image_url.startswith('s3://')}")
+    logger.debug(f"Image URL being processed: {image_url}")
+    logger.debug(f"Image URL type: {type(image_url)}")
+    logger.debug(f"Image URL starts with s3://: {image_url.startswith('s3://')}")
 
     image_processing_request: Dict[str, Any] = {
         "jobName": job_name,
@@ -702,8 +704,8 @@ def build_image_processing_request(
         image_processing_request["imageProcessorParameters"] = {"TargetContainerHostname": target_container}
 
     # Debug: Log the complete request structure
-    logger.info("DEBUG: Complete image processing request:")
-    logger.info(f"DEBUG: {json.dumps(image_processing_request, indent=2)}")
+    logger.debug("Complete image processing request:")
+    logger.debug(f"{json.dumps(image_processing_request, indent=2)}")
 
     return image_processing_request
 
@@ -719,7 +721,8 @@ def count_features(image_id: str, ddb_client: boto3.resource) -> int:
     Returns:
         Number of features found
     """
-    ddb_table = ddb_client.Table(OSMLConfig.DDB_FEATURES_TABLE)
+    config = get_config()
+    ddb_table = ddb_client.Table(config.DDB_FEATURES_TABLE)
 
     logger.info(f"Counting DDB items for image {image_id}...")
     items = query_items(ddb_table, "hash_key", image_id, True)
@@ -745,11 +748,12 @@ def validate_expected_feature_count(feature_count: int, model_variant: Optional[
     Raises:
         AssertionError: If feature count doesn't match expected values
     """
-    expected_feature_counts = get_expected_image_feature_count(OSMLConfig.TARGET_IMAGE, variant=model_variant)
+    config = get_config()
+    expected_feature_counts = get_expected_image_feature_count(config.TARGET_IMAGE, variant=model_variant)
     test_succeeded = False
 
     if feature_count in expected_feature_counts:
-        logger.info(f"Found expected features for image {OSMLConfig.TARGET_IMAGE}.")
+        logger.info(f"Found expected features for image {config.TARGET_IMAGE}.")
         test_succeeded = True
     else:
         expected_feature_counts_str = " | ".join(map(str, expected_feature_counts))
@@ -843,7 +847,8 @@ def count_region_request_items(image_id: str, ddb_client: boto3.resource) -> int
     Returns:
         Number of successful region requests
     """
-    ddb_region_request_table = ddb_client.Table(OSMLConfig.DDB_REGION_REQUEST_TABLE)
+    config = get_config()
+    ddb_region_request_table = ddb_client.Table(config.DDB_REGION_REQUEST_TABLE)
     items = query_items(ddb_region_request_table, "image_id", image_id, False)
 
     total_count = 0
@@ -865,11 +870,12 @@ def validate_expected_region_request_items(region_request_count: int) -> None:
     Raises:
         AssertionError: If count doesn't match expected values
     """
-    expected_count = get_expected_region_request_count(OSMLConfig.TARGET_IMAGE)
+    config = get_config()
+    expected_count = get_expected_region_request_count(config.TARGET_IMAGE)
     test_succeeded = False
 
     if region_request_count == expected_count:
-        logger.info(f"Found expected region request for image {OSMLConfig.TARGET_IMAGE}.")
+        logger.info(f"Found expected region request for image {config.TARGET_IMAGE}.")
         test_succeeded = True
     else:
         logger.info(f"Found {region_request_count} region request for image but expected {expected_count}!")

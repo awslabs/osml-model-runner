@@ -12,14 +12,18 @@ This package provides comprehensive integration testing capabilities including:
 
 from .utils import (
     OSMLConfig,
-    count_features,
+    count_region_request_items,
+    get_expected_image_feature_count,
+    get_expected_region_request_count,
     validate_expected_feature_count,
-    validate_features_match,
+    validate_expected_region_request_items,
 )
 
 __all__ = [
     "OSMLConfig",
-    "validate_features_match",
-    "count_features",
+    "count_region_request_items",
     "validate_expected_feature_count",
+    "validate_expected_region_request_items",
+    "get_expected_image_feature_count",
+    "get_expected_region_request_count",
 ]

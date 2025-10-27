@@ -5,33 +5,27 @@ Integration test utilities for OSML Model Runner.
 
 This package provides utilities for integration testing including:
 - Test configuration
-- Image processing utilities
-- Result validation
+- Result validation helpers
+- Feature comparison utilities
 - Load testing support
 """
 
 from .config import OSMLConfig
 from .integ_utils import (
-    build_image_processing_request,
-    count_features,
     count_region_request_items,
-    monitor_job_status,
-    queue_image_processing_job,
+    get_expected_image_feature_count,
+    get_expected_region_request_count,
     validate_expected_feature_count,
     validate_expected_region_request_items,
-    validate_features_match,
 )
 
 __all__ = [
     # Configuration
     "OSMLConfig",
-    # Integration utilities
-    "queue_image_processing_job",
-    "monitor_job_status",
-    "validate_features_match",
-    "build_image_processing_request",
-    "count_features",
-    "validate_expected_feature_count",
+    # Legacy integration utilities (kept for backward compatibility)
     "count_region_request_items",
+    "validate_expected_feature_count",
     "validate_expected_region_request_items",
+    "get_expected_image_feature_count",
+    "get_expected_region_request_count",
 ]
