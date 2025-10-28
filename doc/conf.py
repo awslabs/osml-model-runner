@@ -1,42 +1,4 @@
 import datetime
-import os
-import shutil
-
-from sphinx.ext import apidoc
-
-
-def run_apidoc(app):
-    """Generate doc stubs using sphinx-apidoc."""
-    module_dir = os.path.join(app.srcdir, "../src/aws")
-    output_dir = os.path.join(app.srcdir, "_apidoc")
-    template_dir = os.path.join(app.srcdir, "_templates")
-    excludes = []
-
-    # Ensure that any stale apidoc files are cleaned up first.
-    if os.path.exists(output_dir):
-        shutil.rmtree(output_dir)
-
-    cmd = [
-        "--separate",
-        "--module-first",
-        "--doc-project=API Reference",
-        "--implicit-namespaces",
-        "--maxdepth=4",
-        "-t",
-        template_dir,
-        "-o",
-        output_dir,
-        module_dir,
-    ]
-    cmd.extend(excludes)
-    print(f"Running apidoc with options: {cmd}")
-    apidoc.main(cmd)
-
-
-def setup(app):
-    """Register our sphinx-apidoc hook."""
-    app.connect("builder-inited", run_apidoc)
-
 
 # Configuration file for the Sphinx documentation builder.
 #
@@ -56,13 +18,29 @@ author = "Amazon Web Services"
 extensions = [
     "autoapi.extension",
     "sphinx.ext.intersphinx",
-    #    "sphinx.ext.napoleon",
     "sphinx.ext.todo",
     "sphinx.ext.viewcode",
     "sphinx_rtd_theme",
 ]
 autoapi_type = "python"
 autoapi_dirs = ["../src"]
+autoapi_add_toctree_entry = True
+autoapi_keep_files = True
+autoapi_root = "autoapi"
+autoapi_include_summaries = True
+autoapi_python_use_implicit_namespaces = True
+autoapi_python_class_content = "class"
+autoapi_python_extra_arguments = {"members": True, "undoc-members": True, "show-inheritance": True}
+autoapi_ignore = ["*/test*", "*/tests/*", "*/__pycache__/*"]
+autoapi_member_order = "bysource"
+autoapi_options = [
+    "members",
+    "undoc-members",
+    "show-inheritance",
+    "show-module-summary",
+    "special-members",
+    "imported-members",
+]
 
 source_suffix = ".rst"
 master_doc = "index"
@@ -87,7 +65,6 @@ html_theme = "sphinx_rtd_theme"
 
 html_theme_options = {
     "logo_only": False,
-    "display_version": True,
     "prev_next_buttons_location": "bottom",
     "style_external_links": False,
     "vcs_pageview_mode": "",
@@ -103,3 +80,9 @@ html_theme_options = {
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
 }
+
+# Suppress some warnings
+suppress_warnings = [
+    "ref.python",  # Suppress cross-reference warnings
+    "toc.not_included",  # Suppress toctree warnings
+]

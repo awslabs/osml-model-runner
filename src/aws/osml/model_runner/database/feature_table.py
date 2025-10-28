@@ -48,12 +48,14 @@ setattr(parser, "_handle_json_body", handle_json_body)
 class FeatureItem(DDBItem):
     """
     FeatureItem is a dataclass meant to represent a single item in the FeatureTable
+
     The data schema is defined as follows:
-        hash_key: str
-        range_key: str
-        tile_id: str
-        features: [str]
-        expire_time: Optional[int] = None
+
+    hash_key: str
+    range_key: str
+    tile_id: str
+    features: [str]
+    expire_time: Optional[int] = None
     """
 
     hash_key: str

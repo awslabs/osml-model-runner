@@ -66,16 +66,16 @@ def gen_center_polygon(width: int, height: int, bbox_percentage: float) -> List[
 
 def gen_center_detect(width: int, height: int, bbox_percentage: float) -> Dict:
     """
-    Create  circular polygon that is at the center of and sized proportionally to the bbox
+    Create circular polygon that is at the center of and sized proportionally to the bbox
+
     :param bbox_percentage: the size of the bounding box and poly, relative to the image, to return
     :param width: Raster width of the image passed in
     :param height: Raster height of the image passed in
     :return: geojson: Segmented polygon for center detection
-    this draws a polygon with the same center
-    and width and height percentage polygon can be a circle, or a hexagon, or triangle, etc. - based on the
-    number_of_vertices there is a chance this is not centered as we'd like - meanwhile this will work as-is for initial
-     OSML segmentation 'passthrough'
 
+    This draws a polygon with the same center and width and height percentage polygon can be a circle,
+    or a hexagon, or triangle, etc. - based on the number_of_vertices there is a chance this is not
+    centered as we'd like - meanwhile this will work as-is for initial OSML segmentation 'passthrough'
     """
     center_polygon = None
     if ENABLE_SEGMENTATION:

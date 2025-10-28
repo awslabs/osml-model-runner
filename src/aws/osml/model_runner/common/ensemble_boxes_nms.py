@@ -156,6 +156,7 @@ def nms_fast(dets: np.ndarray, scores: np.ndarray, thresh: float) -> list[np.nda
     :param thresh: IoU value for boxes
 
     :return: index of boxes to keep
+
     """
     x1 = dets[:, 0]
     y1 = dets[:, 1]
@@ -198,7 +199,7 @@ def nms_method(
     Perform NMS on a list of boxes, scores, and labels from multiple models.
 
     :param boxes: list of boxes predictions from each model, each box is 4 numbers. It has 3 dimensions
-    (models_number, model_preds, 4). Order of boxes: x1, y1, x2, y2. We expect float normalized coordinates [0; 1].
+        (models_number, model_preds, 4). Order of boxes: x1, y1, x2, y2. We expect float normalized coordinates [0; 1].
     :param scores: list of scores for each model.
     :param labels: list of labels for each model.
     :param method: 1 - linear soft-NMS, 2 - gaussian soft-NMS, 3 - standard NMS.
@@ -293,8 +294,8 @@ def nms(
     """
     Short call for standard NMS
 
-    :param boxes: list of boxes predictions from each model, each box is 4 numbers. It has 3 dimensions (models_number,
-    model_preds, 4). Order of boxes: x1, y1, x2, y2. We expect float normalized coordinates [0; 1].
+    :param boxes: list of boxes predictions from each model, each box is 4 numbers. It has 3 dimensions
+        (models_number, model_preds, 4). Order of boxes: x1, y1, x2, y2. We expect float normalized coordinates [0; 1].
     :param scores: list of scores for each model.
     :param labels: list of labels for each model.
     :param iou_thr: IoU threshold value for boxes.
@@ -319,7 +320,7 @@ def soft_nms(
     Perform soft-NMS on the given set of boxes for each label.
 
     :param boxes: list of boxes predictions from each model, each box is 4 numbers. It has 3 dimensions
-    (models_number, model_preds, 4). Order of boxes: x1, y1, x2, y2. We expect float normalized coordinates [0; 1].
+        (models_number, model_preds, 4). Order of boxes: x1, y1, x2, y2. We expect float normalized coordinates [0; 1].
     :param scores: list of scores for each model.
     :param labels: list of labels for each model.
     :param method: 1 - linear soft-NMS, 2 - gaussian soft-NMS.
