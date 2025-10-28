@@ -55,21 +55,21 @@ class TestServerUtils(unittest.TestCase):
         # Test with mask provided
         feature = detect_to_feature(bbox, mask, score, detection_type)
         self.assertEqual(feature["type"], "Feature")
-        self.assertEqual(feature["geometry"]["type"], "Point")
-        self.assertEqual(feature["properties"]["bounds_imcoords"], bbox)
-        self.assertEqual(feature["properties"]["detection_score"], score)
-        self.assertEqual(feature["properties"]["feature_types"], {detection_type: score})
-        self.assertIn("geom_imcoords", feature["properties"])
-        self.assertEqual(feature["properties"]["geom_imcoords"], mask)
+        self.assertIsNone(feature["geometry"])  # geometry is now None
+        self.assertEqual(feature["properties"]["imageBBox"], bbox)
+        self.assertEqual(feature["properties"]["featureClasses"], [{"iri": detection_type, "score": score}])
+        self.assertEqual(feature["properties"]["imageGeometry"], {"type": "Polygon", "coordinates": [mask]})
+        self.assertIn("id", feature)
+        self.assertIn("image_id", feature["properties"])
 
         # Test without mask
         feature_no_mask = detect_to_feature(bbox, None, score, detection_type)
-        self.assertNotIn("geom_imcoords", feature_no_mask["properties"])
+        self.assertEqual(feature_no_mask["properties"]["imageGeometry"], {"type": "Point", "coordinates": [0.0, 0.0]})
 
         # Test with default parameters
         feature_default = detect_to_feature(bbox)
-        self.assertEqual(feature_default["properties"]["detection_score"], 1.0)
-        self.assertEqual(feature_default["properties"]["feature_types"], {"sample_object": 1.0})
+        self.assertEqual(feature_default["properties"]["featureClasses"], [{"iri": "sample_object", "score": 1.0}])
+        self.assertEqual(feature_default["properties"]["imageGeometry"], {"type": "Point", "coordinates": [0.0, 0.0]})
 
 
 if __name__ == "__main__":

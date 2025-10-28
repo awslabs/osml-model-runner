@@ -64,7 +64,9 @@ class CenterpointModelTest(unittest.TestCase):
         for actual_result, expected_result in zip(
             actual_geojson_result.get("features"), expected_json_result.get("features")
         ):
-            assert actual_result.get("geometry") == expected_result.get("geometry")
+            # Both actual and expected geometry should be None in the new structure
+            assert actual_result.get("geometry") is None
+            assert expected_result.get("geometry") is None
 
             # Handle unique image_id differences
             actual_image_id = actual_result["properties"]["image_id"]
@@ -89,7 +91,7 @@ class CenterpointModelTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
 
-        sample_output = "test/data/sample_centerpoint_model_output.geojson"
+        sample_output = "test/data/centerpoint_tests.geojson"
         with open(sample_output, "r") as model_output_geojson:
             expected_json_result = json.loads(model_output_geojson.read())
 

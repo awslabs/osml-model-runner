@@ -18,7 +18,7 @@ class FloodModelTest(unittest.TestCase):
     """
 
     # Set flood volume for testing
-    os.environ["FLOOD_VOLUME"] = "500"
+    os.environ["FLOOD_VOLUME"] = "10"
 
     def setUp(self):
         """
@@ -53,56 +53,46 @@ class FloodModelTest(unittest.TestCase):
         response = self.client.get("/ping")
         assert response.status_code == 200
 
-    @staticmethod
-    def compare_two_geojson_results(actual_geojson_result, expected_json_result):
-        """
-        Helper method to compare two GeoJSON results.
-
-        :param actual_geojson_result: The actual GeoJSON result returned by the
-                                      prediction model.
-        :param expected_json_result: The expected GeoJSON result for comparison.
-
-        The method checks the `type` and `features` fields and compares the geometries
-        and properties of the features. Due to the unique `image_id` and randomized
-        `bounds_imcoords`, these properties are overwritten for accurate comparison.
-        """
-        assert actual_geojson_result.get("type") == expected_json_result.get("type")
-        assert len(actual_geojson_result.get("features")) == len(expected_json_result.get("features"))
-
-        for actual_result, expected_result in zip(
-            actual_geojson_result.get("features"), expected_json_result.get("features")
-        ):
-            assert actual_result.get("geometry") == expected_result.get("geometry")
-
-            # Handle image_id and bounds_imcoords differences
-            actual_image_id = actual_result["properties"]["image_id"]
-            expected_result["properties"]["image_id"] = actual_image_id
-
-            actual_bounds_imcoords = actual_result["properties"]["bounds_imcoords"]
-            expected_result["properties"]["bounds_imcoords"] = actual_bounds_imcoords
-
     def test_predict_flood_model(self):
         """
         Test the flood model prediction using a sample image.
 
         This test sends a sample image in a POST request to the `/invocations` endpoint
-        and verifies that the GeoJSON result matches the expected model output.
-
-        The `compare_two_geojson_results` method is used to assert that the predicted
-        result is correct after accounting for differences in `image_id` and
-        `bounds_imcoords`.
+        and verifies that the GeoJSON result contains the expected number of features
+        (based on FLOOD_VOLUME=10) and has the correct structure.
         """
         data_binary = open("test/data/test-model.tif", "rb")
         response = self.client.post("/invocations", data=data_binary)
 
         assert response.status_code == 200
 
-        sample_output = "test/data/sample_flood_model_output.geojson"
-        with open(sample_output, "r") as model_output_geojson:
-            expected_json_result = json.loads(model_output_geojson.read())
-
         actual_geojson_result = json.loads(response.data)
-        self.compare_two_geojson_results(actual_geojson_result, expected_json_result)
+
+        # Verify the basic structure
+        assert actual_geojson_result["type"] == "FeatureCollection"
+        assert "features" in actual_geojson_result
+
+        # Verify we get exactly 10 features (FLOOD_VOLUME=10)
+        assert len(actual_geojson_result["features"]) == 10
+
+        # Verify each feature has the expected structure
+        for feature in actual_geojson_result["features"]:
+            assert feature["type"] == "Feature"
+            assert feature["geometry"] is None  # New structure has geometry as None
+            assert "id" in feature
+            assert "properties" in feature
+
+            properties = feature["properties"]
+            assert "imageGeometry" in properties
+            assert "imageBBox" in properties
+            assert "featureClasses" in properties
+            assert "modelMetadata" in properties
+            assert "image_id" in properties
+
+            # Verify featureClasses structure
+            assert len(properties["featureClasses"]) == 1
+            assert properties["featureClasses"][0]["iri"] == "sample_object"
+            assert 0 <= properties["featureClasses"][0]["score"] <= 1  # Random score between 0 and 1
 
     def test_predict_bad_data_file(self):
         """
