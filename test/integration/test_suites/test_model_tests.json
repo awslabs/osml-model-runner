@@ -18,6 +18,15 @@
     "timeout_minutes": 10
   },
   {
+    "name": "Centerpoint Small HTTP Test",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
+    "model_name": "centerpoint",
+    "endpoint_type": "HTTP_ENDPOINT",
+    "expected_output": "test_suites/results/sample_centerpoint_http_model_small_output.geojson",
+    "validate_results": true,
+    "timeout_minutes": 10
+  },
+  {
     "name": "Centerpoint Wbid Test",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/wbid.ntf",
     "model_name": "centerpoint",
@@ -63,10 +72,39 @@
     "timeout_minutes": 10
   },
   {
-    "name": "Flood Detection Test",
+    "name": "Flood Detection Test (flood-50 variant)",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/large.tif",
     "model_name": "flood",
     "endpoint_type": "SM_ENDPOINT",
+    "model_variant": "flood-50",
+    "validate_results": true,
+    "timeout_minutes": 30
+  },
+  {
+    "name": "Flood Detection Test (flood-100 variant)",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/large.tif",
+    "model_name": "flood",
+    "endpoint_type": "SM_ENDPOINT",
+    "model_variant": "flood-100",
+    "validate_results": true,
+    "timeout_minutes": 30
+  },
+  {
+    "name": "Centerpoint Multi-Container Test",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
+    "model_name": "multi-container",
+    "endpoint_type": "SM_ENDPOINT",
+    "target_container": "centerpoint-container",
+    "expected_output": "test_suites/results/sample_centerpoint_model_small_output.geojson",
+    "validate_results": true,
+    "timeout_minutes": 10
+  },
+  {
+    "name": "Flood Multi-Container Test",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/large.tif",
+    "model_name": "multi-container",
+    "endpoint_type": "SM_ENDPOINT",
+    "target_container": "flood-container",
     "validate_results": true,
     "timeout_minutes": 30
   }

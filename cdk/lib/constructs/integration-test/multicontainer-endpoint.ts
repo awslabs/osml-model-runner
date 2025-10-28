@@ -123,14 +123,23 @@ export class MulticontainerEndpoint extends Construct {
         props.securityGroup?.securityGroupId ?? "";
 
       // Create multi-container definitions from config
-      const containers: ContainerDefinition[] = (this.config.MODELS || []).map((model) => ({
-        imageUri: props.container.containerUri,
-        environment: {
+      const containers: ContainerDefinition[] = (this.config.MODELS || []).map((model) => {
+        const environment: Record<string, unknown> = {
           MODEL_SELECTION: model.modelSelection
-        },
-        repositoryAccessMode: props.container.repositoryAccessMode,
-        containerHostname: model.hostname
-      }));
+        };
+
+        // Enable segmentation for centerpoint model
+        if (model.modelSelection === "centerpoint") {
+          environment.ENABLE_SEGMENTATION = "true";
+        }
+
+        return {
+          imageUri: props.container.containerUri,
+          environment,
+          repositoryAccessMode: props.container.repositoryAccessMode,
+          containerHostname: model.hostname
+        };
+      });
 
       // Create the multi-container endpoint
       this.endpoint = new SageMakerInference(

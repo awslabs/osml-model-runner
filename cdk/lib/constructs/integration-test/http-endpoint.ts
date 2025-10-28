@@ -9,10 +9,11 @@ import {
   Compatibility,
   ContainerDefinition,
   ContainerImage,
-  FargateService,
+  FargateTaskDefinition,
   Protocol,
   TaskDefinition
 } from "aws-cdk-lib/aws-ecs";
+import { ApplicationLoadBalancedFargateService } from "aws-cdk-lib/aws-ecs-patterns";
 import { IRole, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { IVpc, ISecurityGroup, SubnetSelection } from "aws-cdk-lib/aws-ec2";
@@ -131,9 +132,9 @@ export class HTTPEndpoint extends Construct {
   /** The ECS cluster for the HTTP endpoint. */
   public readonly cluster?: Cluster;
   /** The ECS task definition. */
-  public readonly taskDefinition?: TaskDefinition;
-  /** The Fargate service for the HTTP endpoint. */
-  public readonly service?: FargateService;
+  public readonly taskDefinition?: FargateTaskDefinition;
+  /** The Application Load Balanced Fargate service for the HTTP endpoint. */
+  public readonly service?: ApplicationLoadBalancedFargateService;
   /** The log group for the service. */
   public readonly logGroup?: LogGroup;
 
@@ -174,30 +175,37 @@ export class HTTPEndpoint extends Construct {
       const executionRole = this.createExecutionRole();
 
       // Create task definition
-      this.taskDefinition = new TaskDefinition(this, "TaskDefinition", {
-        memoryMiB: this.config.HTTP_ENDPOINT_MEMORY.toString(),
-        cpu: this.config.HTTP_ENDPOINT_CPU.toString(),
-        compatibility: Compatibility.FARGATE,
+      this.taskDefinition = new FargateTaskDefinition(this, "TaskDefinition", {
+        memoryLimitMiB: this.config.HTTP_ENDPOINT_MEMORY,
+        cpu: this.config.HTTP_ENDPOINT_CPU,
         executionRole: executionRole
       });
 
       // Create container definition
       this.createContainerDefinition(props);
 
-      // Create Fargate service
-      const securityGroupId = this.config.SECURITY_GROUP_ID ??
-        props.securityGroup?.securityGroupId;
+      // Create Application Load Balanced Fargate service
+      // Note: We let the service create its own security groups to avoid circular dependencies
+      this.service = new ApplicationLoadBalancedFargateService(
+        this,
+        "HTTPEndpointService",
+        {
+          cluster: this.cluster,
+          loadBalancerName: this.config.HTTP_ENDPOINT_DOMAIN_NAME,
+          healthCheckGracePeriod: Duration.seconds(120),
+          taskDefinition: this.taskDefinition,
+          taskSubnets: props.selectedSubnets,
+          publicLoadBalancer: false,
+          minHealthyPercent: 100,
+          maxHealthyPercent: 200
+          // Don't pass securityGroups - let ALB create its own to avoid circular deps
+        }
+      );
 
-      this.service = new FargateService(this, "HTTPEndpointService", {
-        taskDefinition: this.taskDefinition,
-        cluster: this.cluster,
-        minHealthyPercent: 100,
-        maxHealthyPercent: 200,
-        securityGroups: securityGroupId ?
-          [props.securityGroup!] :
-          undefined,
-        vpcSubnets: props.selectedSubnets,
-        desiredCount: 1
+      // Configure health check for the target group
+      this.service.targetGroup.configureHealthCheck({
+        path: this.config.HTTP_ENDPOINT_HEALTHCHECK_PATH,
+        port: this.config.HTTP_ENDPOINT_HOST_PORT.toString()
       });
 
       // Add dependency on container
@@ -239,21 +247,19 @@ export class HTTPEndpoint extends Construct {
     // Use the container image from ModelContainer
     const containerImage = props.container.containerImage;
 
-    // Add port mapping
-    this.taskDefinition!.defaultContainer?.addPortMappings({
-      containerPort: this.config.HTTP_ENDPOINT_CONTAINER_PORT,
-      hostPort: this.config.HTTP_ENDPOINT_HOST_PORT,
-      protocol: Protocol.TCP
-    });
-
-    // Add container to task definition
+    // Add container to task definition with port mappings
     this.taskDefinition!.addContainer("HTTPEndpointContainer", {
-      containerName: "http-model-endpoint",
       image: containerImage,
-      memoryLimitMiB: this.config.HTTP_ENDPOINT_MEMORY,
-      cpu: this.config.HTTP_ENDPOINT_CPU,
+      portMappings: [
+        {
+          containerPort: this.config.HTTP_ENDPOINT_CONTAINER_PORT,
+          hostPort: this.config.HTTP_ENDPOINT_HOST_PORT,
+          protocol: Protocol.TCP
+        }
+      ],
       environment: {
-        MODEL_SELECTION: "centerpoint"
+        MODEL_SELECTION: "centerpoint",
+        ENABLE_SEGMENTATION: "true"
       },
       logging: new AwsLogDriver({
         logGroup: this.logGroup!,

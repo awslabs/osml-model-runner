@@ -111,6 +111,7 @@ class IntegrationTestRunner:
             "s3": boto3.client("s3"),
             "kinesis": boto3.client("kinesis"),
             "ddb": boto3.resource("dynamodb"),
+            "elb": boto3.client("elbv2"),
         }
 
     def run_test(
@@ -130,13 +131,13 @@ class IntegrationTestRunner:
         Returns:
             Tuple of (success: bool, results: dict)
         """
-        self.logger.info(f"\n{'='*60}")
+        self.logger.info(f"\n{'=' * 60}")
         self.logger.info("🧪  OSML Integration Test")
-        self.logger.info(f"{'='*60}")
+        self.logger.info(f"{'=' * 60}")
         self.logger.info(f"Image: {image_request.image_url}")
         self.logger.info(f"Model: {image_request.model_name}")
         self.logger.info(f"Timeout: {timeout_minutes} minutes")
-        self.logger.info(f"{'='*60}\n")
+        self.logger.info(f"{'=' * 60}\n")
 
         try:
             # Extract model_variant and target_container from endpoint parameters
@@ -149,8 +150,13 @@ class IntegrationTestRunner:
             # Determine endpoint type from model_invoke_mode
             endpoint_type = "SM_ENDPOINT" if image_request.model_invoke_mode.value == "SM_ENDPOINT" else "HTTP_ENDPOINT"
 
+            # For HTTP endpoints, resolve the load balancer URL
+            endpoint = image_request.model_name
+            if endpoint_type == "HTTP_ENDPOINT":
+                endpoint = self._get_http_endpoint_url()
+
             image_processing_request = self._build_image_processing_request(
-                endpoint=image_request.model_name,
+                endpoint=endpoint,
                 endpoint_type=endpoint_type,
                 image_url=image_request.image_url,
                 model_variant=model_variant,
@@ -186,8 +192,54 @@ class IntegrationTestRunner:
                 "timestamp": datetime.now().isoformat(),
             }
 
-            # Validate results if expected output is provided
-            if expected_output_path:
+            # Special handling for flood model - use count-based validation
+            # Check if it's a flood test (either direct flood model or multi-container with flood-container)
+            is_flood_test = image_request.model_name == "flood" or target_container == "flood-container"
+            if is_flood_test:
+                self.logger.info("\n🔍 Validating flood model results (count-based)...")
+
+                # Count features and region requests
+                feature_count = self._count_features(image_id)
+                region_request_count = self._count_region_requests(image_id)
+
+                results["feature_count"] = feature_count
+                results["region_request_count"] = region_request_count
+
+                # Extract variant for validation
+                variant = None
+                if image_request.model_endpoint_parameters:
+                    variant = image_request.model_endpoint_parameters.get("TargetVariant")
+
+                # Validate feature count
+                expected_counts = self._get_expected_flood_feature_count(image_request.image_url, variant)
+                results["expected_counts"] = expected_counts
+
+                if feature_count not in expected_counts:
+                    expected_str = " | ".join(map(str, expected_counts))
+                    self.logger.error(f"❌ Feature count mismatch: found {feature_count}, expected {expected_str}")
+                    results["validation"] = "failed"
+                    raise AssertionError(f"Feature count mismatch: {feature_count} not in {expected_counts}")
+                else:
+                    self.logger.info(f"✅ Feature count validation passed: {feature_count} features")
+
+                # Validate region request count
+                expected_region_count = self._get_expected_flood_region_count(image_request.image_url)
+                results["expected_region_count"] = expected_region_count
+
+                if region_request_count != expected_region_count:
+                    self.logger.error(
+                        f"❌ Region request count mismatch: found {region_request_count}, expected {expected_region_count}"
+                    )
+                    results["validation"] = "failed"
+                    raise AssertionError(f"Region request count mismatch: {region_request_count} != {expected_region_count}")
+                else:
+                    self.logger.info(f"✅ Region request validation passed: {region_request_count} requests")
+
+                results["validation"] = "passed"
+                self.logger.info("✅ All flood model validations passed!\n")
+
+            # Validate results if expected output is provided (non-flood models)
+            elif expected_output_path:
                 # Resolve the expected output path relative to script directory
                 resolved_expected_path = os.path.abspath(expected_output_path)
                 if os.path.exists(resolved_expected_path):
@@ -334,6 +386,31 @@ class IntegrationTestRunner:
             self.logger.error(f"{error}")
             raise
 
+    def _get_http_endpoint_url(self) -> str:
+        """
+        Get the HTTP endpoint URL by looking up the load balancer DNS name.
+
+        Returns:
+            Full HTTP endpoint URL (e.g., "http://test-http-model-endpoint-xxx.elb.amazonaws.com/invocations")
+        """
+        elb_name = "test-http-model-endpoint"
+        self.logger.info(f"Looking up load balancer: {elb_name}")
+
+        try:
+            response = self.clients["elb"].describe_load_balancers(Names=[elb_name])
+            dns_name = response.get("LoadBalancers", [{}])[0].get("DNSName")
+
+            if not dns_name:
+                raise ValueError(f"Could not find DNS name for load balancer: {elb_name}")
+
+            http_url = f"http://{dns_name}/invocations"
+            self.logger.info(f"Resolved HTTP endpoint URL: {http_url}")
+            return http_url
+
+        except Exception as e:
+            self.logger.error(f"Failed to resolve HTTP endpoint: {e}")
+            raise
+
     def _monitor_job_status(self, image_id: str, timeout_minutes: int = 30) -> None:
         """
         Monitor job status until completion or timeout.
@@ -410,7 +487,7 @@ class IntegrationTestRunner:
                             # Only log every 30 seconds to reduce noise
                             if max_retries % 12 == 0:  # 12 retries = 60 seconds
                                 elapsed = int(time.time() - start_time)
-                                self.logger.info(f"⏳ Still waiting... (elapsed: {elapsed//60}m {elapsed%60}s)")
+                                self.logger.info(f"⏳ Still waiting... (elapsed: {elapsed // 60}m {elapsed % 60}s)")
 
                     except json.JSONDecodeError as e:
                         self.logger.warning(f"Failed to parse message body as JSON: {e}")
@@ -595,6 +672,71 @@ class IntegrationTestRunner:
                 break
 
         return items
+
+    def _count_region_requests(self, image_id: str) -> int:
+        """
+        Count successful region requests for a given image.
+
+        Args:
+            image_id: Image ID to count region requests for
+
+        Returns:
+            Number of successful region requests
+        """
+        ddb_table = self.clients["ddb"].Table(self.config.DDB_REGION_REQUEST_TABLE)
+        items = self._query_items(ddb_table, "image_id", image_id, False)
+
+        total_count = 0
+        for item in items:
+            if item.get("region_status") == "SUCCESS":
+                total_count += 1
+
+        self.logger.info(f"Found {total_count} successful region requests!")
+        return total_count
+
+    def _get_expected_flood_feature_count(self, image_url: str, variant: Optional[str] = None) -> List[int]:
+        """
+        Get expected feature counts for flood model based on image type and variant.
+
+        Args:
+            image_url: URL of the image being processed
+            variant: Optional model variant (e.g., 'flood-50')
+
+        Returns:
+            List of acceptable feature counts
+        """
+        # For large.tif images
+        if "large" in image_url:
+            expected = 112200
+        else:
+            # For other images, use smaller expected counts
+            expected = 10000  # Generic fallback
+
+        # Adjust based on variant
+        if variant == "flood-50":
+            return [int(expected / 2)]
+        elif variant == "flood-100":
+            return [expected]
+        else:
+            # For default flood model, accept either full or half
+            return [expected, int(expected / 2)]
+
+    def _get_expected_flood_region_count(self, image_url: str) -> int:
+        """
+        Get expected region request count for flood model based on image type.
+
+        Args:
+            image_url: URL of the image being processed
+
+        Returns:
+            Expected number of region requests
+        """
+        # For large.tif images, expect 4 region requests
+        if "large" in image_url:
+            return 4
+        else:
+            # For other images, expect 1
+            return 1
 
     def _create_image_request_from_test_case(self, test_case: Dict[str, Any]) -> ImageRequest:
         """
