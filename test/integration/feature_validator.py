@@ -14,6 +14,7 @@ from math import isclose
 from typing import Any, Dict, List, Optional
 
 import geojson
+from boto3 import dynamodb
 from geojson import Feature
 
 
@@ -28,6 +29,37 @@ class FeatureValidator:
     def __init__(self):
         """Initialize the feature validator."""
         self.logger = logging.getLogger(__name__)
+
+    def _check_and_return_kinesis_result(
+        self,
+        kinesis_features: List[Feature],
+        expected_features: List[Feature],
+        cache: Optional[Dict[str, List[Feature]]],
+        stream: str,
+    ) -> bool:
+        """
+        Check if kinesis features match expected features and cache if needed.
+
+        Args:
+            kinesis_features: Features read from Kinesis
+            expected_features: Expected features
+            cache: Optional cache dict
+            stream: Stream name
+
+        Returns:
+            True if features match, False otherwise
+        """
+        if cache is not None and kinesis_features:
+            cache[stream] = kinesis_features
+
+        if self.feature_collections_equal(expected_features, kinesis_features):
+            self.logger.info(f"  ✓ Kinesis: {len(kinesis_features)} features validated")
+            return True
+        return False
+
+    # ============================================================================
+    # Feature Comparison Methods
+    # ============================================================================
 
     def check_center_coord(self, expected: Optional[float], actual: Optional[float]) -> bool:
         """
@@ -174,6 +206,10 @@ class FeatureValidator:
 
         return True
 
+    # ============================================================================
+    # S3 Validation Methods
+    # ============================================================================
+
     def get_matching_s3_keys(self, s3_client: Any, bucket: str, prefix: str = "", suffix: str = ""):
         """
         Generate S3 object keys matching the given criteria.
@@ -223,6 +259,10 @@ class FeatureValidator:
                 return True
 
         return False
+
+    # ============================================================================
+    # Kinesis Validation Methods
+    # ============================================================================
 
     def validate_kinesis_features(
         self,
@@ -288,17 +328,12 @@ class FeatureValidator:
                             if "features" in record_data:
                                 kinesis_features.extend(record_data["features"])
 
-                        except (json.JSONDecodeError, KeyError, UnicodeDecodeError, Exception) as e:
+                        except (json.JSONDecodeError, KeyError, UnicodeDecodeError) as e:
                             self.logger.debug(f"Failed to parse Kinesis record data: {e}")
 
                 # Check if we have all expected features
                 if len(kinesis_features) >= len(expected_features):
-                    # Cache the features for future use
-                    if cache is not None and kinesis_features:
-                        cache[stream] = kinesis_features
-
-                    if self.feature_collections_equal(expected_features, kinesis_features):
-                        self.logger.info(f"  ✓ Kinesis: {len(kinesis_features)} features validated")
+                    if self._check_and_return_kinesis_result(kinesis_features, expected_features, cache, stream):
                         return True
 
                 # Check for next shard iterator
@@ -309,11 +344,7 @@ class FeatureValidator:
 
             # Final check even if we didn't read all expected features
             if kinesis_features:
-                if cache is not None:
-                    cache[stream] = kinesis_features
-
-                if self.feature_collections_equal(expected_features, kinesis_features):
-                    self.logger.info(f"  ✓ Kinesis: {len(kinesis_features)} features validated")
+                if self._check_and_return_kinesis_result(kinesis_features, expected_features, cache, stream):
                     return True
 
             return False
@@ -321,3 +352,166 @@ class FeatureValidator:
         except Exception as e:
             self.logger.debug(f"Error reading from Kinesis stream: {e}")
             return False
+
+    # ============================================================================
+    # Count-Based Validation Methods
+    # ============================================================================
+
+    def validate_by_count(
+        self,
+        image_id: str,
+        expected_feature_counts: List[int],
+        expected_region_count: int,
+        ddb_clients: Any = None,
+        config: Any = None,
+    ) -> Dict[str, Any]:
+        """
+        Generic count-based validation for any model.
+
+        Validates model results by comparing actual feature and region request counts
+        against expected values. This can be used for any model that supports
+        count-based validation (flood, and future models).
+
+        Args:
+            image_id: Image ID to validate
+            expected_feature_counts: List of acceptable feature counts
+            expected_region_count: Expected number of region requests
+            ddb_clients: DynamoDB resource for querying
+            config: Configuration object with table names
+
+        Returns:
+            Dict with validation results including:
+                - success: bool indicating validation result
+                - feature_count: actual feature count
+                - region_request_count: actual region request count
+                - message: validation message
+        """
+        # Count features and region requests
+        feature_count = self.count_features(ddb_clients, config, image_id)
+        region_request_count = self.count_region_requests(ddb_clients, config, image_id)
+
+        # Validate feature count
+        if feature_count not in expected_feature_counts:
+            expected_str = " | ".join(map(str, expected_feature_counts))
+            message = f"Feature count mismatch: found {feature_count}, expected {expected_str}"
+            self.logger.error(f"❌ {message}")
+            return {
+                "success": False,
+                "feature_count": feature_count,
+                "region_request_count": region_request_count,
+                "message": message,
+            }
+
+        # Validate region request count
+        if region_request_count != expected_region_count:
+            message = f"Region request count mismatch: found {region_request_count}, expected {expected_region_count}"
+            self.logger.error(f"❌ {message}")
+            return {
+                "success": False,
+                "feature_count": feature_count,
+                "region_request_count": region_request_count,
+                "message": message,
+            }
+
+        self.logger.info(f"✅ Feature count validation passed: {feature_count} features")
+        self.logger.info(f"✅ Region request validation passed: {region_request_count} requests")
+
+        return {
+            "success": True,
+            "feature_count": feature_count,
+            "region_request_count": region_request_count,
+            "message": "Count-based validation passed!",
+        }
+
+    def count_features(self, ddb_clients: Any, config: Any, image_id: str) -> int:
+        """
+        Count features in DynamoDB for a given image ID.
+
+        Args:
+            ddb_clients: DynamoDB resource
+            config: Configuration object
+            image_id: Image ID to count features for
+
+        Returns:
+            Number of features found
+        """
+        ddb_table = ddb_clients.Table(config.DDB_FEATURES_TABLE)
+
+        items = self._query_items(ddb_table, "hash_key", image_id, True)
+
+        features: List[Feature] = []
+        for item in items:
+            for feature in item["features"]:
+                features.append(geojson.loads(feature))
+
+        total_features = len(features)
+        return total_features
+
+    def count_region_requests(self, ddb_clients: Any, config: Any, image_id: str) -> int:
+        """
+        Count successful region requests for a given image.
+
+        Args:
+            ddb_clients: DynamoDB resource
+            config: Configuration object
+            image_id: Image ID to count region requests for
+
+        Returns:
+            Number of successful region requests
+        """
+        ddb_table = ddb_clients.Table(config.DDB_REGION_REQUEST_TABLE)
+        items = self._query_items(ddb_table, "image_id", image_id, False)
+
+        total_count = 0
+        for item in items:
+            if item.get("region_status") == "SUCCESS":
+                total_count += 1
+
+        self.logger.info(f"Found {total_count} successful region requests!")
+        return total_count
+
+    # ============================================================================
+    # DynamoDB Helper Methods
+    # ============================================================================
+
+    def _query_items(self, ddb_table: Any, hash_key: str, hash_value: str, is_feature_count: bool) -> List[Dict[str, Any]]:
+        """
+        Query DynamoDB table for items with given hash key/value.
+
+        Args:
+            ddb_table: DynamoDB table resource
+            hash_key: Hash key attribute name
+            hash_value: Hash key value to query for
+            is_feature_count: Whether to append index to hash value
+
+        Returns:
+            List of matching items
+        """
+        items: List[dict] = []
+        max_hash_salt = 50
+
+        for index in range(1, max_hash_salt + 1):
+            hash_value_index = f"{hash_value}-{index}" if is_feature_count else hash_value
+            all_items_retrieved = False
+
+            response = ddb_table.query(
+                ConsistentRead=True,
+                KeyConditionExpression=dynamodb.conditions.Key(hash_key).eq(hash_value_index),
+            )
+
+            while not all_items_retrieved:
+                items.extend(response["Items"])
+
+                if "LastEvaluatedKey" in response:
+                    response = ddb_table.query(
+                        ConsistentRead=True,
+                        KeyConditionExpression=dynamodb.conditions.Key(hash_key).eq(hash_value_index),
+                        ExclusiveStartKey=response["LastEvaluatedKey"],
+                    )
+                else:
+                    all_items_retrieved = True
+
+            if not is_feature_count:
+                break
+
+        return items
