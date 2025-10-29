@@ -12,11 +12,15 @@
  */
 
 import { Stack, StackProps } from "aws-cdk-lib";
-import { IVpc, ISecurityGroup, SubnetSelection } from "aws-cdk-lib/aws-ec2";
+import { ISecurityGroup, IVpc, SubnetSelection } from "aws-cdk-lib/aws-ec2";
 import { IRole } from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
-import { TestModels, TestModelsConfig } from "./constructs/integration-test/test-models";
+
 import { DeploymentConfig } from "../bin/deployment/load-deployment";
+import {
+  TestModels,
+  TestModelsConfig
+} from "./constructs/integration-test/test-models";
 
 /**
  * Properties for the TestModelsStack.

@@ -68,7 +68,8 @@ export class ECSRoles extends Construct {
     this.taskRole = props.existingTaskRole || this.createTaskRole(props);
 
     // Create or use existing execution role
-    this.executionRole = props.existingExecutionRole || this.createExecutionRole(props);
+    this.executionRole =
+      props.existingExecutionRole || this.createExecutionRole(props);
   }
 
   /**

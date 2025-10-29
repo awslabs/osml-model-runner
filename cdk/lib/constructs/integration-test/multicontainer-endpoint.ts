@@ -2,13 +2,17 @@
  * Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
  */
 
+import { ISecurityGroup, IVpc, SubnetSelection } from "aws-cdk-lib/aws-ec2";
 import { IRole } from "aws-cdk-lib/aws-iam";
-import { IVpc, ISecurityGroup, SubnetSelection } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
 
-import { OSMLAccount, BaseConfig, ConfigType } from "../types";
-import { SageMakerInference, SageMakerInferenceConfig, ContainerDefinition } from "./sagemaker-inference";
+import { BaseConfig, ConfigType, OSMLAccount } from "../types";
 import { ModelContainer } from "./model-container";
+import {
+  ContainerDefinition,
+  SageMakerInference,
+  SageMakerInferenceConfig
+} from "./sagemaker-inference";
 
 /**
  * Configuration for a single container in the multi-container endpoint.
@@ -110,7 +114,11 @@ export class MulticontainerEndpoint extends Construct {
    * @param id - The id of this construct within the current scope
    * @param props - The properties of this construct
    */
-  constructor(scope: Construct, id: string, props: MulticontainerEndpointProps) {
+  constructor(
+    scope: Construct,
+    id: string,
+    props: MulticontainerEndpointProps
+  ) {
     super(scope, id);
 
     // Initialize configuration
@@ -119,50 +127,51 @@ export class MulticontainerEndpoint extends Construct {
     // Only create the endpoint if deployment is enabled
     if (this.config.DEPLOY_MULTI_CONTAINER_ENDPOINT) {
       // Determine security group ID
-      const securityGroupId = this.config.SECURITY_GROUP_ID ??
-        props.securityGroup?.securityGroupId ?? "";
+      const securityGroupId =
+        this.config.SECURITY_GROUP_ID ??
+        props.securityGroup?.securityGroupId ??
+        "";
 
       // Create multi-container definitions from config
-      const containers: ContainerDefinition[] = (this.config.MODELS || []).map((model) => {
-        const environment: Record<string, unknown> = {
-          MODEL_SELECTION: model.modelSelection
-        };
+      const containers: ContainerDefinition[] = (this.config.MODELS || []).map(
+        (model) => {
+          const environment: Record<string, unknown> = {
+            MODEL_SELECTION: model.modelSelection
+          };
 
-        // Enable segmentation for centerpoint model
-        if (model.modelSelection === "centerpoint") {
-          environment.ENABLE_SEGMENTATION = "true";
-        }
+          // Enable segmentation for centerpoint model
+          if (model.modelSelection === "centerpoint") {
+            environment.ENABLE_SEGMENTATION = "true";
+          }
 
-        return {
-          imageUri: props.container.containerUri,
-          environment,
-          repositoryAccessMode: props.container.repositoryAccessMode,
-          containerHostname: model.hostname
-        };
-      });
-
-      // Create the multi-container endpoint
-      this.endpoint = new SageMakerInference(
-        this,
-        "MultiContainerEndpoint",
-        {
-          containerImageUri: props.container.containerUri,
-          modelName: this.config.SM_MULTI_CONTAINER_ENDPOINT,
-          roleArn: props.smRole.roleArn,
-          instanceType: this.config.SM_CPU_INSTANCE_TYPE,
-          subnetIds: props.selectedSubnets.subnets?.map((subnet) => subnet.subnetId) ?? [],
-          config: [
-            new SageMakerInferenceConfig({
-              CONTAINERS: containers,
-              INITIAL_INSTANCE_COUNT: 1,
-              INITIAL_VARIANT_WEIGHT: 1,
-              VARIANT_NAME: "AllTraffic",
-              SECURITY_GROUP_ID: securityGroupId,
-              REPOSITORY_ACCESS_MODE: props.container.repositoryAccessMode
-            })
-          ]
+          return {
+            imageUri: props.container.containerUri,
+            environment,
+            repositoryAccessMode: props.container.repositoryAccessMode,
+            containerHostname: model.hostname
+          };
         }
       );
+
+      // Create the multi-container endpoint
+      this.endpoint = new SageMakerInference(this, "MultiContainerEndpoint", {
+        containerImageUri: props.container.containerUri,
+        modelName: this.config.SM_MULTI_CONTAINER_ENDPOINT,
+        roleArn: props.smRole.roleArn,
+        instanceType: this.config.SM_CPU_INSTANCE_TYPE,
+        subnetIds:
+          props.selectedSubnets.subnets?.map((subnet) => subnet.subnetId) ?? [],
+        config: [
+          new SageMakerInferenceConfig({
+            CONTAINERS: containers,
+            INITIAL_INSTANCE_COUNT: 1,
+            INITIAL_VARIANT_WEIGHT: 1,
+            VARIANT_NAME: "AllTraffic",
+            SECURITY_GROUP_ID: securityGroupId,
+            REPOSITORY_ACCESS_MODE: props.container.repositoryAccessMode
+          })
+        ]
+      });
       this.endpoint.node.addDependency(props.container);
     }
   }

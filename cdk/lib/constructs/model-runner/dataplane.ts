@@ -7,12 +7,12 @@ import { ISecurityGroup, IVpc, SecurityGroup } from "aws-cdk-lib/aws-ec2";
 import { Role } from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 
-import { OSMLAccount, BaseConfig, ConfigType, RegionalConfig } from "../types";
-import { DatabaseTables } from "./database-tables";
-import { Messaging } from "./messaging";
-import { ECSService } from "./ecs-service";
-import { Monitoring } from "./monitoring";
+import { BaseConfig, ConfigType, OSMLAccount, RegionalConfig } from "../types";
 import { Autoscaling } from "./autoscaling";
+import { DatabaseTables } from "./database-tables";
+import { ECSService } from "./ecs-service";
+import { Messaging } from "./messaging";
+import { Monitoring } from "./monitoring";
 import { Sinks } from "./sinks";
 
 /**
@@ -179,36 +179,51 @@ export class DataplaneConfig extends BaseConfig {
    * @param config - The configuration to validate
    * @throws Error if validation fails
    */
-  private validateConfig(config: any): void {
+  private validateConfig(config: Record<string, unknown>): void {
     const errors: string[] = [];
 
     // Validate ECS constraints (AWS Fargate limits)
-    if (config.ECS_TASK_CPU < 256) {
-      errors.push('ECS_TASK_CPU must be at least 256 (0.25 vCPU)');
+    const ecsTaskCpu =
+      typeof config.ECS_TASK_CPU === "number" ? config.ECS_TASK_CPU : 0;
+    if (ecsTaskCpu < 256) {
+      errors.push("ECS_TASK_CPU must be at least 256 (0.25 vCPU)");
     }
-    if (config.ECS_TASK_CPU > 16384) {
-      errors.push('ECS_TASK_CPU must be at most 16384 (16 vCPU)');
+    if (ecsTaskCpu > 16384) {
+      errors.push("ECS_TASK_CPU must be at most 16384 (16 vCPU)");
     }
-    if (config.ECS_TASK_MEMORY < 512) {
-      errors.push('ECS_TASK_MEMORY must be at least 512 MiB');
+
+    const ecsTaskMemory =
+      typeof config.ECS_TASK_MEMORY === "number" ? config.ECS_TASK_MEMORY : 0;
+    if (ecsTaskMemory < 512) {
+      errors.push("ECS_TASK_MEMORY must be at least 512 MiB");
     }
-    if (config.ECS_TASK_MEMORY > 122880) {
-      errors.push('ECS_TASK_MEMORY must be at most 122880 MiB (120 GB)');
+    if (ecsTaskMemory > 122880) {
+      errors.push("ECS_TASK_MEMORY must be at most 122880 MiB (120 GB)");
     }
 
     // Validate autoscaling constraints
-    if (config.ECS_AUTOSCALING_TASK_MIN_COUNT < 1) {
-      errors.push('ECS_AUTOSCALING_TASK_MIN_COUNT must be at least 1');
+    const minCount =
+      typeof config.ECS_AUTOSCALING_TASK_MIN_COUNT === "number"
+        ? config.ECS_AUTOSCALING_TASK_MIN_COUNT
+        : 0;
+    const maxCount =
+      typeof config.ECS_AUTOSCALING_TASK_MAX_COUNT === "number"
+        ? config.ECS_AUTOSCALING_TASK_MAX_COUNT
+        : 0;
+    if (minCount < 1) {
+      errors.push("ECS_AUTOSCALING_TASK_MIN_COUNT must be at least 1");
     }
-    if (config.ECS_AUTOSCALING_TASK_MAX_COUNT > 100) {
-      errors.push('ECS_AUTOSCALING_TASK_MAX_COUNT must be at most 100');
+    if (maxCount > 100) {
+      errors.push("ECS_AUTOSCALING_TASK_MAX_COUNT must be at most 100");
     }
-    if (config.ECS_AUTOSCALING_TASK_MIN_COUNT > config.ECS_AUTOSCALING_TASK_MAX_COUNT) {
-      errors.push('ECS_AUTOSCALING_TASK_MIN_COUNT cannot be greater than ECS_AUTOSCALING_TASK_MAX_COUNT');
+    if (minCount > maxCount) {
+      errors.push(
+        "ECS_AUTOSCALING_TASK_MIN_COUNT cannot be greater than ECS_AUTOSCALING_TASK_MAX_COUNT"
+      );
     }
 
     if (errors.length > 0) {
-      throw new Error(`Configuration validation failed:\n${errors.join('\n')}`);
+      throw new Error(`Configuration validation failed:\n${errors.join("\n")}`);
     }
   }
 }
@@ -273,7 +288,7 @@ export class Dataplane extends Construct {
     this.config = this.initializeConfig(props);
     this.removalPolicy = this.initializeRemovalPolicy(props);
     this.regionalS3Endpoint = this.initializeRegionalS3Endpoint(props);
-    this.securityGroups = this.initializeSecurityGroups(props);
+    this.securityGroups = this.initializeSecurityGroups();
 
     // Create resource classes
     this.databaseTables = this.createDatabaseTables(props);
@@ -291,7 +306,12 @@ export class Dataplane extends Construct {
    * @returns The initialized configuration
    */
   private initializeConfig(props: DataplaneProps): DataplaneConfig {
-    return new DataplaneConfig(props.config);
+    if (props.config instanceof DataplaneConfig) {
+      return props.config;
+    }
+    return new DataplaneConfig(
+      (props.config as unknown as Partial<ConfigType>) ?? {}
+    );
   }
 
   /**
@@ -301,7 +321,9 @@ export class Dataplane extends Construct {
    * @returns The removal policy
    */
   private initializeRemovalPolicy(props: DataplaneProps): RemovalPolicy {
-    return props.account.prodLike ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY;
+    return props.account.prodLike
+      ? RemovalPolicy.RETAIN
+      : RemovalPolicy.DESTROY;
   }
 
   /**
@@ -317,10 +339,9 @@ export class Dataplane extends Construct {
   /**
    * Initializes security groups if specified.
    *
-   * @param props - The Dataplane properties
    * @returns The security groups or undefined
    */
-  private initializeSecurityGroups(props: DataplaneProps): ISecurityGroup[] | undefined {
+  private initializeSecurityGroups(): ISecurityGroup[] | undefined {
     if (this.config.ECS_SECURITY_GROUP_ID) {
       return [
         SecurityGroup.fromSecurityGroupId(
@@ -332,7 +353,6 @@ export class Dataplane extends Construct {
     }
     return undefined;
   }
-
 
   /**
    * Creates the database tables.
@@ -397,7 +417,8 @@ export class Dataplane extends Construct {
       regionalS3Endpoint: this.regionalS3Endpoint,
       securityGroups: this.securityGroups,
       imageRequestTable: this.databaseTables.imageRequestTable,
-      outstandingImageRequestsTable: this.databaseTables.outstandingImageRequestsTable,
+      outstandingImageRequestsTable:
+        this.databaseTables.outstandingImageRequestsTable,
       featureTable: this.databaseTables.featureTable,
       endpointStatisticsTable: this.databaseTables.endpointStatisticsTable,
       regionRequestTable: this.databaseTables.regionRequestTable,
@@ -461,5 +482,4 @@ export class Dataplane extends Construct {
       removalPolicy: this.removalPolicy
     });
   }
-
 }

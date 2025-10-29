@@ -8,10 +8,16 @@ import { DockerImageAsset } from "aws-cdk-lib/aws-ecr-assets";
 import { ContainerImage } from "aws-cdk-lib/aws-ecs";
 import { DockerImageCode } from "aws-cdk-lib/aws-lambda";
 import { Construct } from "constructs";
-import * as fs from "fs";
-import * as path from "path";
+import { writeFileSync } from "fs";
+import { join } from "path";
 
-import { OSMLAccount, BaseConfig, ConfigType, RegionalConfig } from "../types";
+import {
+  BaseConfig,
+  ConfigType,
+  OSMLAccount,
+  RegionalConfig,
+  RegionalConfigData
+} from "../types";
 
 /**
  * Configuration class for ModelContainer Construct.
@@ -126,7 +132,7 @@ export class ModelContainer extends Construct {
   /**
    * Regional config imputed for this resource.
    */
-  public regionConfig: any;
+  public regionConfig: RegionalConfigData;
 
   /**
    * The repository access mode to assign when building model containers for SageMaker.
@@ -340,8 +346,8 @@ export class ModelContainer extends Construct {
    * @param {string} uri - The container URI.
    */
   private createDockerImageFromRegistry(uri: string): void {
-    const tmpDockerfile = path.join(__dirname, "Dockerfile.tmp");
-    fs.writeFileSync(tmpDockerfile, `FROM ${uri}`);
+    const tmpDockerfile = join(__dirname, "Dockerfile.tmp");
+    writeFileSync(tmpDockerfile, `FROM ${uri}`);
 
     this.dockerImageCode = DockerImageCode.fromImageAsset(__dirname, {
       file: "Dockerfile.tmp",

@@ -2,9 +2,9 @@
  * Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
  */
 
+import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import { ITopic, Topic } from "aws-cdk-lib/aws-sns";
 import { SqsSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
-import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 

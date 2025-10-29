@@ -13,7 +13,7 @@ import {
 } from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 
-import { OSMLAccount, BaseConfig, ConfigType } from "../types";
+import { BaseConfig, ConfigType, OSMLAccount } from "../types";
 
 /**
  * Configuration class for SageMakerRole Construct.

@@ -3,6 +3,9 @@
  */
 
 import { Duration, RemovalPolicy } from "aws-cdk-lib";
+import { ITable } from "aws-cdk-lib/aws-dynamodb";
+import { ISecurityGroup, IVpc } from "aws-cdk-lib/aws-ec2";
+import { Platform } from "aws-cdk-lib/aws-ecr-assets";
 import {
   AwsLogDriver,
   Cluster,
@@ -16,17 +19,13 @@ import {
 } from "aws-cdk-lib/aws-ecs";
 import { IRole } from "aws-cdk-lib/aws-iam";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
-import { ISecurityGroup, IVpc } from "aws-cdk-lib/aws-ec2";
-import { ITable } from "aws-cdk-lib/aws-dynamodb";
-import { IQueue } from "aws-cdk-lib/aws-sqs";
 import { ITopic } from "aws-cdk-lib/aws-sns";
+import { IQueue } from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 
 import { OSMLAccount } from "../types";
 import { DataplaneConfig } from "./dataplane";
-import { Platform } from "aws-cdk-lib/aws-ecr-assets";
 import { ECSRoles } from "./ecs-roles";
-
 
 /**
  * Properties for creating ECS service resources.
@@ -219,7 +218,9 @@ export class ECSService extends Construct {
    * @param props - The ECS service properties
    * @returns The created ContainerDefinition
    */
-  private createContainerDefinition(props: ECSServiceProps): ContainerDefinition {
+  private createContainerDefinition(
+    props: ECSServiceProps
+  ): ContainerDefinition {
     // Add port mapping to task definition
     this.taskDefinition.defaultContainer?.addPortMappings({
       containerPort: 80,
@@ -268,7 +269,9 @@ export class ECSService extends Construct {
    * @param props - The ECS service properties
    * @returns The environment variables object
    */
-  private buildContainerEnvironment(props: ECSServiceProps): { [key: string]: string } {
+  private buildContainerEnvironment(props: ECSServiceProps): {
+    [key: string]: string;
+  } {
     const workers = Math.ceil(
       (props.config.ECS_CONTAINER_CPU / 1024) * props.config.MR_WORKERS_PER_CPU
     ).toString();
@@ -277,7 +280,8 @@ export class ECSService extends Construct {
       AWS_DEFAULT_REGION: props.account.region,
       DDB_TTL_IN_DAYS: props.config.DDB_TTL_IN_DAYS,
       IMAGE_REQUEST_TABLE: props.imageRequestTable.tableName,
-      OUTSTANDING_IMAGE_REQUEST_TABLE: props.outstandingImageRequestsTable.tableName,
+      OUTSTANDING_IMAGE_REQUEST_TABLE:
+        props.outstandingImageRequestsTable.tableName,
       FEATURE_TABLE: props.featureTable.tableName,
       ENDPOINT_TABLE: props.endpointStatisticsTable.tableName,
       REGION_REQUEST_TABLE: props.regionRequestTable.tableName,

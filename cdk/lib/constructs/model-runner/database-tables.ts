@@ -3,12 +3,22 @@
  */
 
 import { RemovalPolicy } from "aws-cdk-lib";
-import { BackupPlan, BackupPlanRule, BackupResource, BackupVault } from "aws-cdk-lib/aws-backup";
+import {
+  BackupPlan,
+  BackupPlanRule,
+  BackupResource,
+  BackupVault
+} from "aws-cdk-lib/aws-backup";
+import {
+  AttributeType,
+  BillingMode,
+  Table,
+  TableEncryption
+} from "aws-cdk-lib/aws-dynamodb";
 import { Construct } from "constructs";
 
 import { OSMLAccount } from "../types";
 import { DataplaneConfig } from "./dataplane";
-import { AttributeType, BillingMode, Table, TableEncryption } from "aws-cdk-lib/aws-dynamodb";
 
 /**
  * Properties for creating database tables.
@@ -55,7 +65,8 @@ export class DatabaseTables extends Construct {
     super(scope, id);
 
     // Create all DynamoDB tables
-    this.outstandingImageRequestsTable = this.createOutstandingImageRequestsTable(props);
+    this.outstandingImageRequestsTable =
+      this.createOutstandingImageRequestsTable(props);
     this.imageRequestTable = this.createImageRequestTable(props);
     this.featureTable = this.createFeatureTable(props);
     this.endpointStatisticsTable = this.createEndpointStatisticsTable(props);
@@ -63,7 +74,7 @@ export class DatabaseTables extends Construct {
 
     // Create backup configuration for production environments
     if (props.account.prodLike && !props.account.isAdc) {
-      this.createBackupConfiguration(props);
+      this.createBackupConfiguration();
     }
   }
 
@@ -73,7 +84,9 @@ export class DatabaseTables extends Construct {
    * @param props - The database tables properties
    * @returns The created Table
    */
-  private createOutstandingImageRequestsTable(props: DatabaseTablesProps): Table {
+  private createOutstandingImageRequestsTable(
+    props: DatabaseTablesProps
+  ): Table {
     return new Table(this, "OutstandingImageRequestsTable", {
       tableName: props.config.DDB_OUTSTANDING_IMAGE_REQUESTS_TABLE,
       partitionKey: {
@@ -186,10 +199,8 @@ export class DatabaseTables extends Construct {
 
   /**
    * Creates backup configuration for production environments.
-   *
-   * @param props - The database tables properties
    */
-  private createBackupConfiguration(props: DatabaseTablesProps): void {
+  private createBackupConfiguration(): void {
     const backupVault = new BackupVault(this, "MRBackupVault", {
       backupVaultName: "MRBackupVault"
     });

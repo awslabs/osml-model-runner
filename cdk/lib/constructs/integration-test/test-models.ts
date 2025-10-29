@@ -3,17 +3,24 @@
  */
 
 import { RemovalPolicy } from "aws-cdk-lib";
+import { ISecurityGroup, IVpc, SubnetSelection } from "aws-cdk-lib/aws-ec2";
 import { IRole } from "aws-cdk-lib/aws-iam";
-import { IVpc, ISecurityGroup, SubnetSelection } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
 
 import { BaseConfig, ConfigType, OSMLAccount } from "../types";
-import { ModelContainer, ModelContainerConfig } from "./model-container";
-import { SageMakerRole, SageMakerRoleConfig } from "./sagemaker-role";
-import { CenterpointEndpoint, CenterpointEndpointConfig } from "./centerpoint-endpoint";
+import {
+  CenterpointEndpoint,
+  CenterpointEndpointConfig
+} from "./centerpoint-endpoint";
 import { FloodEndpoint, FloodEndpointConfig } from "./flood-endpoint";
 import { HTTPEndpoint, HTTPEndpointConfig } from "./http-endpoint";
-import { MulticontainerEndpoint, MulticontainerEndpointConfig, ContainerConfig } from "./multicontainer-endpoint";
+import { ModelContainer, ModelContainerConfig } from "./model-container";
+import {
+  ContainerConfig,
+  MulticontainerEndpoint,
+  MulticontainerEndpointConfig
+} from "./multicontainer-endpoint";
+import { SageMakerRole, SageMakerRoleConfig } from "./sagemaker-role";
 
 /**
  * Configuration class for defining endpoints for OSML model endpoints.
@@ -358,7 +365,9 @@ export class TestModels extends Construct {
    * @param props - The TestEndpoints properties
    * @returns The centerpoint model endpoint
    */
-  private createCenterpointEndpoint(props: TestModelsProps): CenterpointEndpoint | undefined {
+  private createCenterpointEndpoint(
+    props: TestModelsProps
+  ): CenterpointEndpoint | undefined {
     return new CenterpointEndpoint(this, "CenterpointEndpoint", {
       account: props.account,
       vpc: props.vpc,
@@ -367,10 +376,14 @@ export class TestModels extends Construct {
       smRole: this.smRole.role,
       container: this.container,
       config: new CenterpointEndpointConfig({
-        DEPLOY_SM_CENTERPOINT_ENDPOINT: this.config.DEPLOY_SM_CENTERPOINT_ENDPOINT,
+        DEPLOY_SM_CENTERPOINT_ENDPOINT:
+          this.config.DEPLOY_SM_CENTERPOINT_ENDPOINT,
         SM_CENTER_POINT_MODEL: this.config.SM_CENTER_POINT_MODEL,
         SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
-        SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? ""
+        SECURITY_GROUP_ID:
+          this.config.SECURITY_GROUP_ID ??
+          props.securityGroup?.securityGroupId ??
+          ""
       })
     });
   }
@@ -381,7 +394,9 @@ export class TestModels extends Construct {
    * @param props - The TestEndpoints properties
    * @returns The flood model endpoint
    */
-  private createFloodEndpoint(props: TestModelsProps): FloodEndpoint | undefined {
+  private createFloodEndpoint(
+    props: TestModelsProps
+  ): FloodEndpoint | undefined {
     return new FloodEndpoint(this, "FloodEndpoint", {
       account: props.account,
       vpc: props.vpc,
@@ -393,7 +408,10 @@ export class TestModels extends Construct {
         DEPLOY_SM_FLOOD_ENDPOINT: this.config.DEPLOY_SM_FLOOD_ENDPOINT,
         SM_FLOOD_MODEL: this.config.SM_FLOOD_MODEL,
         SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
-        SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? ""
+        SECURITY_GROUP_ID:
+          this.config.SECURITY_GROUP_ID ??
+          props.securityGroup?.securityGroupId ??
+          ""
       })
     });
   }
@@ -418,10 +436,14 @@ export class TestModels extends Construct {
         HTTP_ENDPOINT_DOMAIN_NAME: this.config.HTTP_ENDPOINT_DOMAIN_NAME,
         HTTP_ENDPOINT_NAME: this.config.HTTP_ENDPOINT_NAME,
         HTTP_ENDPOINT_HOST_PORT: this.config.HTTP_ENDPOINT_HOST_PORT,
-        HTTP_ENDPOINT_HEALTHCHECK_PATH: this.config.HTTP_ENDPOINT_HEALTHCHECK_PATH,
+        HTTP_ENDPOINT_HEALTHCHECK_PATH:
+          this.config.HTTP_ENDPOINT_HEALTHCHECK_PATH,
         HTTP_ENDPOINT_MEMORY: this.config.HTTP_ENDPOINT_MEMORY,
         HTTP_ENDPOINT_ROLE_NAME: this.config.HTTP_ENDPOINT_ROLE_NAME,
-        SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? ""
+        SECURITY_GROUP_ID:
+          this.config.SECURITY_GROUP_ID ??
+          props.securityGroup?.securityGroupId ??
+          ""
       })
     });
   }
@@ -432,7 +454,9 @@ export class TestModels extends Construct {
    * @param props - The TestModels properties
    * @returns The multi-container model endpoint
    */
-  private createMulticontainerEndpoint(props: TestModelsProps): MulticontainerEndpoint | undefined {
+  private createMulticontainerEndpoint(
+    props: TestModelsProps
+  ): MulticontainerEndpoint | undefined {
     return new MulticontainerEndpoint(this, "MulticontainerEndpoint", {
       account: props.account,
       vpc: props.vpc,
@@ -441,11 +465,17 @@ export class TestModels extends Construct {
       smRole: this.smRole.role,
       container: this.container,
       config: new MulticontainerEndpointConfig({
-        DEPLOY_MULTI_CONTAINER_ENDPOINT: this.config.DEPLOY_MULTI_CONTAINER_ENDPOINT,
+        DEPLOY_MULTI_CONTAINER_ENDPOINT:
+          this.config.DEPLOY_MULTI_CONTAINER_ENDPOINT,
         SM_MULTI_CONTAINER_ENDPOINT: this.config.SM_MULTI_CONTAINER_ENDPOINT,
         SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
-        SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? "",
-        ...(this.config.MULTI_CONTAINER_MODELS && { MODELS: this.config.MULTI_CONTAINER_MODELS })
+        SECURITY_GROUP_ID:
+          this.config.SECURITY_GROUP_ID ??
+          props.securityGroup?.securityGroupId ??
+          "",
+        ...(this.config.MULTI_CONTAINER_MODELS && {
+          MODELS: this.config.MULTI_CONTAINER_MODELS
+        })
       })
     });
   }

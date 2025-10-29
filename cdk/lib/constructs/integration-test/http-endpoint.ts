@@ -3,23 +3,19 @@
  */
 
 import { Duration, RemovalPolicy } from "aws-cdk-lib";
+import { ISecurityGroup, IVpc, SubnetSelection } from "aws-cdk-lib/aws-ec2";
 import {
   AwsLogDriver,
   Cluster,
-  Compatibility,
-  ContainerDefinition,
-  ContainerImage,
   FargateTaskDefinition,
-  Protocol,
-  TaskDefinition
+  Protocol
 } from "aws-cdk-lib/aws-ecs";
 import { ApplicationLoadBalancedFargateService } from "aws-cdk-lib/aws-ecs-patterns";
 import { IRole, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
-import { IVpc, ISecurityGroup, SubnetSelection } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
 
-import { OSMLAccount, BaseConfig, ConfigType } from "../types";
+import { BaseConfig, ConfigType, OSMLAccount } from "../types";
 import { ModelContainer } from "./model-container";
 
 /**
@@ -234,7 +230,8 @@ export class HTTPEndpoint extends Construct {
     return new Role(this, "ExecutionRole", {
       roleName: `${this.config.HTTP_ENDPOINT_NAME}-ExecutionRole`,
       assumedBy: new ServicePrincipal("ecs-tasks.amazonaws.com"),
-      description: "Allows ECS tasks to access necessary AWS services for HTTP endpoint"
+      description:
+        "Allows ECS tasks to access necessary AWS services for HTTP endpoint"
     });
   }
 

@@ -13,8 +13,12 @@
 import { Stack, StackProps } from "aws-cdk-lib";
 import { IVpc } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
-import { TestImagery, TestImageryConfig } from "./constructs/integration-test/test-imagery";
+
 import { DeploymentConfig } from "../bin/deployment/load-deployment";
+import {
+  TestImagery,
+  TestImageryConfig
+} from "./constructs/integration-test/test-imagery";
 
 /**
  * Properties for the TestImageryStack.

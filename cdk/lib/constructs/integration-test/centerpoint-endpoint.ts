@@ -2,13 +2,16 @@
  * Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
  */
 
+import { ISecurityGroup, IVpc, SubnetSelection } from "aws-cdk-lib/aws-ec2";
 import { IRole } from "aws-cdk-lib/aws-iam";
-import { IVpc, ISecurityGroup, SubnetSelection } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
 
-import { OSMLAccount, BaseConfig, ConfigType } from "../types";
-import { SageMakerInference, SageMakerInferenceConfig } from "./sagemaker-inference";
+import { BaseConfig, ConfigType, OSMLAccount } from "../types";
 import { ModelContainer } from "./model-container";
+import {
+  SageMakerInference,
+  SageMakerInferenceConfig
+} from "./sagemaker-inference";
 
 /**
  * Configuration class for CenterpointEndpoint Construct.
@@ -97,27 +100,27 @@ export class CenterpointEndpoint extends Construct {
     // Only create the endpoint if deployment is enabled
     if (this.config.DEPLOY_SM_CENTERPOINT_ENDPOINT) {
       // Create the centerpoint model endpoint
-      this.endpoint = new SageMakerInference(
-        this,
-        "CenterpointModelEndpoint",
-        {
-          containerImageUri: props.container.containerUri,
-          modelName: this.config.SM_CENTER_POINT_MODEL,
-          roleArn: props.smRole.roleArn,
-          instanceType: this.config.SM_CPU_INSTANCE_TYPE,
-          subnetIds: props.selectedSubnets.subnets?.map((subnet) => subnet.subnetId) ?? [],
-          config: [
-            new SageMakerInferenceConfig({
-              CONTAINER_ENV: {
-                MODEL_SELECTION: this.config.SM_CENTER_POINT_MODEL,
-                ENABLE_SEGMENTATION: true,
-              },
-              SECURITY_GROUP_ID: this.config.SECURITY_GROUP_ID ?? props.securityGroup?.securityGroupId ?? "",
-              REPOSITORY_ACCESS_MODE: props.container.repositoryAccessMode
-            })
-          ]
-        }
-      );
+      this.endpoint = new SageMakerInference(this, "CenterpointModelEndpoint", {
+        containerImageUri: props.container.containerUri,
+        modelName: this.config.SM_CENTER_POINT_MODEL,
+        roleArn: props.smRole.roleArn,
+        instanceType: this.config.SM_CPU_INSTANCE_TYPE,
+        subnetIds:
+          props.selectedSubnets.subnets?.map((subnet) => subnet.subnetId) ?? [],
+        config: [
+          new SageMakerInferenceConfig({
+            CONTAINER_ENV: {
+              MODEL_SELECTION: this.config.SM_CENTER_POINT_MODEL,
+              ENABLE_SEGMENTATION: true
+            },
+            SECURITY_GROUP_ID:
+              this.config.SECURITY_GROUP_ID ??
+              props.securityGroup?.securityGroupId ??
+              "",
+            REPOSITORY_ACCESS_MODE: props.container.repositoryAccessMode
+          })
+        ]
+      });
       this.endpoint.node.addDependency(props.container);
     }
   }

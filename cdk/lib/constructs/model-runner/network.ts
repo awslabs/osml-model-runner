@@ -2,16 +2,17 @@
  * Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
  */
 
-import { Construct } from "constructs";
 import {
-  IVpc,
   ISecurityGroup,
+  IVpc,
   SecurityGroup,
   SubnetFilter,
   SubnetSelection,
   SubnetType,
-  Vpc,
+  Vpc
 } from "aws-cdk-lib/aws-ec2";
+import { Construct } from "constructs";
+
 import { OSMLAccount } from "../types";
 import { BaseConfig, ConfigType, RegionalConfig } from "../types";
 
@@ -46,7 +47,7 @@ export class NetworkConfig extends BaseConfig {
    * The name to assign the creation of the creation of the security group.
    * @default "model-runner-security-group"
    */
-    public SECURITY_GROUP_NAME?: string;
+  public SECURITY_GROUP_NAME?: string;
 
   /**
    * Constructor for NetworkConfig.
@@ -70,6 +71,8 @@ export interface NetworkProps {
   readonly account: OSMLAccount;
   /** The custom configuration to be used when deploying this VPC. */
   readonly config?: NetworkConfig;
+  /** Optional existing VPC to use directly instead of creating or looking up one. */
+  readonly vpc?: IVpc;
 }
 
 /**
@@ -145,13 +148,19 @@ export class Network extends Construct {
 
   /**
    * Resolves a VPC based on configuration.
+   * If a VPC is provided directly, uses it.
    * If VPC_ID is provided, imports the existing VPC.
    * Otherwise, creates a new VPC with default settings.
    *
-   * @param regionConfig - The regional configuration for VPC settings
+   * @param props - The NetworkProps containing the VPC or configuration
    * @returns The VPC instance
    */
   private resolveVpc(props: NetworkProps): IVpc {
+    // If VPC is provided directly, use it
+    if (props.vpc) {
+      return props.vpc;
+    }
+
     if (this.config.VPC_ID) {
       // Import existing VPC
       return Vpc.fromLookup(this, "ImportedVPC", {
@@ -191,7 +200,11 @@ export class Network extends Construct {
   private resolveSecurityGroup(): ISecurityGroup {
     if (this.config.SECURITY_GROUP_ID) {
       // Import existing security group
-      return SecurityGroup.fromSecurityGroupId(this, "ImportedSecurityGroup", this.config.SECURITY_GROUP_ID);
+      return SecurityGroup.fromSecurityGroupId(
+        this,
+        "ImportedSecurityGroup",
+        this.config.SECURITY_GROUP_ID
+      );
     } else {
       // Create new security group to allow outbound access for Model Runner to pull images from Docker Hub
       return new SecurityGroup(this, "SecurityGroup", {

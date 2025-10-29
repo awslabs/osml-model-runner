@@ -3,12 +3,12 @@
  */
 
 import { RemovalPolicy } from "aws-cdk-lib";
-import { Bucket, BucketEncryption } from "aws-cdk-lib/aws-s3";
 import { Stream, StreamEncryption, StreamMode } from "aws-cdk-lib/aws-kinesis";
 import { CfnStream } from "aws-cdk-lib/aws-kinesis";
+import { Bucket, BucketEncryption } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 
-import { OSMLAccount, BaseConfig, ConfigType } from "../types";
+import { BaseConfig, ConfigType, OSMLAccount } from "../types";
 
 /**
  * Configuration class for Sinks Construct.

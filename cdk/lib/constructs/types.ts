@@ -17,9 +17,19 @@ export interface OSMLAccount {
 }
 
 /**
+ * Regional configuration interface.
+ */
+export interface RegionalConfigData {
+  /** The S3 endpoint for the region. */
+  readonly s3Endpoint: string;
+  /** The maximum number of availability zones. */
+  readonly maxVpcAzs: number;
+}
+
+/**
  * Base configuration type for OSML constructs.
  */
-export type ConfigType = Record<string, any>;
+export type ConfigType = Record<string, unknown>;
 
 /**
  * Base configuration class for OSML constructs.
@@ -39,41 +49,41 @@ export abstract class BaseConfig {
  * Regional configuration for AWS services.
  */
 export class RegionalConfig {
-  private static readonly configs: Record<string, any> = {
-    'us-east-1': {
-      s3Endpoint: 's3.amazonaws.com',
+  private static readonly configs: Record<string, RegionalConfigData> = {
+    "us-east-1": {
+      s3Endpoint: "s3.amazonaws.com",
       maxVpcAzs: 3
     },
-    'us-west-2': {
-      s3Endpoint: 's3.us-west-2.amazonaws.com',
+    "us-west-2": {
+      s3Endpoint: "s3.us-west-2.amazonaws.com",
       maxVpcAzs: 3
     },
-    'us-west-1': {
-      s3Endpoint: 's3.us-west-1.amazonaws.com',
+    "us-west-1": {
+      s3Endpoint: "s3.us-west-1.amazonaws.com",
       maxVpcAzs: 2
     },
-    'eu-west-1': {
-      s3Endpoint: 's3.eu-west-1.amazonaws.com',
+    "eu-west-1": {
+      s3Endpoint: "s3.eu-west-1.amazonaws.com",
       maxVpcAzs: 3
     },
-    'ap-southeast-1': {
-      s3Endpoint: 's3.ap-southeast-1.amazonaws.com',
+    "ap-southeast-1": {
+      s3Endpoint: "s3.ap-southeast-1.amazonaws.com",
       maxVpcAzs: 3
     },
-    'us-gov-west-1': {
-      s3Endpoint: 's3.us-gov-west-1.amazonaws.com',
+    "us-gov-west-1": {
+      s3Endpoint: "s3.us-gov-west-1.amazonaws.com",
       maxVpcAzs: 2
     },
-    'us-gov-east-1': {
-      s3Endpoint: 's3.us-gov-east-1.amazonaws.com',
+    "us-gov-east-1": {
+      s3Endpoint: "s3.us-gov-east-1.amazonaws.com",
       maxVpcAzs: 2
     },
-    'us-isob-east-1': {
-      s3Endpoint: 's3.us-isob-east-1.sc2s.sgov.gov',
+    "us-isob-east-1": {
+      s3Endpoint: "s3.us-isob-east-1.sc2s.sgov.gov",
       maxVpcAzs: 2
     },
-    'us-iso-east-1': {
-      s3Endpoint: 's3.us-iso-east-1.c2s.ic.gov',
+    "us-iso-east-1": {
+      s3Endpoint: "s3.us-iso-east-1.c2s.ic.gov",
       maxVpcAzs: 2
     }
   };
@@ -84,7 +94,7 @@ export class RegionalConfig {
    * @param region - The AWS region
    * @returns The regional configuration
    */
-  static getConfig(region: string): any {
-    return this.configs[region] || this.configs['us-east-1'];
+  static getConfig(region: string): RegionalConfigData {
+    return this.configs[region] || this.configs["us-east-1"];
   }
 }

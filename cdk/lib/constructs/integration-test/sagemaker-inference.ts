@@ -82,8 +82,8 @@ export class SageMakerInferenceConfig extends BaseConfig {
    */
   public REPOSITORY_ACCESS_MODE: string;
   /**
- * Creates an instance of SageMakerInferenceConfig.
- * @param config - The configuration object for SageMakerInference.
+   * Creates an instance of SageMakerInferenceConfig.
+   * @param config - The configuration object for SageMakerInference.
    */
   constructor(config: ConfigType = {}) {
     super({
@@ -96,12 +96,18 @@ export class SageMakerInferenceConfig extends BaseConfig {
     });
 
     // Convert deprecated interface to container list if needed
-    if (this.CONTAINERS.length === 0 && config.CONTAINER_ENV !== undefined) {
+    if (
+      this.CONTAINERS.length === 0 &&
+      config.CONTAINER_ENV !== undefined &&
+      typeof config.CONTAINER_ENV === "object" &&
+      config.CONTAINER_ENV !== null
+    ) {
       this.CONTAINERS = [
         {
           imageUri: "", // Populated later with props.containerImageUri
           environment: config.CONTAINER_ENV as Record<string, unknown>,
-          repositoryAccessMode: config.REPOSITORY_ACCESS_MODE || "Platform"
+          repositoryAccessMode:
+            (config.REPOSITORY_ACCESS_MODE as string) || "Platform"
         }
       ];
     } else if (this.CONTAINERS.length === 0) {
@@ -159,10 +165,10 @@ export interface SageMakerInferenceProps {
   subnetIds: string[];
 
   /**
- * (Optional) Configuration settings for SageMakerInference resources.
- *
- * @type {SageMakerInferenceConfig}
- */
+   * (Optional) Configuration settings for SageMakerInference resources.
+   *
+   * @type {SageMakerInferenceConfig}
+   */
   config?: SageMakerInferenceConfig | SageMakerInferenceConfig[];
 }
 
@@ -181,17 +187,17 @@ export class SageMakerInference extends Construct {
   public endpoint: CfnEndpoint;
 
   /**
- * The configuration for the SageMakerInference.
- */
+   * The configuration for the SageMakerInference.
+   */
   public config: SageMakerInferenceConfig[];
 
   /**
- * Creates a SageMaker inference endpoint for the specified model.
- *
- * @param {Construct} scope - The scope/stack in which to define this construct.
- * @param {string} id - The id of this construct within the current scope.
- * @param {SageMakerInferenceProps} props - The properties of this construct.
- * @returns SageMakerInference - The SageMakerInference construct.
+   * Creates a SageMaker inference endpoint for the specified model.
+   *
+   * @param {Construct} scope - The scope/stack in which to define this construct.
+   * @param {string} id - The id of this construct within the current scope.
+   * @param {SageMakerInferenceProps} props - The properties of this construct.
+   * @returns SageMakerInference - The SageMakerInference construct.
    */
   constructor(scope: Construct, id: string, props: SageMakerInferenceProps) {
     super(scope, id);

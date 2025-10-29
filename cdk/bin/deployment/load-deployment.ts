@@ -39,9 +39,9 @@
  * @packageDocumentation
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import { DataplaneConfig } from "../../lib/constructs/model-runner/dataplane";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
+
 import { TestModelsConfig } from "../../lib/constructs/integration-test/test-models";
 import { NetworkConfig } from "../../lib/constructs/model-runner/network";
 
@@ -66,8 +66,8 @@ export interface DeploymentConfig {
   /** Networking configuration. If VPC_ID is provided, an existing VPC will be imported. Otherwise, a new VPC will be created. */
   networkConfig?: NetworkConfig;
 
-  /** Optional Dataplane configuration. */
-  dataplaneConfig?: DataplaneConfig;
+  /** Optional Dataplane configuration. Can be a partial config object passed to DataplaneConfig constructor. */
+  dataplaneConfig?: Partial<Record<string, unknown>>;
 
   /** Whether to deploy integration test infrastructure (test models and test imagery stacks). */
   deployIntegrationTests?: boolean;
@@ -106,7 +106,7 @@ class DeploymentConfigError extends Error {
  * @throws {DeploymentConfigError} If validation fails
  */
 function validateStringField(
-  value: any,
+  value: unknown,
   fieldName: string,
   isRequired: boolean = true
 ): string {
@@ -214,18 +214,18 @@ function validateSecurityGroupId(securityGroupId: string): string {
  * @throws {DeploymentConfigError} If the file is missing, malformed, or contains invalid values
  */
 export function loadDeploymentConfig(): DeploymentConfig {
-  const deploymentPath = path.join(__dirname, "deployment.json");
+  const deploymentPath = join(__dirname, "deployment.json");
 
-  if (!fs.existsSync(deploymentPath)) {
+  if (!existsSync(deploymentPath)) {
     throw new DeploymentConfigError(
       `Missing deployment.json file at ${deploymentPath}. Please create it by copying deployment.json.example`
     );
   }
 
-  let parsed: any;
+  let parsed: unknown;
   try {
-    const rawContent = fs.readFileSync(deploymentPath, "utf-8");
-    parsed = JSON.parse(rawContent);
+    const rawContent = readFileSync(deploymentPath, "utf-8");
+    parsed = JSON.parse(rawContent) as unknown;
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new DeploymentConfigError(
@@ -238,52 +238,75 @@ export function loadDeploymentConfig(): DeploymentConfig {
   }
 
   // Validate top-level structure
-  if (!parsed || typeof parsed !== "object") {
+  if (!parsed || typeof parsed !== "object" || parsed === null) {
     throw new DeploymentConfigError(
       "deployment.json must contain a valid JSON object"
     );
   }
 
+  const parsedObj = parsed as Record<string, unknown>;
+
   // Validate project name
-  const projectName = validateStringField(parsed.projectName, "projectName");
+  const projectName = validateStringField(parsedObj.projectName, "projectName");
   if (projectName.length === 0) {
     throw new DeploymentConfigError("projectName cannot be empty");
   }
 
   // Validate account section
-  if (!parsed.account || typeof parsed.account !== "object") {
+  if (!parsedObj.account || typeof parsedObj.account !== "object") {
     throw new DeploymentConfigError(
       "Missing or invalid account section in deployment.json",
       "account"
     );
   }
 
+  const accountObj = parsedObj.account as Record<string, unknown>;
+
   const accountId = validateAccountId(
-    validateStringField(parsed.account.id, "account.id")
+    validateStringField(accountObj.id, "account.id")
   );
   const region = validateRegion(
-    validateStringField(parsed.account.region, "account.region")
+    validateStringField(accountObj.region, "account.region")
   );
 
   // Parse and validate networking configuration
-  let networkConfig: DeploymentConfig['networkConfig'] = undefined;
-  if (parsed.networkConfig && typeof parsed.networkConfig === 'object') {
+  let networkConfig: DeploymentConfig["networkConfig"] = undefined;
+  if (
+    "networkConfig" in parsedObj &&
+    parsedObj.networkConfig &&
+    typeof parsedObj.networkConfig === "object"
+  ) {
     // Convert the parsed networkConfig to the format expected by NetworkConfig
-    const networkConfigData: any = {};
+    const networkConfigData: Record<string, unknown> = {};
+    const parsedNetworkConfig = parsedObj.networkConfig as Record<
+      string,
+      unknown
+    >;
 
     // Map vpcId to VPC_ID
-    if (parsed.networkConfig.vpcId !== undefined && parsed.networkConfig.vpcId !== null) {
+    if (
+      parsedNetworkConfig.vpcId !== undefined &&
+      parsedNetworkConfig.vpcId !== null
+    ) {
       networkConfigData.VPC_ID = validateVpcId(
-        validateStringField(parsed.networkConfig.vpcId, "networkConfig.vpcId")
+        validateStringField(parsedNetworkConfig.vpcId, "networkConfig.vpcId")
       );
     }
 
     // Map targetSubnets to TARGET_SUBNETS
-    if (parsed.networkConfig.targetSubnets !== undefined && parsed.networkConfig.targetSubnets !== null) {
-      if (Array.isArray(parsed.networkConfig.targetSubnets)) {
-        networkConfigData.TARGET_SUBNETS = parsed.networkConfig.targetSubnets.map((subnetId: any, index: number) =>
-          validateStringField(subnetId, `networkConfig.targetSubnets[${index}]`)
-        );
+    if (
+      parsedNetworkConfig.targetSubnets !== undefined &&
+      parsedNetworkConfig.targetSubnets !== null
+    ) {
+      if (Array.isArray(parsedNetworkConfig.targetSubnets)) {
+        networkConfigData.TARGET_SUBNETS =
+          parsedNetworkConfig.targetSubnets.map(
+            (subnetId: unknown, index: number) =>
+              validateStringField(
+                subnetId,
+                `networkConfig.targetSubnets[${index}]`
+              )
+          );
       } else {
         throw new DeploymentConfigError(
           "Field 'networkConfig.targetSubnets' must be an array",
@@ -293,14 +316,25 @@ export function loadDeploymentConfig(): DeploymentConfig {
     }
 
     // Map securityGroupId to SECURITY_GROUP_ID
-    if (parsed.networkConfig.securityGroupId !== undefined && parsed.networkConfig.securityGroupId !== null) {
+    if (
+      parsedNetworkConfig.securityGroupId !== undefined &&
+      parsedNetworkConfig.securityGroupId !== null
+    ) {
       networkConfigData.SECURITY_GROUP_ID = validateSecurityGroupId(
-        validateStringField(parsed.networkConfig.securityGroupId, "networkConfig.securityGroupId")
+        validateStringField(
+          parsedNetworkConfig.securityGroupId,
+          "networkConfig.securityGroupId"
+        )
       );
     }
 
     // Validate that TARGET_SUBNETS is required when VPC_ID is provided
-    if (networkConfigData.VPC_ID && (!networkConfigData.TARGET_SUBNETS || networkConfigData.TARGET_SUBNETS.length === 0)) {
+    if (
+      networkConfigData.VPC_ID &&
+      (!networkConfigData.TARGET_SUBNETS ||
+        !Array.isArray(networkConfigData.TARGET_SUBNETS) ||
+        networkConfigData.TARGET_SUBNETS.length === 0)
+    ) {
       throw new DeploymentConfigError(
         "When vpcId is provided, targetSubnets must also be specified with at least one subnet ID",
         "networkConfig.targetSubnets"
@@ -312,21 +346,33 @@ export function loadDeploymentConfig(): DeploymentConfig {
   }
 
   // Parse optional Dataplane configuration
-  let dataplaneConfig: DeploymentConfig['dataplaneConfig'] = undefined;
-  if (parsed.dataplaneConfig && typeof parsed.dataplaneConfig === 'object') {
-    dataplaneConfig = parsed.dataplaneConfig;
+  let dataplaneConfig: DeploymentConfig["dataplaneConfig"] = undefined;
+  if (
+    parsedObj.dataplaneConfig &&
+    typeof parsedObj.dataplaneConfig === "object" &&
+    parsedObj.dataplaneConfig !== null
+  ) {
+    dataplaneConfig = parsedObj.dataplaneConfig as Record<string, unknown>;
   }
 
   // Parse optional deployIntegrationTests flag
   let deployIntegrationTests: boolean = false;
-  if (parsed.deployIntegrationTests !== undefined && typeof parsed.deployIntegrationTests === 'boolean') {
-    deployIntegrationTests = parsed.deployIntegrationTests;
+  if (
+    parsedObj.deployIntegrationTests !== undefined &&
+    typeof parsedObj.deployIntegrationTests === "boolean"
+  ) {
+    deployIntegrationTests = parsedObj.deployIntegrationTests;
   }
 
   // Parse optional testModelsConfig
   let testModelsConfig: TestModelsConfig | undefined = undefined;
-  if (parsed.testModelsConfig && typeof parsed.testModelsConfig === 'object') {
-    testModelsConfig = new TestModelsConfig(parsed.testModelsConfig);
+  if (
+    parsedObj.testModelsConfig &&
+    typeof parsedObj.testModelsConfig === "object"
+  ) {
+    testModelsConfig = new TestModelsConfig(
+      parsedObj.testModelsConfig as Record<string, unknown>
+    );
   }
 
   const validatedConfig: DeploymentConfig = {
@@ -334,8 +380,8 @@ export function loadDeploymentConfig(): DeploymentConfig {
     account: {
       id: accountId,
       region: region,
-      prodLike: parsed.account.prodLike ?? false,
-      isAdc: parsed.account.isAdc ?? false
+      prodLike: (accountObj.prodLike as boolean | undefined) ?? false,
+      isAdc: (accountObj.isAdc as boolean | undefined) ?? false
     },
     networkConfig,
     dataplaneConfig: dataplaneConfig,
@@ -344,11 +390,12 @@ export function loadDeploymentConfig(): DeploymentConfig {
   };
 
   // Only log non-sensitive configuration details (prevent duplicate logging)
-  if (!(global as any).__deploymentConfigLoaded) {
+  const globalObj = global as { __deploymentConfigLoaded?: boolean };
+  if (!globalObj.__deploymentConfigLoaded) {
     console.log(
       `🚀 Using environment from deployment.json: projectName=${validatedConfig.projectName}, region=${validatedConfig.account.region}`
     );
-    (global as any).__deploymentConfigLoaded = true;
+    globalObj.__deploymentConfigLoaded = true;
   }
 
   return validatedConfig;

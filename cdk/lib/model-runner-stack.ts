@@ -4,8 +4,12 @@
 
 import { App, Environment, Stack, StackProps } from "aws-cdk-lib";
 import { IVpc } from "aws-cdk-lib/aws-ec2";
+
 import { DeploymentConfig } from "../bin/deployment/load-deployment";
-import { Dataplane as ModelRunnerDataplane} from "./constructs/model-runner/dataplane";
+import {
+  Dataplane as ModelRunnerDataplane,
+  DataplaneConfig
+} from "./constructs/model-runner/dataplane";
 
 export interface ModelRunnerStackProps extends StackProps {
   readonly env: Environment;
@@ -38,10 +42,13 @@ export class ModelRunnerStack extends Stack {
     this.vpc = props.vpc;
 
     // Create the model runner application dataplane using the VPC
+    const dataplaneConfig = props.deployment.dataplaneConfig
+      ? new DataplaneConfig(props.deployment.dataplaneConfig)
+      : undefined;
     this.resources = new ModelRunnerDataplane(this, "Dataplane", {
       account: props.deployment.account,
       vpc: this.vpc,
-      config: props.deployment.dataplaneConfig
+      config: dataplaneConfig
     });
   }
 }

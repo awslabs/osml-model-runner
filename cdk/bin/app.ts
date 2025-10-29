@@ -13,12 +13,13 @@
  */
 
 import { App, Stack } from "aws-cdk-lib";
-import { Vpc, IVpc } from "aws-cdk-lib/aws-ec2";
-import { ModelRunnerStack } from "../lib/model-runner-stack";
-import { TestModelsStack } from "../lib/test-models-stack";
-import { TestImageryStack } from "../lib/test-imagery-stack";
-import { NetworkStack } from "../lib/network-stack";
+import { IVpc, Vpc } from "aws-cdk-lib/aws-ec2";
+
 import { SageMakerRole } from "../lib/constructs/integration-test/sagemaker-role";
+import { ModelRunnerStack } from "../lib/model-runner-stack";
+import { NetworkStack } from "../lib/network-stack";
+import { TestImageryStack } from "../lib/test-imagery-stack";
+import { TestModelsStack } from "../lib/test-models-stack";
 import { loadDeploymentConfig } from "./deployment/load-deployment";
 
 // -----------------------------------------------------------------------------
@@ -44,12 +45,16 @@ let sagemakerRoleStack: Stack | undefined;
 let sagemakerRole: SageMakerRole | undefined;
 if (deployment.deployIntegrationTests) {
   // Create a dedicated stack for the SageMaker role
-  sagemakerRoleStack = new Stack(app, `${deployment.projectName}-SageMakerRole`, {
-    env: {
-      account: deployment.account.id,
-      region: deployment.account.region
+  sagemakerRoleStack = new Stack(
+    app,
+    `${deployment.projectName}-SageMakerRole`,
+    {
+      env: {
+        account: deployment.account.id,
+        region: deployment.account.region
+      }
     }
-  });
+  );
   sagemakerRole = new SageMakerRole(sagemakerRoleStack, "SageMakerRole", {
     account: deployment.account,
     roleName: `${deployment.projectName}-SageMakerRole`
@@ -72,14 +77,18 @@ if (deployment.networkConfig?.VPC_ID) {
 // Deploy the network stack.
 // -----------------------------------------------------------------------------
 
-const networkStack = new NetworkStack(app, `${deployment.projectName}-Network`, {
-  env: {
-    account: deployment.account.id,
-    region: deployment.account.region
-  },
-  deployment: deployment,
-  vpc: vpc
-});
+const networkStack = new NetworkStack(
+  app,
+  `${deployment.projectName}-Network`,
+  {
+    env: {
+      account: deployment.account.id,
+      region: deployment.account.region
+    },
+    deployment: deployment,
+    vpc: vpc
+  }
+);
 
 // -----------------------------------------------------------------------------
 // Add dependency on the SageMaker role stack if it exists. This is part of the workaround
@@ -94,14 +103,18 @@ if (sagemakerRoleStack) {
 // Deploy the ModelRunnerStack
 // -----------------------------------------------------------------------------
 
-const modelRunnerStack = new ModelRunnerStack(app, `${deployment.projectName}-ModelRunner`, {
-  env: {
-    account: deployment.account.id,
-    region: deployment.account.region
-  },
-  deployment: deployment,
-  vpc: networkStack.network.vpc
-});
+const modelRunnerStack = new ModelRunnerStack(
+  app,
+  `${deployment.projectName}-ModelRunner`,
+  {
+    env: {
+      account: deployment.account.id,
+      region: deployment.account.region
+    },
+    deployment: deployment,
+    vpc: networkStack.network.vpc
+  }
+);
 modelRunnerStack.node.addDependency(networkStack);
 
 // -----------------------------------------------------------------------------
@@ -109,28 +122,36 @@ modelRunnerStack.node.addDependency(networkStack);
 // -----------------------------------------------------------------------------
 
 if (deployment.deployIntegrationTests) {
-  const testModelsStack = new TestModelsStack(app, `${deployment.projectName}-TestModels`, {
-    env: {
-      account: deployment.account.id,
-      region: deployment.account.region
-    },
-    deployment: deployment,
-    vpc: networkStack.network.vpc,
-    selectedSubnets: networkStack.network.selectedSubnets,
-    securityGroup: networkStack.network.securityGroup,
-    testModelsConfig: deployment.testModelsConfig,
-    sagemakerRole: sagemakerRole?.role
-  });
+  const testModelsStack = new TestModelsStack(
+    app,
+    `${deployment.projectName}-TestModels`,
+    {
+      env: {
+        account: deployment.account.id,
+        region: deployment.account.region
+      },
+      deployment: deployment,
+      vpc: networkStack.network.vpc,
+      selectedSubnets: networkStack.network.selectedSubnets,
+      securityGroup: networkStack.network.securityGroup,
+      testModelsConfig: deployment.testModelsConfig,
+      sagemakerRole: sagemakerRole?.role
+    }
+  );
   testModelsStack.node.addDependency(networkStack);
   testModelsStack.node.addDependency(sagemakerRoleStack!);
 
-  const testImageryStack = new TestImageryStack(app, `${deployment.projectName}-TestImagery`, {
-    env: {
-      account: deployment.account.id,
-      region: deployment.account.region
-    },
-    deployment: deployment,
-    vpc: networkStack.network.vpc
-  });
+  const testImageryStack = new TestImageryStack(
+    app,
+    `${deployment.projectName}-TestImagery`,
+    {
+      env: {
+        account: deployment.account.id,
+        region: deployment.account.region
+      },
+      deployment: deployment,
+      vpc: networkStack.network.vpc
+    }
+  );
   testImageryStack.node.addDependency(networkStack);
 }

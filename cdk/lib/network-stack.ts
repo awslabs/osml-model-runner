@@ -15,8 +15,9 @@
 import { Stack, StackProps } from "aws-cdk-lib";
 import { IVpc } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
-import { Network, NetworkConfig } from "./constructs/model-runner/network";
+
 import { DeploymentConfig } from "../bin/deployment/load-deployment";
+import { Network, NetworkConfig } from "./constructs/model-runner/network";
 
 /**
  * Properties for the NetworkStack.
@@ -45,26 +46,13 @@ export class NetworkStack extends Stack {
   constructor(scope: Construct, id: string, props: NetworkStackProps) {
     super(scope, id, props);
 
-    // If an existing VPC is provided, we don't need to create a new Network construct
-    // Instead, we'll create a minimal Network construct that wraps the existing VPC
-    if (props.vpc) {
-      // For imported VPCs, we'll create a Network construct that uses the existing VPC
-      const networkConfig = new NetworkConfig({
-        VPC_ID: props.vpc.vpcId
-      });
-      this.network = new Network(this, "Network", {
-        account: props.deployment.account,
-        config: networkConfig
-      });
-    } else {
-      // Create new VPC using Network construct
-      const networkConfig = props.deployment.networkConfig
-        ? new NetworkConfig(props.deployment.networkConfig)
-        : new NetworkConfig();
-      this.network = new Network(this, "Network", {
-        account: props.deployment.account,
-        config: networkConfig
-      });
-    }
+    // If an existing VPC is provided, pass it directly to Network construct
+    // Otherwise, create or look up VPC based on deployment config
+    const networkConfig = props.deployment.networkConfig ?? new NetworkConfig();
+    this.network = new Network(this, "Network", {
+      account: props.deployment.account,
+      config: networkConfig,
+      vpc: props.vpc
+    });
   }
 }

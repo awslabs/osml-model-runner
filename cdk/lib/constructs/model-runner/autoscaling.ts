@@ -5,7 +5,7 @@
 import { EcsIsoServiceAutoscaler } from "@cdklabs/cdk-enterprise-iac";
 import { Duration } from "aws-cdk-lib";
 import { Alarm } from "aws-cdk-lib/aws-cloudwatch";
-import { FargateService } from "aws-cdk-lib/aws-ecs";
+import { Cluster, FargateService } from "aws-cdk-lib/aws-ecs";
 import { IRole } from "aws-cdk-lib/aws-iam";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
@@ -26,7 +26,7 @@ export interface AutoscalingProps {
   /** The ECS task role. */
   readonly taskRole: IRole;
   /** The ECS cluster. */
-  readonly cluster: any; // Using any to avoid circular dependency
+  readonly cluster: Cluster;
   /** The image request queue. */
   readonly imageRequestQueue: Queue;
   /** The region request queue. */
@@ -63,7 +63,9 @@ export class Autoscaling extends Construct {
    * @param props - The autoscaling properties
    * @returns The created EcsIsoServiceAutoscaler or undefined
    */
-  private createAutoscaling(props: AutoscalingProps): EcsIsoServiceAutoscaler | undefined {
+  private createAutoscaling(
+    props: AutoscalingProps
+  ): EcsIsoServiceAutoscaler | undefined {
     if (props.account.isAdc) {
       return this.createAdcAutoscaling(props);
     } else {
@@ -78,9 +80,12 @@ export class Autoscaling extends Construct {
    * @param props - The autoscaling properties
    * @returns The created EcsIsoServiceAutoscaler
    */
-  private createAdcAutoscaling(props: AutoscalingProps): EcsIsoServiceAutoscaler {
+  private createAdcAutoscaling(
+    props: AutoscalingProps
+  ): EcsIsoServiceAutoscaler {
     const regionQueueScalingAlarm = new Alarm(this, "RegionQueueScalingAlarm", {
-      metric: props.regionRequestQueue.metricApproximateNumberOfMessagesVisible(),
+      metric:
+        props.regionRequestQueue.metricApproximateNumberOfMessagesVisible(),
       evaluationPeriods: 1,
       threshold: 3
     });
@@ -94,8 +99,12 @@ export class Autoscaling extends Construct {
       scaleAlarm: regionQueueScalingAlarm,
       scaleOutIncrement: props.config.ECS_AUTOSCALING_TASK_OUT_INCREMENT,
       scaleInIncrement: props.config.ECS_AUTOSCALING_TASK_IN_INCREMENT,
-      scaleOutCooldown: Duration.minutes(props.config.ECS_AUTOSCALING_TASK_OUT_COOLDOWN),
-      scaleInCooldown: Duration.minutes(props.config.ECS_AUTOSCALING_TASK_IN_COOLDOWN)
+      scaleOutCooldown: Duration.minutes(
+        props.config.ECS_AUTOSCALING_TASK_OUT_COOLDOWN
+      ),
+      scaleInCooldown: Duration.minutes(
+        props.config.ECS_AUTOSCALING_TASK_IN_COOLDOWN
+      )
     });
   }
 
@@ -112,7 +121,8 @@ export class Autoscaling extends Construct {
 
     // Scale based on region queue messages
     mrServiceScaling.scaleOnMetric("RegionQueueScaling", {
-      metric: props.regionRequestQueue.metricApproximateNumberOfMessagesVisible(),
+      metric:
+        props.regionRequestQueue.metricApproximateNumberOfMessagesVisible(),
       scalingSteps: [
         { change: +3, lower: 1 },
         { change: +5, lower: 5 },
