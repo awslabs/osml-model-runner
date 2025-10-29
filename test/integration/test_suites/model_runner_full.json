@@ -5,7 +5,6 @@
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
     "expected_output": "test_suites/results/sample_centerpoint_model_output.geojson",
-    "validate_results": true,
     "timeout_minutes": 10
   },
   {
@@ -14,7 +13,6 @@
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
     "expected_output": "test_suites/results/sample_centerpoint_model_small_output.geojson",
-    "validate_results": true,
     "timeout_minutes": 10
   },
   {
@@ -23,8 +21,7 @@
     "model_name": "centerpoint",
     "endpoint_type": "HTTP_ENDPOINT",
     "expected_output": "test_suites/results/sample_centerpoint_http_model_small_output.geojson",
-    "validate_results": true,
-    "timeout_minutes": 10
+    "timeout_minutes": 5
   },
   {
     "name": "Centerpoint Wbid Test",
@@ -32,8 +29,7 @@
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
     "expected_output": "test_suites/results/sample_centerpoint_model_wbid.ntf.geojson",
-    "validate_results": true,
-    "timeout_minutes": 10
+    "timeout_minutes": 5
   },
   {
     "name": "Centerpoint Umbra Test",
@@ -41,8 +37,7 @@
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
     "expected_output": "test_suites/results/sample_centerpoint_model_output.sicd-umbra-chip.ntf.geojson",
-    "validate_results": true,
-    "timeout_minutes": 10
+    "timeout_minutes": 5
   },
   {
     "name": "Centerpoint Capella Test",
@@ -50,8 +45,7 @@
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
     "expected_output": "test_suites/results/sample_centerpoint_model_output.sicd-capella-chip.ntf.geojson",
-    "validate_results": true,
-    "timeout_minutes": 10
+    "timeout_minutes": 5
   },
   {
     "name": "Centerpoint Interferometric Test",
@@ -59,8 +53,7 @@
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
     "expected_output": "test_suites/results/sample_centerpoint_model_output.sicd-interferometric-hh.nitf.geojson",
-    "validate_results": true,
-    "timeout_minutes": 10
+    "timeout_minutes": 5
   },
   {
     "name": "Centerpoint Meta Test",
@@ -68,8 +61,7 @@
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
     "expected_output": "test_suites/results/sample_centerpoint_model_output.meta.ntf.geojson",
-    "validate_results": true,
-    "timeout_minutes": 10
+    "timeout_minutes": 5
   },
   {
     "name": "Flood Detection Test (flood-50 variant)",
@@ -77,8 +69,7 @@
     "model_name": "flood",
     "endpoint_type": "SM_ENDPOINT",
     "model_variant": "flood-50",
-    "validate_results": true,
-    "timeout_minutes": 30
+    "timeout_minutes": 15
   },
   {
     "name": "Flood Detection Test (flood-100 variant)",
@@ -86,8 +77,7 @@
     "model_name": "flood",
     "endpoint_type": "SM_ENDPOINT",
     "model_variant": "flood-100",
-    "validate_results": true,
-    "timeout_minutes": 30
+    "timeout_minutes": 15
   },
   {
     "name": "Centerpoint Multi-Container Test",
@@ -96,7 +86,6 @@
     "endpoint_type": "SM_ENDPOINT",
     "target_container": "centerpoint-container",
     "expected_output": "test_suites/results/sample_centerpoint_model_small_output.geojson",
-    "validate_results": true,
     "timeout_minutes": 10
   },
   {
@@ -105,7 +94,6 @@
     "model_name": "multi-container",
     "endpoint_type": "SM_ENDPOINT",
     "target_container": "flood-container",
-    "validate_results": true,
-    "timeout_minutes": 30
+    "timeout_minutes": 15
   }
 ]

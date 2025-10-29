@@ -69,16 +69,14 @@ Test suites are defined in JSON format:
     "name": "Centerpoint Basic Test",
     "image_uri": "s3://mr-test-imagery-975050113711/small.tif",
     "model_name": "centerpoint",
-    "endpoint_type": "SM_ENDPOINT",
+    "endpoint_type": "SM_ENDPOINT",s
     "expected_output": "/path/to/expected_results.json",
-    "validate_results": true,
     "timeout_minutes": 30
   },
   {
     "name": "Quick Test",
     "image_uri": "s3://mr-test-imagery-975050113711/small.tif",
     "model_name": "centerpoint",
-    "validate_results": false,
     "timeout_minutes": 15
   }
 ]
