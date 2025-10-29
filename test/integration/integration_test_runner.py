@@ -35,7 +35,6 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # These are needed because ServiceConfig accesses os.environ[] at class definition time
 import boto3  # noqa: E402
 import geojson  # noqa: E402
-from boto3 import dynamodb  # noqa: E402
 from botocore.exceptions import ClientError, ParamValidationError  # noqa: E402
 from geojson import Feature  # noqa: E402
 
@@ -83,6 +82,7 @@ class IntegrationTestRunner:
         self.clients = self._get_aws_clients()
         self.config = OSMLConfig()
         self.validator = FeatureValidator()
+        self._account_placeholder_logged = False
 
     def setup_logging(self, verbose: bool = False) -> None:
         """Set up logging configuration."""
@@ -115,10 +115,10 @@ class IntegrationTestRunner:
         }
 
     def run_test(
-        self,
-        image_request: ImageRequest,
-        expected_output_path: Optional[str] = None,
-        timeout_minutes: int = 30,
+            self,
+            image_request: ImageRequest,
+            expected_output_path: Optional[str] = None,
+            timeout_minutes: int = 30,
     ) -> Tuple[bool, Dict[str, Any]]:
         """
         Run a complete integration test.
@@ -132,7 +132,7 @@ class IntegrationTestRunner:
             Tuple of (success: bool, results: dict)
         """
         self.logger.info(f"\n{'=' * 60}")
-        self.logger.info("🧪  OSML Integration Test")
+        self.logger.info("🧪  OSML Model Runner Integration Test")
         self.logger.info(f"{'=' * 60}")
         self.logger.info(f"Image: {image_request.image_url}")
         self.logger.info(f"Model: {image_request.model_name}")
@@ -198,50 +198,48 @@ class IntegrationTestRunner:
             if is_flood_test:
                 self.logger.info("\n🔍 Validating flood model results (count-based)...")
 
-                # Count features and region requests
-                feature_count = self._count_features(image_id)
-                region_request_count = self._count_region_requests(image_id)
-
-                results["feature_count"] = feature_count
-                results["region_request_count"] = region_request_count
-
                 # Extract variant for validation
                 variant = None
                 if image_request.model_endpoint_parameters:
                     variant = image_request.model_endpoint_parameters.get("TargetVariant")
 
-                # Validate feature count
-                expected_counts = self._get_expected_flood_feature_count(image_request.image_url, variant)
+                # Get expected counts for flood model
+                expected_counts, expected_region = self._get_flood_model_expectations(image_request.image_url, variant)
+
+                # Use validator to validate flood model results
+                validation_result = self.validator.validate_by_count(
+                    image_id=image_id,
+                    expected_feature_counts=expected_counts,
+                    expected_region_count=expected_region,
+                    ddb_clients=self.clients["ddb"],
+                    config=self.config,
+                )
+
+                results["feature_count"] = validation_result["feature_count"]
+                results["region_request_count"] = validation_result["region_request_count"]
                 results["expected_counts"] = expected_counts
+                results["expected_region_count"] = expected_region
 
-                if feature_count not in expected_counts:
-                    expected_str = " | ".join(map(str, expected_counts))
-                    self.logger.error(f"❌ Feature count mismatch: found {feature_count}, expected {expected_str}")
+                if not validation_result["success"]:
                     results["validation"] = "failed"
-                    raise AssertionError(f"Feature count mismatch: {feature_count} not in {expected_counts}")
-                else:
-                    self.logger.info(f"✅ Feature count validation passed: {feature_count} features")
-
-                # Validate region request count
-                expected_region_count = self._get_expected_flood_region_count(image_request.image_url)
-                results["expected_region_count"] = expected_region_count
-
-                if region_request_count != expected_region_count:
-                    self.logger.error(
-                        f"❌ Region request count mismatch: found {region_request_count}, expected {expected_region_count}"
-                    )
-                    results["validation"] = "failed"
-                    raise AssertionError(f"Region request count mismatch: {region_request_count} != {expected_region_count}")
-                else:
-                    self.logger.info(f"✅ Region request validation passed: {region_request_count} requests")
+                    raise AssertionError(validation_result["message"])
 
                 results["validation"] = "passed"
-                self.logger.info("✅ All flood model validations passed!\n")
+                self.logger.info(f"✅ {validation_result['message']}\n")
 
             # Validate results if expected output is provided (non-flood models)
             elif expected_output_path:
-                # Resolve the expected output path relative to script directory
-                resolved_expected_path = os.path.abspath(expected_output_path)
+                # Resolve expected output path with robust fallbacks
+                # 1) If absolute, use as-is
+                # 2) If relative, first try relative to current working directory
+                # 3) If not found, try relative to SCRIPT_DIR (test/integration)
+                if os.path.isabs(expected_output_path):
+                    resolved_expected_path = expected_output_path
+                else:
+                    resolved_expected_path = os.path.abspath(expected_output_path)
+                    if not os.path.exists(resolved_expected_path):
+                        resolved_expected_path = os.path.join(SCRIPT_DIR, expected_output_path)
+
                 if os.path.exists(resolved_expected_path):
                     self.logger.info("\n🔍 Validating results...")
 
@@ -258,7 +256,7 @@ class IntegrationTestRunner:
                     )
 
                     # Count features in DynamoDB
-                    feature_count = self._count_features(image_id)
+                    feature_count = self.validator.count_features(self.clients["ddb"], self.config, image_id)
                     results["feature_count"] = feature_count
                     results["validation"] = "passed"
 
@@ -286,20 +284,20 @@ class IntegrationTestRunner:
         )["ShardIterator"]
 
     def _build_image_processing_request(
-        self,
-        endpoint: str,
-        endpoint_type: str,
-        image_url: str,
-        model_variant: Optional[str] = None,
-        target_container: Optional[str] = None,
-        tile_size: int = 512,
-        tile_overlap: int = 128,
-        tile_format: str = "GTIFF",
-        tile_compression: str = "NONE",
-        post_processing: str = (
-            '[{"step": "FEATURE_DISTILLATION", ' '"algorithm": {"algorithmType": "NMS", "iouThreshold": 0.75}}]'
-        ),
-        region_of_interest: Optional[str] = None,
+            self,
+            endpoint: str,
+            endpoint_type: str,
+            image_url: str,
+            model_variant: Optional[str] = None,
+            target_container: Optional[str] = None,
+            tile_size: int = 512,
+            tile_overlap: int = 128,
+            tile_format: str = "GTIFF",
+            tile_compression: str = "NONE",
+            post_processing: str = (
+                    '[{"step": "FEATURE_DISTILLATION", ' '"algorithm": {"algorithmType": "NMS", "iouThreshold": 0.75}}]'
+            ),
+            region_of_interest: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Build an image processing request for submission to ModelRunner.
@@ -470,7 +468,7 @@ class IntegrationTestRunner:
                                 self.logger.info(f"\n✅ SUCCESS - Processing completed (total wait: {elapsed}s)\n")
 
                         elif (
-                            message_image_status == "FAILED" or message_image_status == "PARTIAL"
+                                message_image_status == "FAILED" or message_image_status == "PARTIAL"
                         ) and message_image_id == image_id:
                             failure_message = ""
                             try:
@@ -524,13 +522,48 @@ class IntegrationTestRunner:
 
         assert done
 
+    # ============================================================================
+    # Validation Helper Methods
+    # ============================================================================
+
+    def _get_flood_model_expectations(self, image_url: str, variant: Optional[str] = None) -> Tuple[List[int], int]:
+        """
+        Get expected feature and region counts for flood model based on image type and variant.
+
+        Args:
+            image_url: URL of the image being processed
+            variant: Optional model variant (e.g., 'flood-50', 'flood-100')
+
+        Returns:
+            Tuple of (expected_feature_counts, expected_region_count)
+        """
+        # For large.tif images
+        if "large" in image_url:
+            expected = 112200
+            expected_region_count = 4
+        else:
+            # For other images, use smaller expected counts
+            expected = 10000  # Generic fallback
+            expected_region_count = 1
+
+        # Adjust based on variant
+        if variant == "flood-50":
+            feature_counts = [int(expected / 2)]
+        elif variant == "flood-100":
+            feature_counts = [expected]
+        else:
+            # For default flood model, accept either full or half
+            feature_counts = [expected, int(expected / 2)]
+
+        return feature_counts, expected_region_count
+
     def _validate_features_match(
-        self,
-        image_processing_request: Dict[str, Any],
-        job_id: str,
-        shard_iter: Optional[str] = None,
-        result_file: Optional[str] = None,
-        kinesis_features_cache: Optional[Dict[str, List[Feature]]] = None,
+            self,
+            image_processing_request: Dict[str, Any],
+            job_id: str,
+            shard_iter: Optional[str] = None,
+            result_file: Optional[str] = None,
+            kinesis_features_cache: Optional[Dict[str, List[Feature]]] = None,
     ) -> None:
         """
         Validate that processing results match expected features.
@@ -555,188 +588,92 @@ class IntegrationTestRunner:
         with open(result_file, "r") as geojson_file:
             expected_features = geojson.load(geojson_file)["features"]
 
-        max_retries = 24  # 2 minutes with 5-second intervals
-        retry_interval = 5
-        done = False
+        outputs: List[Dict[str, Any]] = image_processing_request["outputs"]
+        found_outputs = 0
 
-        while not done and max_retries > 0:
-            outputs: List[Dict[str, Any]] = image_processing_request["outputs"]
-            found_outputs = 0
-
-            for output in outputs:
-                if output["type"] == "S3" and self.clients["s3"]:
-                    if self.validator.validate_s3_features(
+        # Check each output sink once - no retries
+        for output in outputs:
+            if output["type"] == "S3" and self.clients["s3"]:
+                if self.validator.validate_s3_features(
                         self.clients["s3"], output["bucket"], output["prefix"], expected_features
-                    ):
+                ):
+                    found_outputs += 1
+            elif output["type"] == "Kinesis":
+                # Check if we have cached features first
+                stream_name = output["stream"]
+                if kinesis_features_cache and stream_name in kinesis_features_cache:
+                    cached_features = kinesis_features_cache[stream_name]
+                    if self.validator.feature_collections_equal(expected_features, cached_features):
                         found_outputs += 1
-                elif output["type"] == "Kinesis":
-                    # Check if we have cached features first
-                    stream_name = output["stream"]
-                    if kinesis_features_cache and stream_name in kinesis_features_cache:
-                        cached_features = kinesis_features_cache[stream_name]
-                        if self.validator.feature_collections_equal(expected_features, cached_features):
-                            found_outputs += 1
-                    elif self.clients["kinesis"]:
-                        # Try to read from Kinesis if we don't have cached features
-                        try:
-                            if self.validator.validate_kinesis_features(
+                elif self.clients["kinesis"]:
+                    # Try to read from Kinesis if we don't have cached features
+                    try:
+                        if self.validator.validate_kinesis_features(
                                 self.clients["kinesis"],
                                 job_id,
                                 stream_name,
                                 shard_iter,
                                 expected_features,
                                 kinesis_features_cache,
-                            ):
-                                found_outputs += 1
-                        except Exception:
-                            pass
-                    else:
+                        ):
+                            found_outputs += 1
+                    except Exception:
                         pass
+                else:
+                    pass
 
-            if found_outputs == len(outputs):
-                done = True
-            else:
-                max_retries -= 1
-                time.sleep(retry_interval)
-
-        if not done:
+        # Fail immediately if not all outputs validated
+        if found_outputs != len(outputs):
             self.logger.error(
-                f"Validation failed after {24 * 5} seconds. Found {found_outputs} out of {len(outputs)} expected outputs."
+                f"Validation failed immediately. Found {found_outputs} out of {len(outputs)} expected outputs."
             )
             raise AssertionError(
                 f"Feature validation failed - only {found_outputs} out of {len(outputs)} output sinks validated"
             )
 
-    def _count_features(self, image_id: str) -> int:
+    # ============================================================================
+    # Test Suite Helper Methods
+    # ============================================================================
+
+    def _create_image_request(
+            self,
+            image_url: str,
+            model_name: str,
+            model_invoke_mode: ModelInvokeMode,
+            model_variant: Optional[str] = None,
+            target_container: Optional[str] = None,
+    ) -> ImageRequest:
         """
-        Count features in DynamoDB for a given image ID.
+        Create an ImageRequest from parameters.
 
         Args:
-            image_id: Image ID to count features for
+            image_url: URL of the image to process
+            model_name: Name of the model to use
+            model_invoke_mode: How to invoke the model (SM_ENDPOINT or HTTP_ENDPOINT)
+            model_variant: Optional SageMaker model variant
+            target_container: Optional target container hostname
 
         Returns:
-            Number of features found
+            ImageRequest object
         """
-        ddb_table = self.clients["ddb"].Table(self.config.DDB_FEATURES_TABLE)
+        job_id = token_hex(16)
+        image_id = f"{job_id}:{image_url}"
 
-        items = self._query_items(ddb_table, "hash_key", image_id, True)
+        # Build endpoint parameters if needed
+        model_endpoint_parameters = None
+        if model_variant:
+            model_endpoint_parameters = {"TargetVariant": model_variant}
+        elif target_container:
+            model_endpoint_parameters = {"TargetContainerHostname": target_container}
 
-        features: List[Feature] = []
-        for item in items:
-            for feature in item["features"]:
-                features.append(geojson.loads(feature))
-
-        total_features = len(features)
-        return total_features
-
-    def _query_items(
-        self, ddb_table: boto3.resource, hash_key: str, hash_value: str, is_feature_count: bool
-    ) -> List[Dict[str, Any]]:
-        """
-        Query DynamoDB table for items with given hash key/value.
-
-        Args:
-            ddb_table: DynamoDB table resource
-            hash_key: Hash key attribute name
-            hash_value: Hash key value to query for
-            is_feature_count: Whether to append index to hash value
-
-        Returns:
-            List of matching items
-        """
-        items: List[dict] = []
-        max_hash_salt = 50
-
-        for index in range(1, max_hash_salt + 1):
-            hash_value_index = f"{hash_value}-{index}" if is_feature_count else hash_value
-            all_items_retrieved = False
-
-            response = ddb_table.query(
-                ConsistentRead=True,
-                KeyConditionExpression=dynamodb.conditions.Key(hash_key).eq(hash_value_index),
-            )
-
-            while not all_items_retrieved:
-                items.extend(response["Items"])
-
-                if "LastEvaluatedKey" in response:
-                    response = ddb_table.query(
-                        ConsistentRead=True,
-                        KeyConditionExpression=dynamodb.conditions.Key(hash_key).eq(hash_value_index),
-                        ExclusiveStartKey=response["LastEvaluatedKey"],
-                    )
-                else:
-                    all_items_retrieved = True
-
-            if not is_feature_count:
-                break
-
-        return items
-
-    def _count_region_requests(self, image_id: str) -> int:
-        """
-        Count successful region requests for a given image.
-
-        Args:
-            image_id: Image ID to count region requests for
-
-        Returns:
-            Number of successful region requests
-        """
-        ddb_table = self.clients["ddb"].Table(self.config.DDB_REGION_REQUEST_TABLE)
-        items = self._query_items(ddb_table, "image_id", image_id, False)
-
-        total_count = 0
-        for item in items:
-            if item.get("region_status") == "SUCCESS":
-                total_count += 1
-
-        self.logger.info(f"Found {total_count} successful region requests!")
-        return total_count
-
-    def _get_expected_flood_feature_count(self, image_url: str, variant: Optional[str] = None) -> List[int]:
-        """
-        Get expected feature counts for flood model based on image type and variant.
-
-        Args:
-            image_url: URL of the image being processed
-            variant: Optional model variant (e.g., 'flood-50')
-
-        Returns:
-            List of acceptable feature counts
-        """
-        # For large.tif images
-        if "large" in image_url:
-            expected = 112200
-        else:
-            # For other images, use smaller expected counts
-            expected = 10000  # Generic fallback
-
-        # Adjust based on variant
-        if variant == "flood-50":
-            return [int(expected / 2)]
-        elif variant == "flood-100":
-            return [expected]
-        else:
-            # For default flood model, accept either full or half
-            return [expected, int(expected / 2)]
-
-    def _get_expected_flood_region_count(self, image_url: str) -> int:
-        """
-        Get expected region request count for flood model based on image type.
-
-        Args:
-            image_url: URL of the image being processed
-
-        Returns:
-            Expected number of region requests
-        """
-        # For large.tif images, expect 4 region requests
-        if "large" in image_url:
-            return 4
-        else:
-            # For other images, expect 1
-            return 1
+        return ImageRequest(
+            job_id=job_id,
+            image_id=image_id,
+            image_url=image_url,
+            model_name=model_name,
+            model_invoke_mode=model_invoke_mode,
+            model_endpoint_parameters=model_endpoint_parameters,
+        )
 
     def _create_image_request_from_test_case(self, test_case: Dict[str, Any]) -> ImageRequest:
         """
@@ -748,31 +685,16 @@ class IntegrationTestRunner:
         Returns:
             ImageRequest object
         """
-        from secrets import token_hex
-
-        job_id = token_hex(16)
-        image_url = test_case["image_uri"]
-        image_id = f"{job_id}:{image_url}"
-
         # Determine model invoke mode from endpoint type
         endpoint_type = test_case.get("endpoint_type", "SM_ENDPOINT")
-
         model_invoke_mode = ModelInvokeMode.SM_ENDPOINT if endpoint_type == "SM_ENDPOINT" else ModelInvokeMode.HTTP_ENDPOINT
 
-        # Build endpoint parameters if needed
-        model_endpoint_parameters = None
-        if test_case.get("model_variant"):
-            model_endpoint_parameters = {"TargetVariant": test_case["model_variant"]}
-        elif test_case.get("target_container"):
-            model_endpoint_parameters = {"TargetContainerHostname": test_case["target_container"]}
-
-        return ImageRequest(
-            job_id=job_id,
-            image_id=image_id,
-            image_url=image_url,
+        return self._create_image_request(
+            image_url=test_case["image_uri"],
             model_name=test_case["model_name"],
             model_invoke_mode=model_invoke_mode,
-            model_endpoint_parameters=model_endpoint_parameters,
+            model_variant=test_case.get("model_variant"),
+            target_container=test_case.get("target_container"),
         )
 
     def _replace_placeholders(self, text: str) -> str:
@@ -789,14 +711,20 @@ class IntegrationTestRunner:
             Text with placeholders replaced
         """
         if "${ACCOUNT}" in text:
-            replaced = text.replace("${ACCOUNT}", self.config.ACCOUNT)
-            if replaced != text:
-                self.logger.info(f"🔄 Replaced ${{ACCOUNT}} placeholder with: {self.config.ACCOUNT}")
+            account = self.config.ACCOUNT
+            if account is None:
+                raise ValueError(
+                    "ACCOUNT is None - cannot replace ${ACCOUNT} placeholder. Ensure AWS credentials are configured."
+                )
+            replaced = text.replace("${ACCOUNT}", account)
+            if replaced != text and not self._account_placeholder_logged:
+                self.logger.info(f"🔄 Replaced ${{ACCOUNT}} placeholder with: {account}")
+                self._account_placeholder_logged = True
             return replaced
         return text
 
     def run_test_suite(
-        self, test_cases: List[Dict[str, Any]], timeout_minutes: int = 30, delay_between_tests: int = 5
+            self, test_cases: List[Dict[str, Any]], timeout_minutes: int = 30, delay_between_tests: int = 5
     ) -> Dict[str, Any]:
         """
         Run a suite of integration tests.
@@ -919,27 +847,14 @@ def main():
         results = runner.run_test_suite(test_cases, args.timeout, args.delay)
     else:
         # Run single test
-        # Create ImageRequest from command-line arguments
-        from secrets import token_hex
-
-        job_id = token_hex(16)
-        image_id = f"{job_id}:{args.image_uri}"
         model_invoke_mode = ModelInvokeMode.HTTP_ENDPOINT if args.http else ModelInvokeMode.SM_ENDPOINT
 
-        # Build endpoint parameters if needed
-        model_endpoint_parameters = None
-        if args.model_variant:
-            model_endpoint_parameters = {"TargetVariant": args.model_variant}
-        elif args.target_container:
-            model_endpoint_parameters = {"TargetContainerHostname": args.target_container}
-
-        image_request = ImageRequest(
-            job_id=job_id,
-            image_id=image_id,
+        image_request = runner._create_image_request(
             image_url=args.image_uri,
             model_name=args.model_name,
             model_invoke_mode=model_invoke_mode,
-            model_endpoint_parameters=model_endpoint_parameters,
+            model_variant=args.model_variant,
+            target_container=args.target_container,
         )
 
         success, test_result = runner.run_test(
@@ -975,3 +890,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
