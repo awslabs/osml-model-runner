@@ -5,6 +5,12 @@
 import { RemovalPolicy } from "aws-cdk-lib";
 import { IVpc } from "aws-cdk-lib/aws-ec2";
 import {
+  Effect,
+  PolicyStatement,
+  Role,
+  ServicePrincipal
+} from "aws-cdk-lib/aws-iam";
+import {
   BlockPublicAccess,
   Bucket,
   BucketAccessControl,
@@ -16,7 +22,8 @@ import {
   ServerSideEncryption,
   Source
 } from "aws-cdk-lib/aws-s3-deployment";
-import { Construct } from "constructs";
+import { NagSuppressions } from "cdk-nag";
+import { Construct, IConstruct } from "constructs";
 
 import { BaseConfig, ConfigType, OSMLAccount } from "../types";
 
@@ -123,6 +130,16 @@ export class TestImagery extends Construct {
       ? RemovalPolicy.RETAIN
       : RemovalPolicy.DESTROY;
 
+    // Create access logging bucket
+    const accessLogBucket = new Bucket(this, "TestImageryAccessLogs", {
+      bucketName: `${this.config.S3_IMAGE_BUCKET_PREFIX}-access-logs-${props.account.id}`,
+      autoDeleteObjects: !props.account.prodLike,
+      enforceSSL: true,
+      encryption: BucketEncryption.KMS_MANAGED,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: this.removalPolicy
+    });
+
     // Create an image bucket to store OSML test imagery
     this.imageBucket = new Bucket(this, `TestImageryBucket`, {
       bucketName: `${this.config.S3_IMAGE_BUCKET_PREFIX}-${props.account.id}`,
@@ -133,19 +150,163 @@ export class TestImagery extends Construct {
       removalPolicy: this.removalPolicy,
       objectOwnership: ObjectOwnership.OBJECT_WRITER,
       versioned: props.account.prodLike,
-      accessControl: BucketAccessControl.BUCKET_OWNER_FULL_CONTROL
+      accessControl: BucketAccessControl.BUCKET_OWNER_FULL_CONTROL,
+      serverAccessLogsBucket: accessLogBucket,
+      serverAccessLogsPrefix: "access-logs/"
     });
 
-    // Deploy test images into the bucket
-    new BucketDeployment(this, "TestImageryDeployment", {
-      sources: [Source.asset(this.config.S3_TEST_IMAGES_PATH)],
-      destinationBucket: this.imageBucket,
-      accessControl: BucketAccessControl.BUCKET_OWNER_FULL_CONTROL,
-      memoryLimit: 10240,
-      useEfs: true,
-      vpc: props.vpc,
-      retainOnDelete: props.account.prodLike,
-      serverSideEncryption: ServerSideEncryption.AES_256
+    // Create custom role for bucket deployment (replaces AWS managed policies)
+    const deploymentRole = new Role(this, "BucketDeploymentRole", {
+      assumedBy: new ServicePrincipal("lambda.amazonaws.com"),
+      description:
+        "Custom role for S3 bucket deployment without AWS managed policies"
     });
+
+    // Add CloudWatch Logs permissions (replacing AWSLambdaBasicExecutionRole)
+    deploymentRole.addToPolicy(
+      new PolicyStatement({
+        effect: Effect.ALLOW,
+        actions: [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        resources: [
+          `arn:aws:logs:${props.account.region}:${props.account.id}:log-group:/aws/lambda/*`
+        ]
+      })
+    );
+
+    // Add VPC access permissions (replacing AWSLambdaVPCAccessExecutionRole)
+    deploymentRole.addToPolicy(
+      new PolicyStatement({
+        effect: Effect.ALLOW,
+        actions: [
+          "ec2:CreateNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DeleteNetworkInterface",
+          "ec2:AssignPrivateIpAddresses",
+          "ec2:UnassignPrivateIpAddresses"
+        ],
+        resources: ["*"]
+      })
+    );
+
+    // Add S3 permissions (restricted to specific buckets)
+    // Note: CDK assets bucket is accessed via a wildcard pattern that's managed by CDK
+    // We restrict to the destination bucket specifically, and allow CDK assets bucket pattern
+    const cdkAssetsBucketPattern = `arn:aws:s3:::cdk-*-assets-${props.account.id}-${props.account.region}`;
+    deploymentRole.addToPolicy(
+      new PolicyStatement({
+        effect: Effect.ALLOW,
+        actions: [
+          "s3:GetObject",
+          "s3:GetObjectVersion",
+          "s3:PutObject",
+          "s3:PutObjectAcl",
+          "s3:DeleteObject",
+          "s3:ListBucket",
+          "s3:GetBucketLocation",
+          "s3:GetBucketAcl"
+        ],
+        resources: [
+          this.imageBucket.bucketArn,
+          `${this.imageBucket.bucketArn}/*`,
+          `${cdkAssetsBucketPattern}`,
+          `${cdkAssetsBucketPattern}/*`
+        ]
+      })
+    );
+
+    // Deploy test images into the bucket
+    const bucketDeployment = new BucketDeployment(
+      this,
+      "TestImageryDeployment",
+      {
+        sources: [Source.asset(this.config.S3_TEST_IMAGES_PATH)],
+        destinationBucket: this.imageBucket,
+        accessControl: BucketAccessControl.BUCKET_OWNER_FULL_CONTROL,
+        memoryLimit: 10240,
+        useEfs: true,
+        vpc: props.vpc,
+        retainOnDelete: props.account.prodLike,
+        serverSideEncryption: ServerSideEncryption.AES_256,
+        role: deploymentRole
+      }
+    );
+
+    // Suppress acceptable wildcard permissions on the role's default policy
+    // Note: CDK creates a DefaultPolicy automatically for roles
+    const defaultPolicy = deploymentRole.node.tryFindChild("DefaultPolicy") as
+      | IConstruct
+      | undefined;
+    if (defaultPolicy) {
+      NagSuppressions.addResourceSuppressions(
+        defaultPolicy,
+        [
+          {
+            id: "AwsSolutions-IAM5",
+            reason:
+              "EC2 network interface actions require wildcard resource for VPC endpoint creation",
+            appliesTo: ["Resource::*"]
+          },
+          {
+            id: "AwsSolutions-IAM5",
+            reason:
+              "CloudWatch Logs wildcard allows Lambda function to create log groups dynamically",
+            appliesTo: [
+              `Resource::arn:aws:logs:${props.account.region}:${props.account.id}:log-group:/aws/lambda/*`
+            ]
+          },
+          {
+            id: "AwsSolutions-IAM5",
+            reason:
+              "S3 bucket object wildcard is scoped to specific bucket ARN, required for bucket deployment operations. Bucket ARN is a CloudFormation reference.",
+            appliesTo: [
+              `Resource::<TestImageryTestImageryBucket4E193533.Arn>/*`
+            ]
+          },
+          {
+            id: "AwsSolutions-IAM5",
+            reason:
+              "S3 action wildcards (GetObject*, GetBucket*, List*, DeleteObject*, Abort*) are more specific than s3:* and necessary for bucket deployment",
+            appliesTo: [
+              "Action::s3:GetObject*",
+              "Action::s3:GetBucket*",
+              "Action::s3:List*",
+              "Action::s3:DeleteObject*",
+              "Action::s3:Abort*"
+            ]
+          },
+          {
+            id: "AwsSolutions-IAM5",
+            reason:
+              "CDK assets bucket pattern is required for CDK bucket deployment functionality to access staging assets",
+            appliesTo: [
+              `Resource::arn:aws:s3:::cdk-*-assets-${props.account.id}-${props.account.region}`,
+              `Resource::arn:aws:s3:::cdk-*-assets-${props.account.id}-${props.account.region}/*`,
+              `Resource::arn:<AWS::Partition>:s3:::cdk-hnb659fds-assets-${props.account.id}-${props.account.region}/*`
+            ]
+          }
+        ],
+        true
+      );
+    }
+
+    // Suppress CDK-managed bucket deployment policy wildcards
+    NagSuppressions.addResourceSuppressions(
+      bucketDeployment,
+      [
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "CDK BucketDeployment requires access to CDK assets bucket which uses dynamic naming",
+          appliesTo: [
+            `Resource::arn:<AWS::Partition>:s3:::cdk-hnb659fds-assets-${props.account.id}-${props.account.region}/*`
+          ]
+        }
+      ],
+      true
+    );
   }
 }

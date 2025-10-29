@@ -6,16 +6,20 @@
  * Unit tests for NetworkStack.
  */
 
-import { App, Stack } from "aws-cdk-lib";
-import { Template } from "aws-cdk-lib/assertions";
+import "source-map-support/register";
+
+import { App, Aspects, Stack } from "aws-cdk-lib";
+import { Annotations, Match, Template } from "aws-cdk-lib/assertions";
 import { Vpc } from "aws-cdk-lib/aws-ec2";
+import { AwsSolutionsChecks } from "cdk-nag";
 
 import { NetworkConfig } from "../lib/constructs/model-runner/network";
 import { NetworkStack } from "../lib/network-stack";
 import {
   createTestApp,
   createTestDeploymentConfig,
-  createTestEnvironment
+  createTestEnvironment,
+  generateNagReport
 } from "./test-utils";
 
 describe("NetworkStack", () => {
@@ -132,5 +136,54 @@ describe("NetworkStack", () => {
 
     // Should use the provided VPC prop
     expect(stack.network).toBeDefined();
+  });
+});
+
+describe("cdk-nag Compliance Checks - NetworkStack", () => {
+  let app: App;
+  let stack: NetworkStack;
+
+  beforeAll(() => {
+    app = createTestApp();
+
+    const deploymentConfig = createTestDeploymentConfig();
+
+    stack = new NetworkStack(app, "TestNetworkStack", {
+      env: createTestEnvironment(),
+      deployment: deploymentConfig
+    });
+
+    // Add the cdk-nag AwsSolutions Pack with extra verbose logging enabled.
+    Aspects.of(stack).add(
+      new AwsSolutionsChecks({
+        verbose: true
+      })
+    );
+
+    const errors = Annotations.fromStack(stack).findError(
+      "*",
+      Match.stringLikeRegexp("AwsSolutions-.*")
+    );
+    const warnings = Annotations.fromStack(stack).findWarning(
+      "*",
+      Match.stringLikeRegexp("AwsSolutions-.*")
+    );
+    generateNagReport(stack, errors, warnings);
+  });
+
+  test("No unsuppressed Warnings", () => {
+    const warnings = Annotations.fromStack(stack).findWarning(
+      "*",
+      Match.stringLikeRegexp("AwsSolutions-.*")
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  test("No unsuppressed Errors", () => {
+    const errors = Annotations.fromStack(stack).findError(
+      "*",
+      Match.stringLikeRegexp("AwsSolutions-.*")
+    );
+    expect(errors).toHaveLength(0);
   });
 });

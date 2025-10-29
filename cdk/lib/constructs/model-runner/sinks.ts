@@ -3,10 +3,11 @@
  */
 
 import { RemovalPolicy } from "aws-cdk-lib";
+import { AnyPrincipal, Effect, PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Stream, StreamEncryption, StreamMode } from "aws-cdk-lib/aws-kinesis";
 import { CfnStream } from "aws-cdk-lib/aws-kinesis";
 import { Bucket, BucketEncryption } from "aws-cdk-lib/aws-s3";
-import { Construct } from "constructs";
+import { Construct, IConstruct } from "constructs";
 
 import { BaseConfig, ConfigType, OSMLAccount } from "../types";
 
@@ -82,6 +83,21 @@ export class Sinks extends Construct {
 
     // Create S3 bucket sink if enabled
     if (this.config.MR_ENABLE_S3_SINK) {
+      // Create access logging bucket
+      const accessLogBucket = new Bucket(this, "BucketSinkAccessLogs", {
+        bucketName: `${this.config.S3_SINK_BUCKET_PREFIX}-access-logs-${props.account.id}`,
+        encryption: BucketEncryption.S3_MANAGED,
+        removalPolicy: props.removalPolicy,
+        autoDeleteObjects: !props.account.prodLike,
+        blockPublicAccess: {
+          blockPublicAcls: true,
+          blockPublicPolicy: true,
+          ignorePublicAcls: true,
+          restrictPublicBuckets: true
+        },
+        enforceSSL: true
+      });
+
       this.sinkBucket = new Bucket(this, "BucketSink", {
         bucketName: `${this.config.S3_SINK_BUCKET_PREFIX}-${props.account.id}`,
         encryption: BucketEncryption.S3_MANAGED,
@@ -93,8 +109,30 @@ export class Sinks extends Construct {
           blockPublicPolicy: true,
           ignorePublicAcls: true,
           restrictPublicBuckets: true
-        }
+        },
+        enforceSSL: true,
+        serverAccessLogsBucket: accessLogBucket,
+        serverAccessLogsPrefix: "access-logs/"
       });
+
+      // Add secure transport condition to bucket policy
+      this.sinkBucket.addToResourcePolicy(
+        new PolicyStatement({
+          sid: "DenyInsecureConnections",
+          effect: Effect.DENY,
+          principals: [new AnyPrincipal()],
+          actions: ["s3:*"],
+          resources: [
+            this.sinkBucket.bucketArn,
+            `${this.sinkBucket.bucketArn}/*`
+          ],
+          conditions: {
+            Bool: {
+              "aws:SecureTransport": "false"
+            }
+          }
+        })
+      );
     }
 
     // Create Kinesis stream sink if enabled
@@ -109,7 +147,9 @@ export class Sinks extends Construct {
 
       // Handle ADC-specific configuration
       if (props.account.isAdc) {
-        const cfnStream = this.sinkStream.node.defaultChild as CfnStream;
+        // Using IConstruct for type-safe access to node property
+        const cfnStream = (this.sinkStream as IConstruct).node
+          .defaultChild as CfnStream;
         cfnStream.addPropertyDeletionOverride("StreamModeDetails");
       }
     }

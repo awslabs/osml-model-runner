@@ -9,7 +9,8 @@
     "forceConsistentCasingInFileNames": true,
     "declaration": false,
     "noEmit": true,
-    "strictPropertyInitialization": false
+    "strictPropertyInitialization": false,
+    "types": ["@types/jest", "node"]
   },
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules", "cdk.out", "build"]

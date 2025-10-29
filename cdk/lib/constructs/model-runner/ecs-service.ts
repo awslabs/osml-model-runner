@@ -21,6 +21,7 @@ import { IRole } from "aws-cdk-lib/aws-iam";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { ITopic } from "aws-cdk-lib/aws-sns";
 import { IQueue } from "aws-cdk-lib/aws-sqs";
+import { NagSuppressions } from "cdk-nag";
 import { Construct } from "constructs";
 
 import { OSMLAccount } from "../types";
@@ -137,12 +138,40 @@ export class ECSService extends Construct {
    * @returns The created ECSRoles
    */
   private createECSRoles(props: ECSServiceProps): ECSRoles {
+    // Collect SQS queue ARNs
+    const sqsQueueArns: string[] = [
+      props.imageRequestQueue.queueArn,
+      props.imageRequestDlQueue.queueArn,
+      props.regionRequestQueue.queueArn
+    ];
+
+    // Collect SNS topic ARNs
+    const snsTopicArns: string[] = [];
+    if (props.imageStatusTopic) {
+      snsTopicArns.push(props.imageStatusTopic.topicArn);
+    }
+    if (props.regionStatusTopic) {
+      snsTopicArns.push(props.regionStatusTopic.topicArn);
+    }
+
+    // Collect DynamoDB table ARNs
+    const dynamoTableArns: string[] = [
+      props.imageRequestTable.tableArn,
+      props.outstandingImageRequestsTable.tableArn,
+      props.featureTable.tableArn,
+      props.endpointStatisticsTable.tableArn,
+      props.regionRequestTable.tableArn
+    ];
+
     return new ECSRoles(this, "ECSRoles", {
       account: props.account,
       taskRoleName: "ECSTaskRole",
       executionRoleName: "ECSExecutionRole",
       existingTaskRole: props.taskRole,
-      existingExecutionRole: props.executionRole
+      existingExecutionRole: props.executionRole,
+      sqsQueueArns: sqsQueueArns,
+      snsTopicArns: snsTopicArns.length > 0 ? snsTopicArns : undefined,
+      dynamoTableArns: dynamoTableArns
     });
   }
 
@@ -228,20 +257,38 @@ export class ECSService extends Construct {
       protocol: Protocol.TCP
     });
 
-    return this.taskDefinition.addContainer("ContainerDefinition", {
-      containerName: props.config.ECS_CONTAINER_NAME,
-      image: this.containerImage,
-      memoryLimitMiB: props.config.ECS_CONTAINER_MEMORY,
-      cpu: props.config.ECS_CONTAINER_CPU,
-      environment: this.buildContainerEnvironment(props),
-      startTimeout: Duration.minutes(1),
-      stopTimeout: Duration.minutes(1),
-      disableNetworking: false,
-      logging: new AwsLogDriver({
-        logGroup: this.logGroup,
-        streamPrefix: props.config.CW_METRICS_NAMESPACE
-      })
-    });
+    const containerDef = this.taskDefinition.addContainer(
+      "ContainerDefinition",
+      {
+        containerName: props.config.ECS_CONTAINER_NAME,
+        image: this.containerImage,
+        memoryLimitMiB: props.config.ECS_CONTAINER_MEMORY,
+        cpu: props.config.ECS_CONTAINER_CPU,
+        environment: this.buildContainerEnvironment(props),
+        startTimeout: Duration.minutes(1),
+        stopTimeout: Duration.minutes(1),
+        disableNetworking: false,
+        logging: new AwsLogDriver({
+          logGroup: this.logGroup,
+          streamPrefix: props.config.CW_METRICS_NAMESPACE
+        })
+      }
+    );
+
+    // Suppress ECS2 findings - environment variables are used for configuration
+    NagSuppressions.addResourceSuppressions(
+      this.taskDefinition,
+      [
+        {
+          id: "AwsSolutions-ECS2",
+          reason:
+            "ECS task definition uses environment variables for container configuration. Secrets Manager integration can be added if required."
+        }
+      ],
+      true
+    );
+
+    return containerDef;
   }
 
   /**

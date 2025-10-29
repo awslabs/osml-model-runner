@@ -6,15 +6,20 @@
  * Unit tests for ModelRunnerStack.
  */
 
-import { App, Stack } from "aws-cdk-lib";
-import { Template } from "aws-cdk-lib/assertions";
+import "source-map-support/register";
 
+import { App, Aspects, Stack } from "aws-cdk-lib";
+import { Annotations, Match, Template } from "aws-cdk-lib/assertions";
+import { AwsSolutionsChecks } from "cdk-nag";
+
+import { ConfigType } from "../lib/constructs/types";
 import { ModelRunnerStack } from "../lib/model-runner-stack";
 import {
   createTestApp,
   createTestDeploymentConfig,
   createTestEnvironment,
-  createTestVpc
+  createTestVpc,
+  generateNagReport
 } from "./test-utils";
 
 describe("ModelRunnerStack", () => {
@@ -108,17 +113,14 @@ describe("ModelRunnerStack", () => {
   });
 
   test("creates stack with custom dataplane config", () => {
-    const {
-      DataplaneConfig
-    } = require("../lib/constructs/model-runner/dataplane");
-    const dataplaneConfig = new DataplaneConfig({
+    const dataplaneConfigPartial: Partial<ConfigType> = {
       CONTAINER_URI: "test-container:latest",
       ECS_TASK_CPU: 8192,
       ECS_CONTAINER_CPU: 4096
-    } as any);
+    };
 
     const deploymentWithConfig = createTestDeploymentConfig({
-      dataplaneConfig: dataplaneConfig as any
+      dataplaneConfig: dataplaneConfigPartial
     });
 
     const networkStack = new Stack(app, "NetworkStack", {
@@ -135,5 +137,59 @@ describe("ModelRunnerStack", () => {
     // Stack should be created successfully
     expect(stack).toBeDefined();
     expect(stack.resources).toBeDefined();
+  });
+});
+
+describe("cdk-nag Compliance Checks - ModelRunnerStack", () => {
+  let app: App;
+  let stack: ModelRunnerStack;
+
+  beforeAll(() => {
+    app = createTestApp();
+
+    const deploymentConfig = createTestDeploymentConfig();
+    const networkStack = new Stack(app, "NetworkStack", {
+      env: createTestEnvironment()
+    });
+    const vpc = createTestVpc(networkStack);
+
+    stack = new ModelRunnerStack(app, "TestModelRunnerStack", {
+      env: createTestEnvironment(),
+      deployment: deploymentConfig,
+      vpc: vpc
+    });
+
+    // Add the cdk-nag AwsSolutions Pack with extra verbose logging enabled.
+    Aspects.of(stack).add(
+      new AwsSolutionsChecks({
+        verbose: true
+      })
+    );
+
+    const errors = Annotations.fromStack(stack).findError(
+      "*",
+      Match.stringLikeRegexp("AwsSolutions-.*")
+    );
+    const warnings = Annotations.fromStack(stack).findWarning(
+      "*",
+      Match.stringLikeRegexp("AwsSolutions-.*")
+    );
+    generateNagReport(stack, errors, warnings);
+  });
+
+  test("No unsuppressed Warnings", () => {
+    const warnings = Annotations.fromStack(stack).findWarning(
+      "*",
+      Match.stringLikeRegexp("AwsSolutions-.*")
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  test("No unsuppressed Errors", () => {
+    const errors = Annotations.fromStack(stack).findError(
+      "*",
+      Match.stringLikeRegexp("AwsSolutions-.*")
+    );
+    expect(errors).toHaveLength(0);
   });
 });

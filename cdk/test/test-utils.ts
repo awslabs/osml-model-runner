@@ -8,6 +8,7 @@
 
 import { App, Environment, Stack } from "aws-cdk-lib";
 import { Vpc } from "aws-cdk-lib/aws-ec2";
+import { SynthesisMessage } from "aws-cdk-lib/cx-api";
 
 import { DeploymentConfig } from "../bin/deployment/load-deployment";
 
@@ -72,4 +73,81 @@ export function createTestVpc(stack: Stack, id: string = "TestVpc"): Vpc {
   return new Vpc(stack, id, {
     maxAzs: 2
   });
+}
+
+/**
+ * Interface for NAG findings.
+ */
+export interface NagFinding {
+  resource: string;
+  details: string;
+  rule: string;
+}
+
+/**
+ * Generates a formatted NAG compliance report for a stack.
+ *
+ * @param stack - The stack to generate the report for
+ * @param errors - Array of error findings
+ * @param warnings - Array of warning findings
+ */
+export function generateNagReport(
+  stack: Stack,
+  errors: SynthesisMessage[],
+  warnings: SynthesisMessage[]
+): void {
+  const formatFindings = (findings: SynthesisMessage[]): NagFinding[] => {
+    const regex = /(AwsSolutions-[A-Za-z0-9]+)\[([^\]]+)]:\s*(.+)/;
+    return findings.map((finding) => {
+      const data =
+        typeof finding.entry.data === "string"
+          ? finding.entry.data
+          : JSON.stringify(finding.entry.data);
+      const match = data.match(regex);
+      if (!match) {
+        return {
+          rule: "",
+          resource: "",
+          details: ""
+        };
+      }
+      return {
+        rule: match[1],
+        resource: match[2],
+        details: match[3]
+      };
+    });
+  };
+
+  const errorFindings = formatFindings(errors);
+  const warningFindings = formatFindings(warnings);
+
+  // Generate the report
+  process.stdout.write(
+    "\n================== CDK-NAG Compliance Report ==================\n"
+  );
+  process.stdout.write(`Stack: ${stack.stackName}\n`);
+  process.stdout.write(`Generated: ${new Date().toISOString()}\n`);
+  process.stdout.write("\n=============== Summary ===============\n");
+  process.stdout.write(`Total Errors: ${errorFindings.length}\n`);
+  process.stdout.write(`Total Warnings: ${warningFindings.length}\n`);
+
+  if (errorFindings.length > 0) {
+    process.stdout.write("\n=============== Errors ===============\n");
+    errorFindings.forEach((finding) => {
+      process.stdout.write(`\n${finding.resource}\n`);
+      process.stdout.write(`${finding.rule}\n`);
+      process.stdout.write(`${finding.details}\n`);
+    });
+  }
+
+  if (warningFindings.length > 0) {
+    process.stdout.write("\n=============== Warnings ===============\n");
+    warningFindings.forEach((finding) => {
+      process.stdout.write(`\n${finding.resource}\n`);
+      process.stdout.write(`${finding.rule}\n`);
+      process.stdout.write(`${finding.details}\n`);
+    });
+  }
+  process.stdout.write("\n");
 }

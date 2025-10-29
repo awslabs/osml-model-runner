@@ -8,7 +8,7 @@
 
 // Mock fs module before importing the function under test
 jest.mock("fs", () => {
-  const actualFs = jest.requireActual("fs");
+  const actualFs = jest.requireActual<typeof import("fs")>("fs");
   return {
     ...actualFs,
     existsSync: jest.fn(),

@@ -108,7 +108,7 @@ repos:
   - repo: local
     hooks:
       - id: npm-install
-        name: Install npm dependencies
+        name: install npm dependencies
         entry: bash -c 'cd cdk && npm ci'
         language: system
         files: ^cdk/.*\.(ts|tsx|js|jsx|json)$
@@ -116,7 +116,7 @@ repos:
         pass_filenames: false
 
       - id: jest
-        name: Jest Tests
+        name: jest tests
         entry: bash -c 'cd cdk && npm run test'
         language: system
         files: ^cdk/.*\.(ts|tsx)$
@@ -125,7 +125,7 @@ repos:
         pass_filenames: false
 
       - id: eslint
-        name: ESLint
+        name: eslint
         entry: bash -c 'cd cdk && npx eslint . --ext .ts,.tsx --fix --ignore-pattern "cdk.out/**"'
         language: system
         files: ^cdk/.*\.(ts|tsx)$
@@ -133,7 +133,7 @@ repos:
         types: [file]
 
       - id: prettier
-        name: Prettier
+        name: prettier
         entry: bash -c 'cd cdk && npx prettier --write .'
         language: system
         files: ^cdk/.*\.(ts|tsx|js|jsx|json|yml|yaml|md)$

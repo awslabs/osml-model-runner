@@ -3,6 +3,8 @@
  */
 
 import {
+  FlowLogDestination,
+  FlowLogTrafficType,
   ISecurityGroup,
   IVpc,
   SecurityGroup,
@@ -11,6 +13,7 @@ import {
   SubnetType,
   Vpc
 } from "aws-cdk-lib/aws-ec2";
+import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 
 import { OSMLAccount } from "../types";
@@ -171,7 +174,7 @@ export class Network extends Construct {
       const regionConfig = RegionalConfig.getConfig(props.account.region);
 
       // Create new VPC
-      return new Vpc(this, "VPC", {
+      const vpc = new Vpc(this, "VPC", {
         vpcName: this.config.VPC_NAME,
         maxAzs: this.config.MAX_AZS ?? regionConfig.maxVpcAzs,
         subnetConfiguration: [
@@ -187,6 +190,21 @@ export class Network extends Construct {
           }
         ]
       });
+
+      // Add VPC Flow Logs for compliance (required by AwsSolutions-VPC7)
+      const flowLogGroup = new LogGroup(this, "VPCFlowLogGroup", {
+        logGroupName: `/aws/vpc/flowlogs/${this.config.VPC_NAME}`,
+        retention: props.account.prodLike
+          ? RetentionDays.ONE_YEAR
+          : RetentionDays.ONE_WEEK
+      });
+
+      vpc.addFlowLog("VPCFlowLog", {
+        destination: FlowLogDestination.toCloudWatchLogs(flowLogGroup),
+        trafficType: FlowLogTrafficType.ALL
+      });
+
+      return vpc;
     }
   }
 

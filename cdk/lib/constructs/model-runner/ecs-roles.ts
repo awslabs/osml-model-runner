@@ -12,6 +12,7 @@ import {
   Role,
   ServicePrincipal
 } from "aws-cdk-lib/aws-iam";
+import { NagSuppressions } from "cdk-nag";
 import { Construct } from "constructs";
 
 import { OSMLAccount } from "../types";
@@ -30,6 +31,16 @@ export interface ECSRolesProps {
   readonly existingTaskRole?: IRole;
   /** Optional existing execution role to use instead of creating one. */
   readonly existingExecutionRole?: IRole;
+  /** Optional specific SQS queue ARNs to restrict permissions to. */
+  readonly sqsQueueArns?: string[];
+  /** Optional specific SNS topic ARNs to restrict permissions to. */
+  readonly snsTopicArns?: string[];
+  /** Optional specific S3 bucket ARNs to restrict permissions to. */
+  readonly s3BucketArns?: string[];
+  /** Optional specific DynamoDB table ARNs to restrict permissions to. */
+  readonly dynamoTableArns?: string[];
+  /** Optional specific ECS service/cluster ARNs to restrict permissions to. */
+  readonly ecsResourceArns?: string[];
 }
 
 /**
@@ -130,6 +141,12 @@ export class ECSRoles extends Construct {
     });
 
     // Add permissions for SQS permissions
+    const sqsResources =
+      props.sqsQueueArns && props.sqsQueueArns.length > 0
+        ? props.sqsQueueArns
+        : [
+            `arn:${this.partition}:sqs:${props.account.region}:${props.account.id}:*`
+          ];
     const sqsPolicyStatement = new PolicyStatement({
       effect: Effect.ALLOW,
       actions: [
@@ -140,12 +157,17 @@ export class ECSRoles extends Construct {
         "sqs:SendMessage",
         "sqs:GetQueueAttributes"
       ],
-      resources: [
-        `arn:${this.partition}:sqs:${props.account.region}:${props.account.id}:*`
-      ]
+      resources: sqsResources
     });
 
     // Add permissions for S3 permissions
+    const s3Resources =
+      props.s3BucketArns && props.s3BucketArns.length > 0
+        ? [
+            ...props.s3BucketArns.map((arn) => `${arn}/*`),
+            ...props.s3BucketArns
+          ]
+        : [`arn:${this.partition}:s3:::*`];
     const s3PolicyStatement = new PolicyStatement({
       effect: Effect.ALLOW,
       actions: [
@@ -157,19 +179,29 @@ export class ECSRoles extends Construct {
         "s3:PutObject",
         "s3:DeleteObject"
       ],
-      resources: [`arn:${this.partition}:s3:::*`]
+      resources: s3Resources
     });
 
     // Add permissions for SNS permissions
+    const snsResources =
+      props.snsTopicArns && props.snsTopicArns.length > 0
+        ? props.snsTopicArns
+        : [
+            `arn:${this.partition}:sns:${props.account.region}:${props.account.id}:*`
+          ];
     const snsPolicyStatement = new PolicyStatement({
       effect: Effect.ALLOW,
       actions: ["sns:Publish"],
-      resources: [
-        `arn:${this.partition}:sns:${props.account.region}:${props.account.id}:*`
-      ]
+      resources: snsResources
     });
 
     // Add permissions for dynamodb permissions
+    const ddbResources =
+      props.dynamoTableArns && props.dynamoTableArns.length > 0
+        ? props.dynamoTableArns
+        : [
+            `arn:${this.partition}:dynamodb:${props.account.region}:${props.account.id}:*`
+          ];
     const ddbPolicyStatement = new PolicyStatement({
       effect: Effect.ALLOW,
       actions: [
@@ -184,18 +216,20 @@ export class ECSRoles extends Construct {
         "dynamodb:UpdateItem",
         "dynamodb:UpdateTable"
       ],
-      resources: [
-        `arn:${this.partition}:dynamodb:${props.account.region}:${props.account.id}:*`
-      ]
+      resources: ddbResources
     });
 
     // Add permission for autoscaling ECS permissions
+    const ecsResources =
+      props.ecsResourceArns && props.ecsResourceArns.length > 0
+        ? props.ecsResourceArns
+        : [
+            `arn:${this.partition}:ecs:${props.account.region}:${props.account.id}:*`
+          ];
     const autoScalingEcsPolicyStatement = new PolicyStatement({
       effect: Effect.ALLOW,
       actions: ["ecs:DescribeServices", "ecs:UpdateService"],
-      resources: [
-        `arn:${this.partition}:ecs:${props.account.region}:${props.account.id}:*`
-      ]
+      resources: ecsResources
     });
 
     // Add permission for CW ECS permissions
@@ -263,6 +297,102 @@ export class ECSRoles extends Construct {
 
     taskRole.addManagedPolicy(taskPolicy);
 
+    // Suppress acceptable wildcard permissions
+    NagSuppressions.addResourceSuppressions(
+      taskPolicy,
+      [
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "sts:AssumeRole requires wildcard resource for cross-account and dynamic role assumption scenarios",
+          appliesTo: ["Resource::*"]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "EC2 DescribeInstanceTypes and DescribeSubnets are read-only actions that require wildcard resource",
+          appliesTo: ["Resource::*"]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "CloudWatch DescribeAlarms requires wildcard resource for autoscaling integration",
+          appliesTo: ["Resource::*"]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "KMS key wildcard allows access to account-managed keys needed for encryption of various resources",
+          appliesTo: [
+            `Resource::arn:${this.partition}:kms:${props.account.region}:${props.account.id}:key/*`
+          ]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "SageMaker wildcard allows access to any SageMaker endpoint in the account for flexible model invocation",
+          appliesTo: [
+            `Resource::arn:${this.partition}:sagemaker:${props.account.region}:${props.account.id}:*`
+          ]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "S3 wildcard may be used when specific bucket ARNs are not provided, allows access to S3 resources needed by the model runner",
+          appliesTo: [`Resource::arn:${this.partition}:s3:::*`]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "Kinesis stream wildcard allows writing to any stream in the account for flexible sink configuration",
+          appliesTo: [
+            `Resource::arn:${this.partition}:kinesis:${props.account.region}:${props.account.id}:stream/*`
+          ]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "ECS wildcard may be used when specific service ARNs are not provided, allows autoscaling operations",
+          appliesTo: [
+            `Resource::arn:${this.partition}:ecs:${props.account.region}:${props.account.id}:*`
+          ]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "CloudWatch Logs log-group wildcard allows access to log groups created dynamically by ECS tasks",
+          appliesTo: [
+            `Resource::arn:${this.partition}:logs:${props.account.region}:${props.account.id}:log-group:*`
+          ]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "SQS queue wildcard may be used when specific queue ARNs are not provided, allows access to queues needed by the model runner",
+          appliesTo: [
+            `Resource::arn:${this.partition}:sqs:${props.account.region}:${props.account.id}:*`
+          ]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "SNS topic wildcard may be used when specific topic ARNs are not provided, allows publishing to topics needed by the model runner",
+          appliesTo: [
+            `Resource::arn:${this.partition}:sns:${props.account.region}:${props.account.id}:*`
+          ]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "DynamoDB table wildcard may be used when specific table ARNs are not provided, allows access to tables needed by the model runner",
+          appliesTo: [
+            `Resource::arn:${this.partition}:dynamodb:${props.account.region}:${props.account.id}:*`
+          ]
+        }
+      ],
+      true
+    );
+
     return taskRole;
   }
 
@@ -308,6 +438,28 @@ export class ECSRoles extends Construct {
     );
 
     executionRole.addManagedPolicy(executionPolicy);
+
+    // Suppress acceptable wildcard permissions
+    NagSuppressions.addResourceSuppressions(
+      executionPolicy,
+      [
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "ecr:GetAuthorizationToken requires wildcard resource per AWS documentation",
+          appliesTo: ["Resource::*"]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "CloudWatch Logs log-group wildcard allows ECS tasks to create and write to log groups dynamically",
+          appliesTo: [
+            `Resource::arn:${this.partition}:logs:${props.account.region}:${props.account.id}:log-group:*`
+          ]
+        }
+      ],
+      true
+    );
 
     return executionRole;
   }

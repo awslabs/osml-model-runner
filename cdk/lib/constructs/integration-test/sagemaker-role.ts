@@ -11,6 +11,7 @@ import {
   Role,
   ServicePrincipal
 } from "aws-cdk-lib/aws-iam";
+import { NagSuppressions } from "cdk-nag";
 import { Construct } from "constructs";
 
 import { BaseConfig, ConfigType, OSMLAccount } from "../types";
@@ -179,7 +180,10 @@ export class SageMakerRole extends Construct {
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
         "logs:DeleteLogDelivery",
-        "logs:Describe*",
+        "logs:DescribeLogDeliveries",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
+        "logs:DescribeResourcePolicies",
         "logs:GetLogEvents",
         "logs:GetLogDelivery",
         "logs:ListLogDeliveries",
@@ -208,6 +212,48 @@ export class SageMakerRole extends Construct {
     );
 
     role.addManagedPolicy(smExecutionPolicy);
+
+    // Suppress acceptable wildcard permissions
+    NagSuppressions.addResourceSuppressions(
+      smExecutionPolicy,
+      [
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "EC2 network interface actions require wildcard resource for VPC endpoint creation and management",
+          appliesTo: ["Resource::*"]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "ecr:GetAuthorizationToken requires wildcard resource per AWS documentation",
+          appliesTo: ["Resource::*"]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "sts:AssumeRole requires wildcard resource for cross-account and dynamic role assumption scenarios",
+          appliesTo: ["Resource::*"]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "ECR repository wildcard policy allows access to any repository in the account, needed for flexible model container deployment",
+          appliesTo: [
+            `Resource::arn:aws:ecr:${props.account.region}:${props.account.id}:repository/*`
+          ]
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "CloudWatch Logs log-group wildcard allows access to log groups created dynamically by SageMaker endpoints",
+          appliesTo: [
+            `Resource::arn:aws:logs:${props.account.region}:${props.account.id}:log-group:*`
+          ]
+        }
+      ],
+      true
+    );
 
     return role;
   }

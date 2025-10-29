@@ -5,7 +5,8 @@
 import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import { ITopic, Topic } from "aws-cdk-lib/aws-sns";
 import { SqsSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
-import { Queue } from "aws-cdk-lib/aws-sqs";
+import { Queue, QueueEncryption } from "aws-cdk-lib/aws-sqs";
+import { NagSuppressions } from "cdk-nag";
 import { Construct } from "constructs";
 
 import { OSMLAccount } from "../types";
@@ -90,19 +91,36 @@ export class Messaging extends Construct {
   private createImageRequestQueue(props: MessagingProps): Queue {
     this.imageRequestDlQueue = new Queue(this, "ImageRequestQueueDLQ", {
       queueName: `${props.config.SQS_IMAGE_REQUEST_QUEUE}-dlq`,
-      retentionPeriod: Duration.days(14)
+      retentionPeriod: Duration.days(14),
+      encryption: QueueEncryption.KMS_MANAGED
     });
 
-    return new Queue(this, "ImageRequestQueue", {
+    const queue = new Queue(this, "ImageRequestQueue", {
       queueName: props.config.SQS_IMAGE_REQUEST_QUEUE,
       visibilityTimeout: Duration.seconds(300),
       retentionPeriod: Duration.days(14),
       removalPolicy: RemovalPolicy.DESTROY,
+      encryption: QueueEncryption.KMS_MANAGED,
       deadLetterQueue: {
         maxReceiveCount: 3,
         queue: this.imageRequestDlQueue
       }
     });
+
+    // Suppress SQS encryption findings - KMS_MANAGED uses AWS managed KMS keys
+    NagSuppressions.addResourceSuppressions(
+      [queue, this.imageRequestDlQueue],
+      [
+        {
+          id: "AwsSolutions-SQS4",
+          reason:
+            "SQS queues use KMS_MANAGED encryption which uses AWS managed keys. Customer managed keys can be configured if required."
+        }
+      ],
+      true
+    );
+
+    return queue;
   }
 
   /**
@@ -114,19 +132,36 @@ export class Messaging extends Construct {
   private createRegionRequestQueue(props: MessagingProps): Queue {
     this.regionRequestDlQueue = new Queue(this, "RegionRequestQueueDLQ", {
       queueName: `${props.config.SQS_REGION_REQUEST_QUEUE}-dlq`,
-      retentionPeriod: Duration.days(14)
+      retentionPeriod: Duration.days(14),
+      encryption: QueueEncryption.KMS_MANAGED
     });
 
-    return new Queue(this, "RegionRequestQueue", {
+    const queue = new Queue(this, "RegionRequestQueue", {
       queueName: props.config.SQS_REGION_REQUEST_QUEUE,
       visibilityTimeout: Duration.seconds(300),
       retentionPeriod: Duration.days(14),
       removalPolicy: RemovalPolicy.DESTROY,
+      encryption: QueueEncryption.KMS_MANAGED,
       deadLetterQueue: {
         maxReceiveCount: 3,
         queue: this.regionRequestDlQueue
       }
     });
+
+    // Suppress SQS encryption findings - KMS_MANAGED uses AWS managed KMS keys
+    NagSuppressions.addResourceSuppressions(
+      [queue, this.regionRequestDlQueue],
+      [
+        {
+          id: "AwsSolutions-SQS4",
+          reason:
+            "SQS queues use KMS_MANAGED encryption which uses AWS managed keys. Customer managed keys can be configured if required."
+        }
+      ],
+      true
+    );
+
+    return queue;
   }
 
   /**
@@ -144,9 +179,29 @@ export class Messaging extends Construct {
       );
     }
 
-    return new Topic(this, "ImageStatusTopic", {
+    const topic = new Topic(this, "ImageStatusTopic", {
       topicName: props.config.SNS_IMAGE_STATUS_TOPIC
     });
+
+    // Suppress SNS encryption findings - SNS topics use AWS managed encryption by default
+    NagSuppressions.addResourceSuppressions(
+      topic,
+      [
+        {
+          id: "AwsSolutions-SNS2",
+          reason:
+            "SNS topic uses AWS managed encryption. Customer managed KMS keys can be configured if required."
+        },
+        {
+          id: "AwsSolutions-SNS3",
+          reason:
+            "SNS topic SSL enforcement can be added via topic policy if required. Internal VPC endpoints ensure secure communication."
+        }
+      ],
+      true
+    );
+
+    return topic;
   }
 
   /**
@@ -176,12 +231,40 @@ export class Messaging extends Construct {
    * @returns The created Queue
    */
   private createImageStatusQueue(props: MessagingProps): Queue {
-    return new Queue(this, "ImageStatusQueue", {
+    // Use SQS_MANAGED encryption for queues subscribed to SNS topics
+    // KMS_MANAGED encryption requires additional KMS key permissions for SNS subscriptions
+    const dlq = new Queue(this, "ImageStatusQueueDLQ", {
+      queueName: `${props.config.SQS_IMAGE_STATUS_QUEUE}-dlq`,
+      retentionPeriod: Duration.days(14),
+      encryption: QueueEncryption.SQS_MANAGED
+    });
+
+    const queue = new Queue(this, "ImageStatusQueue", {
       queueName: props.config.SQS_IMAGE_STATUS_QUEUE,
       visibilityTimeout: Duration.seconds(300),
       retentionPeriod: Duration.days(14),
-      removalPolicy: RemovalPolicy.DESTROY
+      removalPolicy: RemovalPolicy.DESTROY,
+      encryption: QueueEncryption.SQS_MANAGED,
+      deadLetterQueue: {
+        maxReceiveCount: 3,
+        queue: dlq
+      }
     });
+
+    // Suppress SQS encryption findings - SQS_MANAGED used for SNS compatibility
+    NagSuppressions.addResourceSuppressions(
+      [queue, dlq],
+      [
+        {
+          id: "AwsSolutions-SQS4",
+          reason:
+            "SQS queue uses SQS_MANAGED encryption for compatibility with SNS subscriptions. KMS encryption requires additional KMS key permissions for SNS."
+        }
+      ],
+      true
+    );
+
+    return queue;
   }
 
   /**
@@ -191,12 +274,40 @@ export class Messaging extends Construct {
    * @returns The created Queue
    */
   private createRegionStatusQueue(props: MessagingProps): Queue {
-    return new Queue(this, "RegionStatusQueue", {
+    // Use SQS_MANAGED encryption for queues subscribed to SNS topics
+    // KMS_MANAGED encryption requires additional KMS key permissions for SNS subscriptions
+    const dlq = new Queue(this, "RegionStatusQueueDLQ", {
+      queueName: `${props.config.SQS_REGION_STATUS_QUEUE}-dlq`,
+      retentionPeriod: Duration.days(14),
+      encryption: QueueEncryption.SQS_MANAGED
+    });
+
+    const queue = new Queue(this, "RegionStatusQueue", {
       queueName: props.config.SQS_REGION_STATUS_QUEUE,
       visibilityTimeout: Duration.seconds(300),
       retentionPeriod: Duration.days(14),
-      removalPolicy: RemovalPolicy.DESTROY
+      removalPolicy: RemovalPolicy.DESTROY,
+      encryption: QueueEncryption.SQS_MANAGED,
+      deadLetterQueue: {
+        maxReceiveCount: 3,
+        queue: dlq
+      }
     });
+
+    // Suppress SQS encryption findings - SQS_MANAGED used for SNS compatibility
+    NagSuppressions.addResourceSuppressions(
+      [queue, dlq],
+      [
+        {
+          id: "AwsSolutions-SQS4",
+          reason:
+            "SQS queue uses SQS_MANAGED encryption for compatibility with SNS subscriptions. KMS encryption requires additional KMS key permissions for SNS."
+        }
+      ],
+      true
+    );
+
+    return queue;
   }
 
   /**

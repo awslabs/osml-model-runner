@@ -6,16 +6,20 @@
  * Unit tests for TestImageryStack.
  */
 
-import { App, Stack } from "aws-cdk-lib";
-import { Match, Template } from "aws-cdk-lib/assertions";
+import "source-map-support/register";
+
+import { App, Aspects, Stack } from "aws-cdk-lib";
+import { Annotations, Match, Template } from "aws-cdk-lib/assertions";
 import { Vpc } from "aws-cdk-lib/aws-ec2";
+import { AwsSolutionsChecks } from "cdk-nag";
 
 import { TestImageryStack } from "../lib/test-imagery-stack";
 import {
   createTestApp,
   createTestDeploymentConfig,
   createTestEnvironment,
-  createTestVpc
+  createTestVpc,
+  generateNagReport
 } from "./test-utils";
 
 describe("TestImageryStack", () => {
@@ -86,8 +90,8 @@ describe("TestImageryStack", () => {
 
     const template = Template.fromStack(stack);
 
-    // Should still create resources
-    template.resourceCountIs("AWS::S3::Bucket", 1);
+    // Should create 2 buckets: main bucket and access log bucket
+    template.resourceCountIs("AWS::S3::Bucket", 2);
   });
 
   test("creates bucket deployment for test images", () => {
@@ -105,5 +109,59 @@ describe("TestImageryStack", () => {
         Ref: Match.anyValue()
       }
     });
+  });
+});
+
+describe("cdk-nag Compliance Checks - TestImageryStack", () => {
+  let app: App;
+  let stack: TestImageryStack;
+
+  beforeAll(() => {
+    app = createTestApp();
+
+    const deploymentConfig = createTestDeploymentConfig();
+    const vpcStack = new Stack(app, "VpcStack", {
+      env: createTestEnvironment()
+    });
+    const vpc = createTestVpc(vpcStack);
+
+    stack = new TestImageryStack(app, "TestImageryStack", {
+      env: createTestEnvironment(),
+      deployment: deploymentConfig,
+      vpc: vpc
+    });
+
+    // Add the cdk-nag AwsSolutions Pack with extra verbose logging enabled.
+    Aspects.of(stack).add(
+      new AwsSolutionsChecks({
+        verbose: true
+      })
+    );
+
+    const errors = Annotations.fromStack(stack).findError(
+      "*",
+      Match.stringLikeRegexp("AwsSolutions-.*")
+    );
+    const warnings = Annotations.fromStack(stack).findWarning(
+      "*",
+      Match.stringLikeRegexp("AwsSolutions-.*")
+    );
+    generateNagReport(stack, errors, warnings);
+  });
+
+  test("No unsuppressed Warnings", () => {
+    const warnings = Annotations.fromStack(stack).findWarning(
+      "*",
+      Match.stringLikeRegexp("AwsSolutions-.*")
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  test("No unsuppressed Errors", () => {
+    const errors = Annotations.fromStack(stack).findError(
+      "*",
+      Match.stringLikeRegexp("AwsSolutions-.*")
+    );
+    expect(errors).toHaveLength(0);
   });
 });
