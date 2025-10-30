@@ -4,10 +4,10 @@
 # __init__.py file.
 # flake8: noqa
 
+from .tile_worker import TileWorker  # isort:skip
 from .async_tile_results_worker import AsyncResultsWorker
 from .async_tile_submission_worker import AsyncSubmissionWorker
 from .async_tile_worker_utils import setup_result_tile_workers, setup_submission_tile_workers
-from .tile_worker import TileWorker
 from .tile_worker_utils import AsyncTileProcessor, TileProcessor, select_features, setup_tile_workers
 from .tiling_strategy import TilingStrategy
 from .variable_overlap_tiling_strategy import VariableOverlapTilingStrategy

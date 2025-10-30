@@ -14,8 +14,9 @@ class TileRequest:
     image_path: str  # path to tile image
     image_url: str  # path to full image in S3
     tile_bounds: List
-    inference_id: str = ""  # SageMaker async inference ID
+    inference_id: str = "UNKNOWN"  # SageMaker async inference ID
     output_location: str = "UNKNOWN"  # S3 output location for results
+    failure_location: str = ""
     model_invocation_role: str = ""
     tile_size: Optional[List[int]] = None
     tile_overlap: Optional[List[int]] = None
@@ -82,8 +83,9 @@ class TileRequest:
             image_path=data.get("image_path", ""),
             image_url=data.get("image_url", ""),
             tile_bounds=data.get("tile_bounds", []),
-            inference_id=data.get("inference_id", ""),
+            inference_id=data.get("inference_id", "UNKNOWN"),
             output_location=data.get("output_location", "UNKNWON"),
+            failure_location=data.get("failure_location", ""),
             model_invocation_role=data.get("model_invocation_role"),
             tile_size=data.get("tile_size"),
             tile_overlap=data.get("tile_overlap"),
@@ -106,6 +108,7 @@ class TileRequest:
                 "tile_bounds": tile_request_item.tile_bounds,
                 "inference_id": tile_request_item.inference_id,
                 "output_location": tile_request_item.output_location,
+                "failure_location": tile_request_item.failure_location,
                 "model_invocation_role": tile_request_item.model_invocation_role,
                 "tile_size": tile_request_item.tile_size,
                 "tile_overlap": tile_request_item.tile_overlap,

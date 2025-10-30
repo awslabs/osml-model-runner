@@ -65,31 +65,15 @@ def setup_code_profiling() -> None:
 
 
 def main() -> int:
-    try:
-        # Parse command line arguments
-        args = parse_args()
+    model_runner = ModelRunner()
 
-        # Configure logging first
-        configure_logging(args.verbose)
+    map_signals(model_runner)
+    args = parse_args()
+    configure_logging(args.verbose)
+    setup_code_profiling()
 
-        # Create and configure model runner
-        model_runner = ModelRunner()
-
-        logger.info(f"Running model runner version: {model_runner}")
-
-        map_signals(model_runner)
-        setup_code_profiling()
-
-        model_runner.run()
-
-        return 0
-
-    except KeyboardInterrupt:
-        logger.info("Model runner interrupted by user")
-        return 130  # Standard exit code for SIGINT
-    except Exception as e:
-        logger.error(f"Model runner failed with error: {e}", exc_info=True)
-        return 1
+    model_runner.run()
+    return 1
 
 
 if __name__ == "__main__":

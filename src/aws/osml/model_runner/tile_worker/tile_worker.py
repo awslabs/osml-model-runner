@@ -1,5 +1,6 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
+import os
 import asyncio
 import logging
 from datetime import datetime, timezone
@@ -114,6 +115,9 @@ class TileWorker(Thread):
             )
             if isinstance(metrics, MetricsLogger):
                 metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+        finally:
+            # cleanup
+            os.remove(image_info["image_path"])
 
     @metric_scope
     def _refine_features(self, feature_collection, image_info: Dict, metrics: MetricsLogger = None) -> List[geojson.Feature]:

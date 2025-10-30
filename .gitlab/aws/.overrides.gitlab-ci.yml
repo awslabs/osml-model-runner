@@ -36,4 +36,5 @@ semgrep-sast-scan:
 
 fortify-sast:
   <<: *external_job_config
-  tags: [arch:amd64]
+  tags:
+    - arch:amd64

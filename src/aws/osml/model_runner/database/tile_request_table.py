@@ -2,22 +2,24 @@
 
 import logging
 import time
+import traceback
 from dataclasses import dataclass
 from typing import List, Optional
-import traceback
 
 from dacite import from_dict
 
-
 from aws.osml.model_runner.database.ddb_helper import DDBHelper, DDBItem, DDBKey
 from aws.osml.model_runner.database.exceptions import (
+    CompleteRegionException,
     GetRegionRequestItemException,
     StartRegionException,
     UpdateRegionException,
-    CompleteRegionException,
 )
+from aws.osml.model_runner.utilities import S3Manager
 
 logger = logging.getLogger(__name__)
+
+S3_MANAGER = S3Manager()
 
 
 @dataclass
@@ -47,6 +49,7 @@ class TileRequestItem(DDBItem):
         tile_bounds (Optional[List[List[int]]]): Pixel bounds [[x1, y1], [x2, y2]] (converted to tuple)
         inference_id (Optional[str]): SageMaker async inference job ID
         output_location (Optional[str]): S3 output location for results
+        failure_location (Optional[str]): S3 output location for failure results
         model_invocation_role (str): IAM role for model invocation
         tile_size (Optional[List[int]]): Tile dimensions [width, height]
         tile_overlap (Optional[List[int]]): Tile overlap dimensions
@@ -75,6 +78,7 @@ class TileRequestItem(DDBItem):
     tile_bounds: Optional[List[List[int]]] = None
     inference_id: Optional[str] = None  # SageMaker async inference ID
     output_location: Optional[str] = None  # S3 output location for results
+    failure_location: Optional[str] = ""
     model_invocation_role: str = ""
     tile_size: Optional[List[int]] = None
     tile_overlap: Optional[List[int]] = None
@@ -111,8 +115,9 @@ class TileRequestItem(DDBItem):
             image_id=tile_request.image_id,
             region_id=tile_request.region_id,
             tile_bounds=tile_request.tile_bounds,
-            inference_id=getattr(tile_request, "inference_id", ""),
+            inference_id=tile_request.inference_id or "UNKNOWN",
             output_location=tile_request.output_location or "UNKNOWN",
+            failure_location=tile_request.failure_location or "",
             expire_time=None,  # Will be set when starting the request
             start_time=None,  # Will be set when starting processing
             end_time=None,
@@ -263,6 +268,8 @@ class TileRequestTable(DDBHelper):
             # Ensure the item has the correct primary key structure
             if not tile_request_item.output_location:
                 tile_request_item.output_location = ""
+            else:  # Output location available. Do cleanup.
+                S3_MANAGER.delete_object(tile_request_item.output_location)
 
             return from_dict(
                 TileRequestItem,
@@ -370,6 +377,45 @@ class TileRequestTable(DDBHelper):
         except Exception as e:
             raise UpdateRegionException("Failed to increment retry count!") from e
 
+    def get_tile_request_by_inference_id(self, inference_id: str) -> Optional[TileRequestItem]:
+        """
+        Get a TileRequestItem by its output location using the InferenceIdIndex GSI.
+        Note: This GSI only projects region_id and tile_id, so a second query is needed for full item.
+
+        :param inference_id: str = the inference id from SageMaker to search for
+
+        :return: Optional[TileRequestItem] = tile request item if found
+        """
+        try:
+            # Query the InferenceIdIndex GSI using inference_id as partition key
+            response = self.table.query(
+                IndexName="InferenceIdIndex",
+                KeyConditionExpression="inference_id = :inference_id",
+                ExpressionAttributeValues={":inference_id": inference_id},
+                Limit=1,  # We only need one result
+            )
+
+            items = response.get("Items", [])
+            if not items:
+                logger.warning(f"No tile request found for inference_id: {inference_id}")
+                return None
+
+            # The GSI only projects region_id and tile_id, so we need to get the full item
+            gsi_item = self.convert_decimal(items[0])
+            region_id = gsi_item.get("region_id")
+            tile_id = gsi_item.get("tile_id")
+
+            if not region_id or not tile_id:
+                logger.error(f"Missing region_id or tile_id in GSI result for inference_id: {inference_id}")
+                return None
+
+            # Get the full item from the primary table
+            return self.get_tile_request(tile_id, region_id)
+
+        except Exception as err:
+            logger.error(f"Failed to get tile request by inference_id {inference_id}: {err}")
+            return None
+
     def get_tile_request_by_output_location(self, output_location: str) -> Optional[TileRequestItem]:
         """
         Get a TileRequestItem by its output location using the OutputLocationIndex GSI.
@@ -410,7 +456,7 @@ class TileRequestTable(DDBHelper):
             return None
 
     def update_tile_inference_info(
-        self, tile_id: str, region_id: str, inference_id: str, output_location: str
+        self, tile_id: str, region_id: str, inference_id: str, output_location: str, failure_location: str
     ) -> TileRequestItem:
         """
         Update the inference_id and output_location for a tile processing request.
@@ -419,6 +465,7 @@ class TileRequestTable(DDBHelper):
         :param region_id: str = the region identifier
         :param inference_id: str = SageMaker async inference ID
         :param output_location: str = S3 output location for results
+        :param failure_location: str = S3 output failure location for results
 
         :return: TileRequestItem = Updated tile request item
         """
@@ -430,11 +477,12 @@ class TileRequestTable(DDBHelper):
 
             # Build update expression
             update_expr = (
-                "SET inference_id = :inference_id, output_location = :output_location, last_updated_time = :current_time"
+                "SET inference_id = :inference_id, output_location = :output_location, failure_location = :failure_location, last_updated_time = :current_time"
             )
             update_attr = {
                 ":inference_id": inference_id,
                 ":output_location": output_location,
+                ":failure_location": failure_location,
                 ":current_time": current_time,
             }
 

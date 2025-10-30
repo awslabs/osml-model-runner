@@ -6,6 +6,7 @@ from aws.osml.model_runner.exceptions import InvocationFailure
 # Set up logging configuration
 logger = logging.getLogger(__name__)
 
+
 def parse_s3_event_for_output_location(s3_event_message: dict) -> str:
     """
     Parse S3 event notification to extract the output location (S3 URI).

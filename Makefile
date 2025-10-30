@@ -44,6 +44,7 @@ run_interactive: local_build
 		-e TILE_REQUEST_TABLE="TEST-TILE-REQUEST-TABLE" \
 		-e IMAGE_QUEUE="TEST-IMAGE-QUEUE" \
 		-e REGION_QUEUE="TEST-REGION-QUEUE" \
+		-e TILE_QUEUE="TEST-TILE-QUEUE" \
 		-e IMAGE_STATUS_TOPIC="TEST-IMAGE-STATUS-TOPIC" \
 		-e REGION_STATUS_TOPIC="TEST-REGION-STATUS-TOPIC" \
 		-e SM_SELF_THROTTLING="true" \
@@ -54,5 +55,3 @@ run_interactive: local_build
 		-e USE_EXTENSIONS="true" \
 		-e ARTIFACT_BUCKET="dummy-artifact-bucket" \
 		$(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_DEFAULT_REGION).amazonaws.com/ie-model-runner:$(TAG)
-
-# add input and output bucket into cdk dpeloyment

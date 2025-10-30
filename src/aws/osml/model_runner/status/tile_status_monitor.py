@@ -1,8 +1,8 @@
 import logging
 
+from aws.osml.model_runner.common import RequestStatus
 from aws.osml.model_runner.status.base_status_monitor import BaseStatusMonitor
 from aws.osml.model_runner.status.status_message import StatusMessage
-from aws.osml.model_runner.common import RequestStatus
 
 logger = logging.getLogger(__name__)
 

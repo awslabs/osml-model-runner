@@ -4,22 +4,19 @@ import json
 import logging
 import traceback
 from io import BufferedReader
-
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.metric_scope import metric_scope
-
 from botocore.exceptions import ClientError
 from geojson import FeatureCollection
 
+from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.common import Timer
+from aws.osml.model_runner.exceptions import ExtensionConfigurationError
 from aws.osml.model_runner.inference.detector import Detector
 from aws.osml.model_runner.inference.sm_detector import SMDetector
-from aws.osml.model_runner.app_config import ServiceConfig
-from aws.osml.model_runner.api import ModelInvokeMode
 from aws.osml.model_runner.utilities import S3Manager, S3OperationError
-from aws.osml.model_runner.exceptions import ExtensionConfigurationError
 
 logger = logging.getLogger(__name__)
 
@@ -115,11 +112,12 @@ class AsyncSMDetector(SMDetector):
 
             inference_id = response.get("InferenceId")
             output_location = response.get("OutputLocation")
+            failure_location = response.get("FailureLocation")
             if not inference_id:
                 raise ExtensionConfigurationError("No inference ID returned from async endpoint")
 
             logger.debug(f"Async inference submitted with ID: {inference_id}")
-            return inference_id, output_location
+            return inference_id, output_location, failure_location
 
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")

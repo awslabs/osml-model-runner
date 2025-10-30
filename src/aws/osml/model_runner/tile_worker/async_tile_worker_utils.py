@@ -1,19 +1,19 @@
 import logging
-from typing import Optional, Tuple, List
-from queue import Queue
 import traceback
+from queue import Queue
+from typing import List, Optional, Tuple
 
-from aws.osml.model_runner.tile_worker.exceptions import SetupTileWorkersException
-from aws.osml.model_runner.database import FeatureTable, RegionRequestTable
 from aws.osml.model_runner.api import RegionRequest, TileRequest
-from aws.osml.photogrammetry import ElevationModel, SensorModel
-from aws.osml.model_runner.tile_worker import TileWorker
-from aws.osml.model_runner.common import get_credentials_for_assumed_role
-
-from .async_tile_submission_worker import AsyncSubmissionWorker
-from .async_tile_results_worker import AsyncResultsWorker
 from aws.osml.model_runner.app_config import ServiceConfig
+from aws.osml.model_runner.common import get_credentials_for_assumed_role
+from aws.osml.model_runner.database import FeatureTable, RegionRequestTable
 from aws.osml.model_runner.inference.endpoint_factory import FeatureDetectorFactory
+from aws.osml.model_runner.tile_worker import TileWorker
+from aws.osml.model_runner.tile_worker.exceptions import SetupTileWorkersException
+from aws.osml.photogrammetry import ElevationModel, SensorModel
+
+from .async_tile_results_worker import AsyncResultsWorker
+from .async_tile_submission_worker import AsyncSubmissionWorker
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ def setup_result_tile_workers(
         tile_workers = []
 
         # Start polling workers
-        for i in range(ServiceConfig.polling_workers):
+        for i in range(ServiceConfig.async_endpoint_config.polling_workers):
 
             # Set up our feature table to work with the region quest
             feature_table = FeatureTable(
@@ -56,9 +56,9 @@ def setup_result_tile_workers(
             ).build()
 
             if feature_detector is None:
-                logger.error("Failed to create feature detector")
+                logger.error(f"Failed to create feature detector with {tile_request=}")
                 logger.error(f"Exception details: {traceback.format_exc()}")
-                return None
+                raise
 
             # Don't create geolocator here - will be created per request in worker
             logger.info(f"Starting the AsyncResultsWorker with {feature_detector=}")
@@ -106,7 +106,7 @@ def setup_submission_tile_workers(
         tile_queue: Queue = Queue()
         tile_workers = []
 
-        for i in range(int(ServiceConfig.submission_workers)):
+        for i in range(int(ServiceConfig.async_endpoint_config.submission_workers)):
 
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed

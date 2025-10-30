@@ -1,15 +1,16 @@
+import os
 import asyncio
 import logging
+from queue import Empty, Queue
 from threading import Thread
 from typing import Any, Dict, Optional
-from queue import Empty, Queue
 
 from aws_embedded_metrics.metric_scope import metric_scope
-from aws.osml.model_runner.app_config import ServiceConfig
 
-from aws.osml.model_runner.utilities import S3Manager
+from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.database import TileRequestTable
 from aws.osml.model_runner.inference.async_sm_detector import AsyncSMDetector
+from aws.osml.model_runner.utilities import S3Manager
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
@@ -137,7 +138,7 @@ class AsyncSubmissionWorker(Thread):
             # Submit to async endpoint
             # The use of custom attributes does not work because it depends on the model to
             # parse and pass through the required information
-            inference_id, output_location = self.feature_detector._invoke_async_endpoint(
+            inference_id, output_location, failure_location = self.feature_detector._invoke_async_endpoint(
                 input_s3_uri, metrics
             )  # , custom_attributes=tile_info
 
@@ -151,8 +152,11 @@ class AsyncSubmissionWorker(Thread):
 
                     # Update inference_id and output_location
                     self.tile_request_table.update_tile_inference_info(
-                        tile_info["tile_id"], tile_info["region_id"], inference_id, output_location
+                        tile_info["tile_id"], tile_info["region_id"], inference_id, output_location, failure_location
                     )
+
+                    # TODO: Send polling reminder message to tile queue
+
                 except Exception as e:
                     logger.warning(f"Failed to update tile status and inference info: {e}")
 
@@ -172,6 +176,9 @@ class AsyncSubmissionWorker(Thread):
                     logger.warning(f"Failed to update tile status to FAILED: {update_e}")
 
             return False
+        finally:
+            # cleanup
+            os.remove(tile_info["image_path"])
 
     def stop(self) -> None:
         """Signal the worker to stop processing."""

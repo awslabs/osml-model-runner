@@ -1,24 +1,23 @@
-import boto3
-from typing import Dict, Optional, Any
-import logging
-from queue import Queue, Empty
-import time
 import asyncio
+import logging
+import time
 import traceback
+from queue import Empty, Queue
+from typing import Any, Dict, Optional
 
-from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
-from aws.osml.model_runner.database import FeatureTable, RegionRequestTable, JobTable, TileRequestTable
-from aws.osml.model_runner.app_config import MetricLabels
-from aws.osml.model_runner.app_config import BotoConfig, ServiceConfig
-from aws.osml.model_runner.tile_worker import TileWorker
-from aws.osml.model_runner.common import TileState
-from aws.osml.photogrammetry import SensorModel, ElevationModel
-from aws.osml.model_runner.utilities import S3Manager
-from aws.osml.model_runner.inference.async_sm_detector import AsyncSMDetector
-
+import boto3
+from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
 from aws_embedded_metrics.metric_scope import metric_scope
 from aws_embedded_metrics.unit import Unit
-from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+
+from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
+from aws.osml.model_runner.app_config import BotoConfig, MetricLabels, ServiceConfig
+from aws.osml.model_runner.common import TileState
+from aws.osml.model_runner.database import FeatureTable, JobTable, RegionRequestTable, TileRequestTable
+from aws.osml.model_runner.inference.async_sm_detector import AsyncSMDetector
+from aws.osml.model_runner.tile_worker import TileWorker
+from aws.osml.model_runner.utilities import S3Manager
+from aws.osml.photogrammetry import ElevationModel, SensorModel
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)

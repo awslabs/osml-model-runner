@@ -203,9 +203,6 @@ class JobTable(DDBHelper):
         failed_count, completed = get_image_request_complete_counts(region_table, image_id)
         done = (completed + failed_count) == total_expected_region_count
 
-        logger.info(
-            f"{image_id=}: Found counts:  {done=} = ({completed=} + {failed_count=}) == {total_expected_region_count=}"
-        )
         return done, completed, failed_count
 
     @staticmethod
@@ -342,7 +339,7 @@ def get_image_request_complete_counts(table, image_id: str):
             elif region.region_status == "FAILED":
                 failed_region_count += 1
             else:
-                logger.info(f"region found in incomplete status: {region.__dict__}")
+                logger.debug(f"region found in incomplete status: {region.__dict__}")
 
         return failed_region_count, completed_count
 

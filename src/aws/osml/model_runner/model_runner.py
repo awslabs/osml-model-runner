@@ -20,7 +20,12 @@ from .database import (
     TileRequestItem,
     TileRequestTable,
 )
-from .exceptions import RetryableJobException, SelfThrottledRegionException, SelfThrottledTileException
+from .exceptions import (
+    ProcessImageException,
+    RetryableJobException,
+    SelfThrottledRegionException,
+    SelfThrottledTileException,
+)
 from .image_request_handler import ImageRequestHandler
 from .queue import RequestQueue
 from .region_request_handler import RegionRequestHandler
@@ -65,6 +70,20 @@ class ModelRunner:
         self.region_status_monitor = RegionStatusMonitor(self.config.region_status_topic)
         self.endpoint_utils = EndpointUtils()
 
+        # Set up async-specific components
+        self.tile_request_queue = RequestQueue(ServiceConfig.tile_queue, wait_seconds=0)
+        self.tile_requests_iter = iter(self.tile_request_queue)
+
+        self.tile_request_table = TileRequestTable(ServiceConfig.tile_request_table)
+        self.tile_status_monitor = TileStatusMonitor(ServiceConfig.tile_status_topic)
+
+        # Create enhanced handlers with async workflow
+        self.tile_request_handler = TileRequestHandler(
+            tile_request_table=self.tile_request_table,
+            job_table=self.job_table,
+            tile_status_monitor=self.tile_status_monitor,
+        )
+
         # Handlers for image and region processing
         self.region_request_handler = RegionRequestHandler(
             region_request_table=self.region_request_table,
@@ -75,7 +94,6 @@ class ModelRunner:
             endpoint_utils=self.endpoint_utils,
             config=self.config,
             tile_request_table=self.tile_request_table,
-            tile_request_queue=self.tile_request_queue,
         )
         self.image_request_handler = ImageRequestHandler(
             job_table=self.job_table,
@@ -90,37 +108,6 @@ class ModelRunner:
         )
 
         self.running = False
-
-        self.region_request_handler = None
-        self.image_request_handler = None
-
-        self._setup_tile_components()
-
-    def _setup_tile_components(self) -> None:
-        """
-        Set up enhanced components for async workflow processing.
-
-        :return: None
-        """
-        try:
-            # Set up async-specific components
-            self.tile_request_queue = RequestQueue(ServiceConfig.tile_queue, wait_seconds=0)
-            self.tile_requests_iter = iter(self.tile_request_queue)
-
-            self.tile_request_table = TileRequestTable(ServiceConfig.tile_request_table)
-            self.tile_status_monitor = TileStatusMonitor(ServiceConfig.tile_status_topic)
-
-            # Create enhanced handlers with async workflow
-            self.tile_request_handler_async = TileRequestHandler(
-                tile_request_table=self.tile_request_table,
-                job_table=self.job_table,
-                tile_status_monitor=self.tile_status_monitor,
-            )
-            logger.debug("Successfully configured enhanced components for async workflow")
-
-        except Exception as e:
-            logger.error(f"Unexpected error setting up enhanced components: {e}", exc_info=True)
-            raise
 
     def run(self) -> None:
         """
@@ -163,28 +150,36 @@ class ModelRunner:
 
     def _process_tile_requests(self) -> bool:
         try:
-            receipt_handle, s3_event_message = next(self.tile_requests_iter)
+            receipt_handle, event_message = next(self.tile_requests_iter)
         except StopIteration:
             # No tiles to process
             logger.debug("No tile requests available to process")
             return False
 
-        if s3_event_message:
-            ThreadingLocalContextFilter.set_context(s3_event_message)
+        if event_message:
+            ThreadingLocalContextFilter.set_context(event_message)
             try:
-                # Parse S3 event notification to get output location
-                output_location = parse_s3_event_for_output_location(s3_event_message)
-                if not output_location:
-                    logger.warning(f"Could not extract output location from S3 event: {s3_event_message}")
-                    self.tile_request_queue.finish_request(receipt_handle)
-                    return True
+                if False:
+                    # Handler polling reminder
+                    # TODO:
+                    # tile_request_item = self.tile_request_table.get from infrence _id() 
+                    pass
+                else: # get from output location
+                    # Parse S3 event notification to get output location
+                    # TODO: Do we need the output location gsi? 
+                    output_location = parse_s3_event_for_output_location(event_message)
+                    if not output_location:
+                        logger.warning(f"Could not extract output location from event: {event_message}")
+                        self.tile_request_queue.finish_request(receipt_handle)
+                        return True
 
-                logger.debug(f"Processing completed inference result at: {output_location}")
+                    logger.debug(f"Processing completed inference result at: {output_location}")
 
-                # Get tile request by output location
-                tile_request_item = self.tile_request_table.get_tile_request_by_output_location(output_location)
+                    # Get tile request by output location
+                    tile_request_item = self.tile_request_table.get_tile_request_by_output_location(output_location)
+                
                 if not tile_request_item:
-                    logger.warning(f"No tile request found for output_location: {output_location}")
+                    logger.warning(f"No tile request found for: {event_message}")
                     self.tile_request_queue.finish_request(receipt_handle)
                     return True
                 if self.tile_request_table.is_tile_item_done(tile_request_item):
@@ -195,8 +190,8 @@ class ModelRunner:
                     return True
 
                 # Create TileRequest from TileRequestItem for processing
+                # tile_request_item.output_location = output_location  # update the output location # TODO: REMOVE?
                 tile_request = TileRequest.from_tile_request_item(tile_request_item)
-                tile_request.output_location = output_location  # update the output location
 
                 # Process the completed tile request
                 self.tile_request_handler.process_tile_request(tile_request, tile_request_item)
@@ -215,30 +210,38 @@ class ModelRunner:
                     )
                     logger.info(f"image complete check for {completed_tile_request_item.image_id} = {image_is_done}")
                     if image_is_done:
-
                         # update region counts
                         image_request_item.region_error = region_failures
                         image_request_item.region_success = region_complete
                         image_request_item = self.job_table.update_image_request(image_request_item)
 
-                        # close and get features
-                        image_path = get_image_path(
-                            completed_tile_request_item.image_url, completed_tile_request_item.image_read_role
-                        )
-                        raster_dataset, sensor_model = load_gdal_dataset(image_path)
+                        if not region_complete:  # no success in any region
+                            image_request = ImageRequest()
+                            image_request.image_id = image_request_item.image_id
+                            image_request.job_id = image_request_item.job_id
+                            self._fail_image_request(image_request, ProcessImageException("All Regions Failed/Partial"))
+                        else:
+                            # close and get features
+                            image_path = get_image_path(
+                                completed_tile_request_item.image_url, completed_tile_request_item.image_read_role
+                            )
+                            raster_dataset, sensor_model = load_gdal_dataset(image_path)
 
-                        region_request = RegionRequest()
-                        region_request.image_id = completed_region_request_item.image_id
-                        region_request.region_id = completed_region_request_item.region_id
-                        region_request.tile_size = completed_region_request_item.tile_size
-                        region_request.tile_overlap = completed_region_request_item.tile_overlap
+                            region_request = RegionRequest()
+                            region_request.image_id = completed_region_request_item.image_id
+                            region_request.region_id = completed_region_request_item.region_id
+                            region_request.tile_size = completed_region_request_item.tile_size
+                            region_request.tile_overlap = completed_region_request_item.tile_overlap
 
-                        logger.info(
-                            f"Calling image handler complete image request for {completed_tile_request_item.image_id}"
-                        )
-                        self.image_request_handler.complete_image_request(
-                            region_request, str(raster_dataset.GetDriver().ShortName).upper(), raster_dataset, sensor_model
-                        )
+                            logger.info(
+                                f"Calling image handler complete image request for {completed_tile_request_item.image_id}"
+                            )
+                            self.image_request_handler.complete_image_request(
+                                region_request,
+                                str(raster_dataset.GetDriver().ShortName).upper(),
+                                raster_dataset,
+                                sensor_model,
+                            )
 
                 # Finish the current request
                 self.tile_request_queue.finish_request(receipt_handle)
@@ -250,6 +253,10 @@ class ModelRunner:
                 self.tile_request_queue.reset_request(
                     receipt_handle, visibility_timeout=int(ServiceConfig.throttling_retry_timeout)
                 )
+            except InvocationFailure as err:
+                # handle SageMake invocation errors
+                tile_request_item = self.tile_request_table.get_tile_request_by_inference_id(inference_id)
+                self.tile_request_handler.fail_tile_request(tile_request_item)
             except Exception as err:
                 logger.exception(f"Error processing tile request: {err}")
                 self.tile_request_queue.finish_request(receipt_handle)
@@ -400,6 +407,9 @@ class ModelRunner:
             tile_request_item.region_id, tile_request_item.image_id
         )
         total_expected_tile_count = region_request_item.total_tiles
+        if not total_expected_tile_count:
+            # region request hasn't finished submitting tiles
+            return region_request_item, False
 
         failed_count, completed = self.tile_request_table.get_region_request_complete_counts(tile_request_item)
 
@@ -407,7 +417,7 @@ class ModelRunner:
 
         region_status = region_request_item.region_status
         region_id = region_request_item.region_id
-        logger.info(
+        logger.debug(
             f"{region_id=}: Found counts:  {done=} = ({completed=} + {failed_count=}) == {total_expected_tile_count=}"
         )
         logger.info(f"{region_id=}: {region_status=} in [{RequestStatus.SUCCESS.name}, {RequestStatus.FAILED.name}]")

@@ -1,10 +1,10 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
+import os
 import ast
 import json
 import logging
 import tempfile
-import uuid
 from pathlib import Path
 from queue import Queue
 from secrets import token_hex
@@ -19,7 +19,7 @@ from osgeo import gdal
 from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
 from aws.osml.gdal import GDALConfigEnv
 from aws.osml.image_processing.gdal_tile_factory import GDALTileFactory
-from aws.osml.model_runner.api import RegionRequest
+from aws.osml.model_runner.api import RegionRequest, TileRequest
 from aws.osml.model_runner.app_config import MetricLabels, ServiceConfig
 from aws.osml.model_runner.common import (
     FeatureDistillationDeserializer,
@@ -101,7 +101,14 @@ class TileProcessor:
     def __init__(self):
         pass
 
-    def handle_tile(self):
+    def handle_tile(
+        self,
+        tile_queue,
+        region_request: RegionRequest,
+        region_request_item: RegionRequestItem,
+        tmp_image_path: Path,
+        tile_bounds,
+    ):
 
         # Put the image info on the tile worker queue allowing each tile to be
         # processed in parallel.
@@ -116,75 +123,11 @@ class TileProcessor:
         # Place the image info onto our processing queue
         tile_queue.put(image_info)
 
-    def process_tile_array(self):
-
-        # This will update the GDAL configuration options to use the security credentials for
-        # this request. Any GDAL managed AWS calls (i.e. incrementally fetching pixels from a
-        # dataset stored in S3) within this "with" statement will be made using customer
-        # credentials. At the end of the "with" scope the credentials will be removed.
-        image_read_credentials = None
-        if region_request_item.image_read_role:
-            image_read_credentials = get_credentials_for_assumed_role(region_request_item.image_read_role)
-
-        with GDALConfigEnv().with_aws_credentials(image_read_credentials):
-            # Use the request and metadata from the raster dataset to create a set of keyword
-            # arguments for the gdal.Translate() function. This will configure that function to
-            # create image tiles using the format, compression, etc. needed by the CV container.
-            gdal_tile_factory = GDALTileFactory(
-                raster_dataset=raster_dataset,
-                tile_format=region_request_item.tile_format,
-                tile_compression=region_request_item.tile_compression,
-                sensor_model=sensor_model,
-            )
-
-            # Calculate a set of ML engine sized regions that we need to process for this image
-            # and set up a temporary directory to store the temporary files. The entire directory
-            # will be deleted at the end of this image's processing
-            with tempfile.TemporaryDirectory() as tmp:
-                # Ignoring mypy error - if region_bounds was None the call to validate the
-                # image region request at the start of this function would have failed
-                for tile_bounds in tile_array:
-                    # Create a temp file name for the encoded region
-                    region_image_filename = (
-                        f"{token_hex(16)}-region-{tile_bounds[0][0]}-{tile_bounds[0][1]}-"
-                        f"{tile_bounds[1][0]}-{tile_bounds[1][1]}.{region_request_item.tile_format}"
-                    )
-
-                    # Set a path for the tmp image
-                    tmp_image_path = Path(tmp, region_image_filename)
-
-                    # Generate an encoded tile of the requested image region
-                    absolute_tile_path = _create_tile(gdal_tile_factory, tile_bounds, tmp_image_path)
-                    if not absolute_tile_path:
-                        continue
-
-                    self.handle_tile()
-
-                # Put enough empty messages on the queue to shut down the workers
-                for i in range(len(tile_workers)):
-                    tile_queue.put(None)
-
-    def process_tiles(
+    def get_tile_array(
         self,
         tiling_strategy: TilingStrategy,
         region_request_item: RegionRequestItem,
-        tile_queue: Queue,
-        tile_workers: List[TileWorker],
-        raster_dataset: gdal.Dataset,
-        sensor_model: Optional[SensorModel] = None,
-    ) -> Tuple[int, int]:
-        """
-        Loads a GDAL dataset into memory and processes it with a pool of tile workers.
-
-        :param tiling_strategy: the approach used to decompose the region into tiles for the ML model
-        :param region_request_item: RegionRequestItem = the region request to update.
-        :param tile_queue: Queue = keeps the image in the queue for processing
-        :param tile_workers: List[TileWorker] = the list of tile workers
-        :param raster_dataset: gdal.Dataset = the raster dataset containing the region
-        :param sensor_model: Optional[SensorModel] = the sensor model for this raster dataset
-
-        :return: Tuple[int, int, List[ImageRegion]] = number of tiles processed, number of tiles with an error
-        """
+    ):
 
         # Grab completed tiles from region item
         # Explicitly cast to Tuple[Tuple[int, int], Tuple[int, int]]
@@ -214,9 +157,80 @@ class TileProcessor:
 
             tile_array = filtered_regions
 
+        return tile_array
+
+    def process_tiles(
+        self,
+        tiling_strategy: TilingStrategy,
+        region_request: RegionRequest,
+        region_request_item: RegionRequestItem,
+        tile_queue: Queue,
+        tile_workers: List[TileWorker],
+        raster_dataset: gdal.Dataset,
+        sensor_model: Optional[SensorModel] = None,
+    ) -> Tuple[int, int]:
+        """
+        Loads a GDAL dataset into memory and processes it with a pool of tile workers.
+
+        :param tiling_strategy: the approach used to decompose the region into tiles for the ML model
+        :param region_request_item: RegionRequestItem = the region request to update.
+        :param tile_queue: Queue = keeps the image in the queue for processing
+        :param tile_workers: List[TileWorker] = the list of tile workers
+        :param raster_dataset: gdal.Dataset = the raster dataset containing the region
+        :param sensor_model: Optional[SensorModel] = the sensor model for this raster dataset
+
+        :return: Tuple[int, int, List[ImageRegion]] = number of tiles processed, number of tiles with an error
+        """
+
+        tile_array = self.get_tile_array(tiling_strategy, region_request_item)
         total_tile_count = len(tile_array)
         try:
-            self.process_tile_array(tile_array)
+            # This will update the GDAL configuration options to use the security credentials for
+            # this request. Any GDAL managed AWS calls (i.e. incrementally fetching pixels from a
+            # dataset stored in S3) within this "with" statement will be made using customer
+            # credentials. At the end of the "with" scope the credentials will be removed.
+            image_read_credentials = None
+            if region_request_item.image_read_role:
+                image_read_credentials = get_credentials_for_assumed_role(region_request_item.image_read_role)
+
+            with GDALConfigEnv().with_aws_credentials(image_read_credentials):
+                # Use the request and metadata from the raster dataset to create a set of keyword
+                # arguments for the gdal.Translate() function. This will configure that function to
+                # create image tiles using the format, compression, etc. needed by the CV container.
+                gdal_tile_factory = GDALTileFactory(
+                    raster_dataset=raster_dataset,
+                    tile_format=region_request_item.tile_format,
+                    tile_compression=region_request_item.tile_compression,
+                    sensor_model=sensor_model,
+                )
+
+                # Calculate a set of ML engine sized regions that we need to process for this image
+                # and set up a temporary directory to store the temporary files. 
+                tmp = tempfile.gettempdir()
+
+                # Ignoring mypy error - if region_bounds was None the call to validate the
+                # image region request at the start of this function would have failed
+                for tile_bounds in tile_array:
+                    # Create a temp file name for the encoded region
+                    region_image_filename = (
+                        f"{token_hex(16)}-region-{tile_bounds[0][0]}-{tile_bounds[0][1]}-"
+                        f"{tile_bounds[1][0]}-{tile_bounds[1][1]}.{region_request_item.tile_format}"
+                    )
+
+                    # Set a path for the tmp image
+                    tmp_image_path = Path(tmp, region_image_filename)
+
+                    # Generate an encoded tile of the requested image region
+                    absolute_tile_path = _create_tile(gdal_tile_factory, tile_bounds, tmp_image_path)
+                    
+                    if not absolute_tile_path:
+                        continue
+
+                    self.handle_tile(tile_queue, region_request, region_request_item, tmp_image_path, tile_bounds)
+
+                # Put enough empty messages on the queue to shut down the workers
+                for i in range(len(tile_workers)):
+                    tile_queue.put(None)
 
             # Ensure the wait for tile workers happens within the context where we create
             # the temp directory. If the context is exited before all workers return then
@@ -241,34 +255,47 @@ class TileProcessor:
 
 
 class AsyncTileProcessor(TileProcessor):
-    def __init__(self, tile_queue, region_request_item):
+    def __init__(self, tile_request_table):
         self.tiles_submitted = 0
-        self.tile_queue = tile_queue
-        self.region_request_item = region_request_item
+        self.tile_request_table = tile_request_table
 
-    def handle_tile(self):
-        # Create image info
-        tile_request = TileRequest(
-            tile_id=str(uuid.uuid4()),
-            region_id=self.region_request_item.region_id,
-            image_id=self.region_request_item.image_id,
-            job_id=self.region_request_item.job_id,
-            image_path=str(tmp_image_path.absolute()),
-            image_url=region_request.image_url,
-            tile_bounds=tile_bounds,
-            model_invocation_role=region_request.model_invocation_role,
-            tile_size=region_request.tile_size,
-            tile_overlap=region_request.tile_overlap,
-            model_invoke_mode=str(region_request.model_invoke_mode),
-            model_name=region_request.model_name,
-            image_read_role=region_request.image_read_role,
-        )
+    def handle_tile(
+        self,
+        tile_queue,
+        region_request: RegionRequest,
+        region_request_item: RegionRequestItem,
+        tmp_image_path: Path,
+        tile_bounds,
+    ):
 
-        # Add tile to tracking database
-        tile_request_item = TileRequestItem.from_tile_request(tile_request)
-        self.tile_request_table.start_tile_request(tile_request_item)
-        self.tile_queue.put(tile_request.__dict__)
-        self.tiles_submitted += 1
+        tile_id = f"{region_request_item.region_id}-{tile_bounds[0][0]}-{tile_bounds[0][1]}"
+
+        # Check if tile item is None, or if not None and status is failed
+        tile_item = self.tile_request_table.get_tile_request(tile_id, region_request.region_id)
+        if tile_item is None or (tile_item is not None and tile_item.tile_status == "FAILED"):
+            # Create image info
+            tile_request = TileRequest(
+                tile_id=tile_id,
+                region_id=region_request_item.region_id,
+                image_id=region_request_item.image_id,
+                job_id=region_request_item.job_id,
+                image_path=str(tmp_image_path.absolute()),
+                image_url=region_request.image_url,
+                tile_bounds=tile_bounds,
+                model_invocation_role=region_request.model_invocation_role,
+                tile_size=region_request.tile_size,
+                tile_overlap=region_request.tile_overlap,
+                model_invoke_mode=region_request.model_invoke_mode,
+                model_name=region_request.model_name,
+                image_read_role=region_request.image_read_role,
+            )
+
+            # Add tile to tracking database
+            tile_request_item = TileRequestItem.from_tile_request(tile_request)
+            self.tile_request_table.start_tile_request(tile_request_item)
+            # submit tile to submission worker
+            tile_queue.put(tile_request.__dict__)
+            self.tiles_submitted += 1
 
 
 @metric_scope
