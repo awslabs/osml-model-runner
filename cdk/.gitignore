@@ -227,6 +227,12 @@ tmp/
 temp/
 
 # --------------------------------------------------------
+# CDK-NAG generated reports
+# --------------------------------------------------------
+cdk-nag-suppressions-report.txt
+.cdk-nag-suppressions-temp.json
+
+# --------------------------------------------------------
 # Deployment configuration (example tracked instead)
 # --------------------------------------------------------
 bin/deployment/deployment.json

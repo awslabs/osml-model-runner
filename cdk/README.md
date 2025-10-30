@@ -225,6 +225,7 @@ cdk
 │       ├── autoscaling.ts            # Autoscaling - ECS autoscaling policies
 │       └── sinks.ts                  # Sinks - S3 bucket and Kinesis stream outputs
 ├── test/                             # Unit tests and cdk-nag checks
+│   └── test-utils.ts                 # Test utilities and NAG report generation
 └── package.json                      # Project config and npm
 ```
 
@@ -308,6 +309,56 @@ This project integrates **cdk-nag** to validate infrastructure against AWS secur
 - Warn about missing logging or compliance settings
 
 📄 **Review the cdk-nag report** to maintain compliance and security posture before production deployments.
+
+### CDK-NAG Report Generation
+
+The test suite automatically generates comprehensive cdk-nag compliance reports during test execution. The reporting system works as follows:
+
+#### How Reports Are Generated
+
+1. **During Test Execution**: Each stack test (`model-runner-stack.test.ts`, `network-stack.test.ts`, etc.) runs cdk-nag's `AwsSolutionsChecks` and calls `generateNagReport()` which:
+   - Extracts errors and warnings from stack annotations
+   - Collects suppressed violations from stack template metadata
+   - Displays a formatted compliance report to stdout
+   - Aggregates suppressed violations for the final report
+
+2. **After All Tests Complete**: The Jest global teardown hook (configured in `jest.config.js`) automatically calls `generateFinalSuppressedViolationsReport()`, which:
+   - Consolidates all suppressed violations from all test stacks
+   - Generates a comprehensive report file: `cdk-nag-suppressions-report.txt`
+   - Includes summary statistics by rule type and detailed breakdowns by stack
+
+#### Report Files
+
+After running tests, you'll find:
+
+- **`cdk-nag-suppressions-report.txt`**: Comprehensive report of all suppressed NAG violations across all stacks
+  - Summary by rule type showing violation counts
+  - Detailed breakdown per stack with resource-level information
+  - Suppression reasons for each violation
+
+#### Viewing Reports
+
+```bash
+# Run tests to generate reports
+npm run test
+
+# View the final suppressed violations report
+cat cdk-nag-suppressions-report.txt
+```
+
+#### Understanding Suppressions
+
+The report distinguishes between:
+
+- **Errors**: Unsuppressed violations that need to be fixed
+- **Warnings**: Unsuppressed warnings that should be reviewed
+- **Suppressed Violations**: Violations that have been explicitly suppressed with documented reasons
+
+Each suppressed violation includes:
+
+- The NAG rule that was suppressed (e.g., `AwsSolutions-S1`)
+- The resource where the suppression applies
+- The reason for suppression (as documented in the code)
 
 For deeper hardening guidance, refer to:
 
