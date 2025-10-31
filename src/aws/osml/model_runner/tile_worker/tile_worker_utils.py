@@ -299,6 +299,35 @@ class AsyncTileProcessor(TileProcessor):
             self.tiles_submitted += 1
 
 
+class BatchTileProcessor(TileProcessor):
+    def __init__(self, prefix):
+        self.prefix = prefix
+
+    def handle_tile(
+        self,
+        tile_queue,
+        region_request: RegionRequest,
+        region_request_item: RegionRequestItem,
+        tmp_image_path: Path,
+        tile_bounds,
+    ):
+
+        # Put the image info on the tile worker queue allowing each tile to be
+        # processed in parallel.
+        image_info = {
+            "prefix": self.prefix,
+            "image_path": tmp_image_path,
+            "region": tile_bounds,
+            "image_id": region_request_item.image_id,
+            "job_id": region_request_item.job_id,
+            "region_id": region_request_item.region_id,
+        }
+
+        # Place the image info onto our processing queue
+        tile_queue.put(image_info)
+
+
+
 @metric_scope
 def _create_tile(gdal_tile_factory, tile_bounds, tmp_image_path, metrics: MetricsLogger = None) -> Optional[str]:
     """
