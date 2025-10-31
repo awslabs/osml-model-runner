@@ -31,7 +31,6 @@ from .queue import RequestQueue
 from .region_request_handler import RegionRequestHandler
 from .status import ImageStatusMonitor, RegionStatusMonitor, TileStatusMonitor
 from .tile_worker import TilingStrategy, VariableOverlapTilingStrategy
-from .utilities import parse_s3_event_for_output_location
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
@@ -159,24 +158,19 @@ class ModelRunner:
         if event_message:
             ThreadingLocalContextFilter.set_context(event_message)
             try:
-                if False:
-                    # Handler polling reminder
-                    # TODO:
-                    # tile_request_item = self.tile_request_table.get from infrence _id() 
-                    pass
-                else: # get from output location
-                    # Parse S3 event notification to get output location
-                    # TODO: Do we need the output location gsi? 
-                    output_location = parse_s3_event_for_output_location(event_message)
-                    if not output_location:
-                        logger.warning(f"Could not extract output location from event: {event_message}")
-                        self.tile_request_queue.finish_request(receipt_handle)
-                        return True
+                # TODO: Handler polling reminder
+                # Polling mechanism in case SageMaker message didn't arrive. 
+                # This is not a retry mechanism. Only complete or fail the request.
+                # tile_request_item = self.tile_request_table.get from infrence _id() 
+                # inferece_id = get_inference_id_from_polling_message(event_message)
+                # tile_request_item = self.tile_request_table.get_tile_request_by_inference_id(inferece_id)
+                # if tile_request_item.tile_status == complete|failed:
+                #     finalize request
+                # if tile_status == "processing" # sagemaker sns message didn't arrive yet? 
+                #     check output location
 
-                    logger.debug(f"Processing completed inference result at: {output_location}")
-
-                    # Get tile request by output location
-                    tile_request_item = self.tile_request_table.get_tile_request_by_output_location(output_location)
+                # get tile item from event message
+                tile_request_item = self.tile_request_table.get_tile_request_by_event(event_message)
                 
                 if not tile_request_item:
                     logger.warning(f"No tile request found for: {event_message}")
@@ -190,7 +184,6 @@ class ModelRunner:
                     return True
 
                 # Create TileRequest from TileRequestItem for processing
-                # tile_request_item.output_location = output_location  # update the output location # TODO: REMOVE?
                 tile_request = TileRequest.from_tile_request_item(tile_request_item)
 
                 # Process the completed tile request

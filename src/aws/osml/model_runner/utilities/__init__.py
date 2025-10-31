@@ -8,4 +8,3 @@ S3 management module for OSML extensions.
 """
 
 from .s3_manager import S3Manager, S3OperationError
-from .tile_helpers import parse_s3_event_for_output_location

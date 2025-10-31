@@ -1,5 +1,6 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
+import json
 import logging
 import time
 import traceback
@@ -8,6 +9,7 @@ from typing import List, Optional
 
 from dacite import from_dict
 
+from aws.osml.model_runner.exceptions import InvocationFailure
 from aws.osml.model_runner.database.ddb_helper import DDBHelper, DDBItem, DDBKey
 from aws.osml.model_runner.database.exceptions import (
     CompleteRegionException,
@@ -416,45 +418,6 @@ class TileRequestTable(DDBHelper):
             logger.error(f"Failed to get tile request by inference_id {inference_id}: {err}")
             return None
 
-    def get_tile_request_by_output_location(self, output_location: str) -> Optional[TileRequestItem]:
-        """
-        Get a TileRequestItem by its output location using the OutputLocationIndex GSI.
-        Note: This GSI only projects region_id and tile_id, so a second query is needed for full item.
-
-        :param output_location: str = the S3 output location to search for
-
-        :return: Optional[TileRequestItem] = tile request item if found
-        """
-        try:
-            # Query the OutputLocationIndex GSI using output_location as partition key
-            response = self.table.query(
-                IndexName="OutputLocationIndex",
-                KeyConditionExpression="output_location = :output_location",
-                ExpressionAttributeValues={":output_location": output_location},
-                Limit=1,  # We only need one result
-            )
-
-            items = response.get("Items", [])
-            if not items:
-                logger.warning(f"No tile request found for output_location: {output_location}")
-                return None
-
-            # The GSI only projects region_id and tile_id, so we need to get the full item
-            gsi_item = self.convert_decimal(items[0])
-            region_id = gsi_item.get("region_id")
-            tile_id = gsi_item.get("tile_id")
-
-            if not region_id or not tile_id:
-                logger.error(f"Missing region_id or tile_id in GSI result for output_location: {output_location}")
-                return None
-
-            # Get the full item from the primary table
-            return self.get_tile_request(tile_id, region_id)
-
-        except Exception as err:
-            logger.error(f"Failed to get tile request by output_location {output_location}: {err}")
-            return None
-
     def update_tile_inference_info(
         self, tile_id: str, region_id: str, inference_id: str, output_location: str, failure_location: str
     ) -> TileRequestItem:
@@ -526,3 +489,88 @@ class TileRequestTable(DDBHelper):
             logger.error(f"Error checking if region is done: {e}")
             # Return safe defaults
             return False, 0, 0, None, None
+
+    def get_tile_request_by_event(self, event_message: dict) -> str:
+        """
+        Parse S3 event notification to extract the output location (S3 URI).
+
+        :param event_message: S3 event notification message from SQS
+        :return: S3 URI of the output location, or empty string if parsing fails
+
+        sns message from sagemaker
+            Success:
+                {
+                "awsRegion":"us-east-1",
+                "eventTime":"2022-01-25T22:46:00.608Z",
+                "receivedTime":"2022-01-25T22:46:00.455Z",
+                "invocationStatus":"Completed",
+                "requestParameters":{
+                    "contentType":"text/csv",
+                    "endpointName":"<example-endpoint>",
+                    "inputLocation":"s3://<bucket>/<input-directory>/input-data.csv"
+                },
+                "responseParameters":{
+                    "contentType":"text/csv; charset=utf-8",
+                    "outputLocation":"s3://<bucket>/<output_directory>/prediction.out"
+                },
+                "inferenceId":"11111111-2222-3333-4444-555555555555", 
+                "eventVersion":"1.0",
+                "eventSource":"aws:sagemaker",
+                "eventName":"InferenceResult"
+                }
+
+            Error:
+                {
+                    "awsRegion": "...",
+                    "eventTime": "...",
+                    "receivedTime": "...",
+                    "invocationStatus": "Failed",
+                    "failureReason": "ClientError: Received server error (500) from model. See the SageMaker Endpoint logs in your account for more information.",
+                    "requestParameters": {
+                        "endpointName": ...,
+                        "inputLocation": ...
+                    },
+                    "inferenceId": "...",
+                    "eventVersion": "1.0",
+                    "eventSource": "aws:sagemaker",
+                    "eventName": "InferenceResult"
+                }
+        """
+        try:
+            # Handle both direct S3 events and SNS-wrapped S3 events
+            if "responseParameters" in event_message:
+                if event_message.get("invocationStatus", "") == "Failed":
+                    logger.error(f"Invocation failed for {event_message}")
+                    raise InvocationFailure(event_message.get("failureReason"))
+                logger.debug(f"Processing event from SageMaker->SNS: {event_message}")
+                output_location = event_message["responseParameters"]["outputLocation"]
+                inference_id = event_message["inferenceId"]
+                return self.get_tile_request_by_inference_id(inference_id)
+            elif "Records" in event_message:
+                # Direct S3 event
+                records = []  # Turn this off to not get double messages event_message["Records"]
+                logger.debug(f"Processing event from S3: {event_message}")
+            elif "Message" in event_message:
+                # SNS-wrapped S3 event. Not used. For S3 event triggers.
+                message = json.loads(event_message["Message"])
+                records = message.get("Records", [])
+                logger.debug(f"Processing event from S3->SNS: {event_message}")
+                
+                for record in records:
+                    if "s3" in record:
+                        s3_info = record["s3"]
+                        bucket_name = s3_info["bucket"]["name"]
+                        object_key = s3_info["object"]["key"]
+
+                        # Construct S3 URI
+                        output_location = f"s3://{bucket_name}/{object_key}"
+                        logger.debug(f"Extracted output location: {output_location}")
+                        return output_location
+
+            logger.warning(f"No S3 records found in event: {event_message}")
+            return ""
+
+        except Exception as e:
+            logger.error(f"Error parsing S3 event: {e}")
+            logger.debug(f"S3 event content: {event_message}")
+            return ""
