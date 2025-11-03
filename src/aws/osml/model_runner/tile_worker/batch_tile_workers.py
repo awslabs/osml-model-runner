@@ -4,12 +4,13 @@ import logging
 from queue import Empty, Queue
 from threading import Thread
 from typing import Any, Dict, Optional
+from pathlib import Path
 
 from aws_embedded_metrics.metric_scope import metric_scope
 
 from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.database import TileRequestTable
-from aws.osml.model_runner.inference.async_sm_detector import AsyncSMDetector
+from aws.osml.model_runner.inference import BatchSMDetector
 from aws.osml.model_runner.utilities import S3Manager
 
 # Set up logging configuration
@@ -37,13 +38,13 @@ class BatchUploadWorker(Thread):
         Initialize BatchUploadWorker.
 
         :param worker_id: Unique identifier for this worker
-        :param tile_queue: Queue containing tiles to process
+        :param in_queue: Queue containing tiles to process
         :param feature_detector: AsyncSMDetector instance for submissions
         :param tile_request_table: Optional TileRequestTable for tracking tile status
         """
         super().__init__(name=f"BatchUploadWorker-{worker_id}")
         self.worker_id = worker_id
-        self.tile_queue = tile_queue
+        self.in_queue = in_queue
         self.feature_detector = feature_detector
         self.failed_tile_count = 0
         self.processed_tile_count = 0
@@ -65,7 +66,7 @@ class BatchUploadWorker(Thread):
             while self.running:
                 try:
                     # Get tile from queue with timeout
-                    tile_info = self.tile_queue.get(timeout=1.0)
+                    tile_info = self.in_queue.get(timeout=1.0)
 
                     logger.debug(
                         f"Got tile in submission worker from region handler: {tile_info}, on worker: {self.worker_id}"
@@ -85,7 +86,7 @@ class BatchUploadWorker(Thread):
                         self.failed_tile_count += 1
 
                     # Mark task as done
-                    self.tile_queue.task_done()
+                    self.in_queue.task_done()
                     logger.info(f"Completing task on submission worker: {self.worker_id} for {tile_info.get('tile_id')}")
 
                 except Empty:
@@ -99,7 +100,7 @@ class BatchUploadWorker(Thread):
                     # Mark task as done if we got a tile
                     try:
                         logger.info(f"Error on submission worker: {self.worker_id} on error")
-                        self.tile_queue.task_done()
+                        self.in_queue.task_done()
                     except ValueError:
                         pass  # task_done() called more times than get()
 
@@ -128,13 +129,38 @@ class BatchUploadWorker(Thread):
             logger.info(f"BatchUploadWorker-{self.worker_id} processing tile: {tile_info.get('region')}")
 
             # Generate unique key for S3 input
-            input_key = os.path.join(tile_info["prefix"], str(Path(tile_info["image_path"]).name))
+            job_id = tile_info["job_id"]
+            tile_name = tile_info["tile_id"] + str(Path(tile_info["image_path"]).suffix)
+            file_name = os.path.join(job_id, tile_name)
+            input_key = f"{ServiceConfig.batch_input_prefix}{file_name}"
 
             logger.info(f"Uploading {tile_info['image_path']} to {input_key}")
 
             # Upload tile to S3
             with open(tile_info["image_path"], "rb") as payload:
-                input_s3_uri = S3_MANAGER._upload_to_s3(payload, input_key)
+                input_s3_uri = S3_MANAGER.upload_payload(payload, input_key)
+
+            inference_id = f"batch_{job_id}"
+            out_key = os.path.join(ServiceConfig.batch_output_prefix, job_id, tile_name + ".out")
+            output_location = f"s3://{ServiceConfig.input_bucket}/{out_key}"
+            failure_location = ""
+
+            # Update tile status to PROCESSING and store inference info
+            if self.tile_request_table and tile_info.get("tile_id") and tile_info.get("region_id"):
+                try:
+                    # Update status to PROCESSING
+                    self.tile_request_table.update_tile_status(tile_info["tile_id"], tile_info["region_id"], "PROCESSING")
+
+                    # Update inference_id and output_location
+                    self.tile_request_table.update_tile_inference_info(
+                        tile_info["tile_id"], tile_info["region_id"], inference_id, output_location, failure_location
+                    )
+
+                    # TODO: Send polling reminder message to tile queue
+
+                except Exception as e:
+                    logger.warning(f"Failed to update tile status and inference info: {e}")
+
 
             return True
 
@@ -159,7 +185,6 @@ class BatchUploadWorker(Thread):
     def stop(self) -> None:
         """Signal the worker to stop processing."""
         self.running = False
-
 
 
 class BatchSubmissionWorker(Thread):
@@ -269,16 +294,18 @@ class BatchSubmissionWorker(Thread):
         :return: True if submission successful, False otherwise
         """
         try:
-            logger.info(f"BatchSubmissionWorker-{self.worker_id} processing tile: {tile_info.get('region')}")
+            job_id = tile_info["job_id"]
+            logger.info(f"BatchSubmissionWorker-{self.worker_id} processing key: {job_id}")
+            input_s3_uri = f"s3://{ServiceConfig.input_bucket}/{os.path.join(ServiceConfig.batch_input_prefix, job_id)}"
+            output_s3_uri = f"s3://{ServiceConfig.input_bucket}/{os.path.join(ServiceConfig.batch_output_prefix, job_id)}"
+            # Ex.
+            # input_s3_uri  = "s3://bucket/async-inference/input/08d733f7-d471-4a4b-bd59-761ab430add7"
+            # output_s3_uri = "s3://bucket/async-inference/output/08d733f7-d471-4a4b-bd59-761ab430add7"
 
-            key = os.path.join(tile_info["prefix"], str(Path(tile_info["image_path"]).name))
-            s3_uri = ServiceConfig.async_endpoint_config.get_input_s3_uri(ServiceConfig.async_endpoint_config.input_bucket, ServiceConfig.async_endpoint_config.input_prefix, key)
+            inference_id = f"batch_{job_id}"
+            self.feature_detector._submit_batch_job(inference_id, input_s3_uri, output_s3_uri)
 
-            inference_id, output_location, failure_location = self.feature_detector._submit_batch_job(
-                input_s3_uri, metrics
-            )
-
-            logger.info(f"Async inference job submitted with {inference_id=}, {output_location=}")
+            logger.info(f"Async inference job submitted with {inference_id=}, {output_s3_uri=}")
             return True
 
         except Exception as e:
@@ -286,7 +313,6 @@ class BatchSubmissionWorker(Thread):
             return False
         finally:
             # cleanup
-            # os.remove(tile_info["image_path"])
             pass
 
     def stop(self) -> None:

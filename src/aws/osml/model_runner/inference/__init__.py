@@ -11,3 +11,4 @@ from .feature_selection import FeatureSelector
 from .feature_utils import calculate_processing_bounds, get_extents, get_source_property
 from .http_detector import HTTPDetector
 from .sm_detector import SMDetector
+from .batch_sm_detector import BatchSMDetector

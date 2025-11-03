@@ -15,9 +15,10 @@ from aws.osml.model_runner.app_config import BotoConfig, MetricLabels, ServiceCo
 from aws.osml.model_runner.common import TileState
 from aws.osml.model_runner.database import FeatureTable, JobTable, RegionRequestTable, TileRequestTable
 from aws.osml.model_runner.inference.async_sm_detector import AsyncSMDetector
-from aws.osml.model_runner.tile_worker import TileWorker
 from aws.osml.model_runner.utilities import S3Manager
 from aws.osml.photogrammetry import ElevationModel, SensorModel
+
+from .tile_worker import TileWorker
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)

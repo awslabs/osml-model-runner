@@ -22,18 +22,11 @@ class AsyncEndpointConfig:
     """
 
     # Load other environment variables with current values as defaults
-    input_bucket = os.getenv("ARTIFACT_BUCKET")
-    input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", "async-inference/input/")
     max_wait_time = int(os.getenv("ASYNC_SM_MAX_WAIT_TIME", 3600))  # Maximum wait time in seconds
     max_retries = int(os.getenv("ASYNC_SM_MAX_RETRIES", 3))  # For S3 operations
 
     submission_workers = int(os.getenv("ASYNC_SM_SUBMISSION_WORKERS", 4))  # Number of workers for submitting async requests
     polling_workers = int(os.getenv("ASYNC_SM_POLLING_WORKERS", 2))  # Number of workers for polling results
-
-    @staticmethod
-    def get_input_s3_uri(input_bucket: str, input_prefix: str, key: str) -> str:
-        """Generate input S3 URI for the given key."""
-        return f"s3://{input_bucket}/{input_prefix}{key}"
 
 
 @dataclass
@@ -67,6 +60,14 @@ class ServiceConfig:
     # workers
     workers_per_cpu: str = os.environ["WORKERS_PER_CPU"]
     workers: str = os.environ["WORKERS"]
+
+    # input/output locations for async and batch data
+    input_bucket = os.getenv("ARTIFACT_BUCKET")
+    modality = os.getenv("MODALITY") # EO/SAR
+    async_input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", "async-inference/input/")
+    # async_output_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", "async-inference/output/")
+    batch_input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", f"batch-inference/input/{modality}/")
+    batch_output_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", f"batch-inference/output/{modality}/")
 
     # Optional parameters
 

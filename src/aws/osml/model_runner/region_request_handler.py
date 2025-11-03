@@ -18,7 +18,7 @@ from .database import EndpointStatisticsTable, JobItem, JobTable, RegionRequestI
 from .exceptions import ExtensionRuntimeError, ProcessRegionException, SelfThrottledRegionException
 from .queue import RequestQueue
 from .status import RegionStatusMonitor
-from .tile_worker import BatchTileProcessor, AsyncTileProcessor, TileProcessor, TilingStrategy, setup_submission_tile_workers, setup_tile_workers, setup_upload_tile_workers
+from .tile_worker import BatchTileProcessor, AsyncTileProcessor, TileProcessor, TilingStrategy, setup_submission_tile_workers, setup_tile_workers, setup_upload_tile_workers, setup_batch_submission_worker
 from .utilities import S3Manager
 
 # Set up logging configuration
@@ -425,9 +425,7 @@ class RegionRequestHandler:
                 )
 
                 # Upload tiles to S3
-                prefix = S3_MANAGER.generate_unique_key(region_request.job_id)
-                batch_processor = BatchTileProcessor(prefix)
-                total_tile_count, failed_tile_count = batch_processor.process_tiles(
+                total_tile_count, failed_tile_count = BatchTileProcessor(self.tile_request_table).process_tiles(
                     self.tiling_strategy,
                     region_request,
                     region_request_item,
@@ -444,7 +442,12 @@ class RegionRequestHandler:
 
                 # submit to Batch processing
                 in_queue, worker = setup_batch_submission_worker(region_request)
-                batch_processor.submit_tiles(in_queue, worker)
+
+                # Place the image info onto our processing queue
+                image_info = {"job_id": region_request.job_id}
+                in_queue.put(image_info)
+                in_queue.put(None)
+                worker.join()
 
                 return image_request_item
 

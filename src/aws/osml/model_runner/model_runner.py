@@ -9,7 +9,7 @@ from aws.osml.model_runner.api import get_image_path
 
 from .api import ImageRequest, InvalidImageRequestException, RegionRequest, TileRequest
 from .app_config import ServiceConfig
-from .async_tile_request_handler import TileRequestHandler
+from .tile_request_handler import TileRequestHandler
 from .common import EndpointUtils, RequestStatus, ThreadingLocalContextFilter
 from .database import (
     EndpointStatisticsTable,
@@ -280,7 +280,6 @@ class ModelRunner:
                 )
             except InvocationFailure as err:
                 # handle SageMake invocation errors
-                tile_request_item = self.tile_request_table.get_tile_request_by_inference_id(inference_id)
                 self.tile_request_handler.fail_tile_request(tile_request_item)
             except Exception as err:
                 logger.exception(f"Error processing tile request: {err}")

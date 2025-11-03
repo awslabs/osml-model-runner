@@ -58,9 +58,9 @@ class S3Manager:
             self.s3_client = boto3.client("s3", config=BotoConfig.default)
 
         self.config = ServiceConfig.async_endpoint_config
-        if not self.config.input_bucket:
+        if not ServiceConfig.input_bucket:
             raise ValueError("Input (artifact) bucket is mandatory for async processing")
-        logger.debug(f"S3Manager initialized with input bucket: {self.config.input_bucket}")
+        logger.debug(f"S3Manager initialized with input bucket: {ServiceConfig.input_bucket}")
 
     @metric_scope
     def upload_payload(self, payload: BufferedReader, key: str, metrics: MetricsLogger) -> str:
@@ -73,11 +73,9 @@ class S3Manager:
         :return: S3 URI of the uploaded object
         :raises S3OperationError: If upload fails after all retries
         """
-        s3_uri = self.config.get_input_s3_uri(self.config.input_bucket, self.config.input_prefix, key)
-        logger.debug(f"Uploading payload to S3: {s3_uri}")
 
         if isinstance(metrics, MetricsLogger):
-            metrics.put_dimensions({"Operation": "S3Upload", "Bucket": self.config.input_bucket})
+            metrics.put_dimensions({"Operation": "S3Upload", "Bucket": ServiceConfig.input_bucket})
 
         # Read payload data
         payload.seek(0)  # Ensure we're at the beginning
@@ -96,11 +94,14 @@ class S3Manager:
                     metrics_logger=metrics,
                 ):
                     self.s3_client.put_object(
-                        Bucket=self.config.input_bucket,
-                        Key=f"{self.config.input_prefix}{key}",
+                        Bucket=ServiceConfig.input_bucket,
+                        Key=key,
                         Body=payload_data,
                         ContentType="application/json",
                     )
+
+                s3_uri = f"s3://{ServiceConfig.input_bucket}/{key}"
+                logger.debug(f"Uploading payload to S3: {s3_uri}")
 
                 if isinstance(metrics, MetricsLogger):
                     metrics.put_metric("S3UploadSuccess", 1, str(Unit.COUNT.value))
@@ -236,32 +237,6 @@ class S3Manager:
         except Exception as e:
             logger.warning(f"Unexpected error deleting S3 object {s3_uri}: {str(e)}")
 
-    def generate_unique_key(self, prefix: str = "") -> str:
-        """
-        Generate unique S3 key using timestamp and UUID.
-
-        :param prefix: Optional prefix for the key
-        :return: Unique S3 key
-        """
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        unique_id = str(uuid.uuid4())[:8]  # Use first 8 characters of UUID
-
-        if prefix:
-            return f"{prefix}_{timestamp}_{unique_id}"
-        else:
-            return f"{timestamp}_{unique_id}"
-
-    def cleanup_s3_objects(self, s3_uris: list) -> None:
-        """
-        Clean up multiple S3 objects.
-
-        :param s3_uris: List of S3 URIs to delete
-        """
-        logger.debug(f"Cleaning up {len(s3_uris)} S3 objects")
-
-        for s3_uri in s3_uris:
-            self.delete_object(s3_uri)
-
     def validate_bucket_access(self) -> None:
         """
         Validate that the configured S3 input bucket is accessible.
@@ -272,8 +247,8 @@ class S3Manager:
 
         try:
             # Check input bucket
-            self.s3_client.head_bucket(Bucket=self.config.input_bucket)
-            logger.debug(f"Input bucket {self.config.input_bucket} is accessible")
+            self.s3_client.head_bucket(Bucket=ServiceConfig.input_bucket)
+            logger.debug(f"Input bucket {ServiceConfig.input_bucket} is accessible")
 
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
@@ -286,17 +261,6 @@ class S3Manager:
             logger.error(error_msg)
             raise S3OperationError(error_msg) from e
 
-    def _upload_to_s3(self, payload: BufferedReader, key: str) -> str:
-        """
-        Upload payload to S3 input bucket with unique key generation.
-
-        :param payload: BufferedReader containing the data to upload
-        :param key: S3 key for the object
-        :param metrics: Optional metrics logger
-        :return: S3 URI of uploaded object
-        """
-        logger.debug("Uploading payload to S3 for async inference")
-        return self.upload_payload(payload, key)
 
     def _download_from_s3(self, output_s3_uri: str) -> FeatureCollection:
         """

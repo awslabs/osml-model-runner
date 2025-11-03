@@ -8,12 +8,12 @@ from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.common import get_credentials_for_assumed_role
 from aws.osml.model_runner.database import FeatureTable, RegionRequestTable
 from aws.osml.model_runner.inference.endpoint_factory import FeatureDetectorFactory
-from aws.osml.model_runner.tile_worker import TileWorker
 from aws.osml.model_runner.tile_worker.exceptions import SetupTileWorkersException
 from aws.osml.photogrammetry import ElevationModel, SensorModel
 
 # from .async_tile_results_worker import AsyncResultsWorker
-from .batch_tile_upload_worker import BatchUploadWorker
+from .batch_tile_workers import BatchUploadWorker, BatchSubmissionWorker
+from .tile_worker import TileWorker
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ def setup_upload_tile_workers(
             model_invocation_credentials = get_credentials_for_assumed_role(region_request.model_invocation_role)
 
         # Set up a Queue to manage our tile workers
-        tile_queue: Queue = Queue()
+        in_queue: Queue = Queue()
         tile_workers = []
 
         for i in range(int(ServiceConfig.async_endpoint_config.submission_workers)):
@@ -87,14 +87,17 @@ def setup_upload_tile_workers(
                 assumed_credentials=model_invocation_credentials,
             ).build()
 
-            worker = BatchUploadWorker(worker_id=i, tile_queue=tile_queue, feature_detector=feature_detector)
+            worker = BatchUploadWorker(worker_id=i, 
+                in_queue=in_queue, 
+                feature_detector=feature_detector
+                )
 
             worker.start()
             tile_workers.append(worker)
 
         logger.debug(f"Setup pool of {len(tile_workers)} tile workers")
 
-        return tile_queue, tile_workers
+        return in_queue, tile_workers
     except Exception as err:
         logger.exception(f"Failed to setup tile workers!: {err}")
         raise SetupTileWorkersException("Failed to setup tile workers!") from err

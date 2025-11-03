@@ -10,7 +10,7 @@ from aws.osml.model_runner.app_config import ServiceConfig
 
 from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.database import TileRequestTable
-from aws.osml.model_runner.inference.async_sm_detector import AsyncSMDetector
+from aws.osml.model_runner.inference import AsyncSMDetector
 from aws.osml.model_runner.utilities import S3Manager
 
 # Set up logging configuration
@@ -130,11 +130,16 @@ class AsyncSubmissionWorker(Thread):
             logger.info(f"AsyncSubmissionWorker-{self.worker_id} processing tile: {tile_info.get('region')}")
 
             # Generate unique key for S3 input
-            input_key = S3_MANAGER.generate_unique_key("input")
+            job_id = tile_info["job_id"]
+            tile_name = tile_info["tile_id"] + str(Path(tile_info["image_path"]).suffix)
+            file_name = os.path.join(job_id, tile_name)
+            input_key = f"{ServiceConfig.async_input_prefix}{file_name}"
+
+            logger.info(f"Uploading {tile_info['image_path']} to {input_key}")
 
             # Upload tile to S3
             with open(tile_info["image_path"], "rb") as payload:
-                input_s3_uri = S3_MANAGER._upload_to_s3(payload, input_key)
+                input_s3_uri = S3_MANAGER.upload_payload(payload, input_key)
 
             # Submit to async endpoint
             # The use of custom attributes does not work because it depends on the model to

@@ -6,9 +6,11 @@ import time
 import traceback
 from dataclasses import dataclass
 from typing import List, Optional
+from pathlib import Path
 
 from dacite import from_dict
 
+from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.exceptions import InvocationFailure
 from aws.osml.model_runner.database.ddb_helper import DDBHelper, DDBItem, DDBKey
 from aws.osml.model_runner.database.exceptions import (
@@ -270,9 +272,11 @@ class TileRequestTable(DDBHelper):
             # Ensure the item has the correct primary key structure
             if not tile_request_item.output_location:
                 tile_request_item.output_location = ""
-            else:  # Output location available. Do cleanup.
-                S3_MANAGER.delete_object(tile_request_item.output_location)
+            
+            # Do cleanup.
+            self.cleanup_tile_artifacts(tile_request_item)
 
+            # return
             return from_dict(
                 TileRequestItem,
                 self.update_ddb_item(tile_request_item),
@@ -418,6 +422,45 @@ class TileRequestTable(DDBHelper):
             logger.error(f"Failed to get tile request by inference_id {inference_id}: {err}")
             return None
 
+    def get_tile_request_by_output_location(self, output_location: str) -> Optional[TileRequestItem]:
+        """
+        Get a TileRequestItem by its output location using the OutputLocationIndex GSI.
+        Note: This GSI only projects region_id and tile_id, so a second query is needed for full item.
+
+        :param output_location: str = the S3 output location to search for
+
+        :return: Optional[TileRequestItem] = tile request item if found
+        """
+        try:
+            # Query the OutputLocationIndex GSI using output_location as partition key
+            response = self.table.query(
+                IndexName="OutputLocationIndex",
+                KeyConditionExpression="output_location = :output_location",
+                ExpressionAttributeValues={":output_location": output_location},
+                Limit=1,  # We only need one result
+            )
+
+            items = response.get("Items", [])
+            if not items:
+                logger.warning(f"No tile request found for output_location: {output_location}")
+                return None
+
+            # The GSI only projects region_id and tile_id, so we need to get the full item
+            gsi_item = self.convert_decimal(items[0])
+            region_id = gsi_item.get("region_id")
+            tile_id = gsi_item.get("tile_id")
+
+            if not region_id or not tile_id:
+                logger.error(f"Missing region_id or tile_id in GSI result for output_location: {output_location}")
+                return None
+
+            # Get the full item from the primary table
+            return self.get_tile_request(tile_id, region_id)
+
+        except Exception as err:
+            logger.error(f"Failed to get tile request by output_location {output_location}: {err}")
+            return None
+
     def update_tile_inference_info(
         self, tile_id: str, region_id: str, inference_id: str, output_location: str, failure_location: str
     ) -> TileRequestItem:
@@ -536,9 +579,10 @@ class TileRequestTable(DDBHelper):
                     "eventName": "InferenceResult"
                 }
         """
+        # Handle both direct S3 events and SNS-wrapped S3 events
         try:
-            # Handle both direct S3 events and SNS-wrapped S3 events
             if "responseParameters" in event_message:
+                # SageMaker -> SNS -> SQS: Async inference notitifcations from SageMaker
                 if event_message.get("invocationStatus", "") == "Failed":
                     logger.error(f"Invocation failed for {event_message}")
                     raise InvocationFailure(event_message.get("failureReason"))
@@ -547,15 +591,11 @@ class TileRequestTable(DDBHelper):
                 inference_id = event_message["inferenceId"]
                 return self.get_tile_request_by_inference_id(inference_id)
             elif "Records" in event_message:
-                # Direct S3 event
-                records = []  # Turn this off to not get double messages event_message["Records"]
+                # Direct S3 event: Batch inference notifications for Transform Jobs
                 logger.debug(f"Processing event from S3: {event_message}")
-            elif "Message" in event_message:
-                # SNS-wrapped S3 event. Not used. For S3 event triggers.
-                message = json.loads(event_message["Message"])
-                records = message.get("Records", [])
-                logger.debug(f"Processing event from S3->SNS: {event_message}")
+                records = event_message.get("Records", [])
                 
+                assert len(records) == 1, "Multiple messages received"
                 for record in records:
                     if "s3" in record:
                         s3_info = record["s3"]
@@ -565,7 +605,24 @@ class TileRequestTable(DDBHelper):
                         # Construct S3 URI
                         output_location = f"s3://{bucket_name}/{object_key}"
                         logger.debug(f"Extracted output location: {output_location}")
-                        return output_location
+                        return self.get_tile_request_by_output_location(output_location)
+            elif "Message" in event_message:
+                # SNS-wrapped S3 event. Not used. For S3 event triggers.
+                logger.warning("SNS-wrapped S3 events not currently supported")
+                # message = json.loads(event_message["Message"])
+                # records = message.get("Records", [])
+                # logger.debug(f"Processing event from S3->SNS: {event_message}")
+                
+                # for record in records:
+                #     if "s3" in record:
+                #         s3_info = record["s3"]
+                #         bucket_name = s3_info["bucket"]["name"]
+                #         object_key = s3_info["object"]["key"]
+
+                #         # Construct S3 URI
+                #         output_location = f"s3://{bucket_name}/{object_key}"
+                #         logger.debug(f"Extracted output location: {output_location}")
+                #         return output_location
 
             logger.warning(f"No S3 records found in event: {event_message}")
             return ""
@@ -574,3 +631,28 @@ class TileRequestTable(DDBHelper):
             logger.error(f"Error parsing S3 event: {e}")
             logger.debug(f"S3 event content: {event_message}")
             return ""
+
+    def cleanup_tile_artifacts(self, tile_request_item: TileRequestItem):
+        """
+        Cleanup objects generated at the tile level
+            1. Saved tile image
+            2. Prediction output file
+        """
+        
+        job_id = tile_request_item.job_id
+        img_ext = str(Path(tile_request_item.image_path).suffix)
+        tile_name = tile_request_item.tile_id + img_ext
+
+        # Batch image
+        input_key = os.path.join(ServiceConfig.batch_input_prefix, file_name)
+        input_image_uri = f"s3://{ServiceConfig.input_bucket}/{input_key}"
+        S3_MANAGER.delete_object(input_image_uri)
+
+        # Async image
+        input_key = os.path.join(ServiceConfig.async_input_prefix, file_name)
+        input_image_uri = f"s3://{ServiceConfig.input_bucket}/{input_key}"
+        S3_MANAGER.delete_object(input_image_uri)
+
+        # output destination for results
+        S3_MANAGER.delete_object(tile_request_item.output_location)
+

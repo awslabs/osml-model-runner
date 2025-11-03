@@ -12,4 +12,5 @@ from .tile_worker_utils import BatchTileProcessor, AsyncTileProcessor, TileProce
 from .tiling_strategy import TilingStrategy
 from .variable_overlap_tiling_strategy import VariableOverlapTilingStrategy
 from .variable_tile_tiling_strategy import VariableTileTilingStrategy
-from .batch_tile_worker_utils import setup_upload_tile_workers
+from .batch_tile_worker_utils import setup_upload_tile_workers, setup_batch_submission_worker
+from .batch_tile_workers import BatchSubmissionWorker
