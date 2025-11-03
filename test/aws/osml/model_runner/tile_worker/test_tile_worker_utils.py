@@ -16,7 +16,10 @@ class TestTileWorkerUtils(TestCase):
         from aws.osml.model_runner.api import RegionRequest
         from aws.osml.model_runner.tile_worker.tile_worker_utils import setup_tile_workers
 
-        mock_feature_detector_factory.return_value.build.return_value = Mock()
+        mock_feature_detector = Mock()
+        mock_feature_detector.endpoint = "test-model-endpoint"
+        mock_feature_detector.find_features.return_value = {"features": []}
+        mock_feature_detector_factory.return_value.build.return_value = mock_feature_detector
         mock_tile_worker.start = Mock()
         mock_num_tile_workers = 4
         mock_service_config.workers = mock_num_tile_workers
@@ -96,6 +99,8 @@ class TestTileWorkerUtils(TestCase):
 
         # Create a mock feature detector
         mock_feature_detector = Mock()
+        mock_feature_detector.endpoint = "test-model-endpoint"
+        mock_feature_detector.find_features.return_value = {"features": []}
         mock_feature_detector_factory.return_value.build.return_value = mock_feature_detector
 
         mock_region_request = RegionRequest(
@@ -128,7 +133,9 @@ class TestTileWorkerUtils(TestCase):
         assert start_mock.call_count == mock_num_tile_workers
 
     @patch("aws.osml.model_runner.tile_worker.tile_worker_utils.FeatureDetectorFactory", autospec=True)
-    def test_process_tiles(self, mock_feature_detector_factory):
+    @patch("aws.osml.model_runner.tile_worker.tile_worker_utils.FeatureTable", autospec=True)
+    @patch("aws.osml.model_runner.tile_worker.tile_worker_utils.RegionRequestTable", autospec=True)
+    def test_process_tiles(self, mock_region_request_table, mock_feature_table, mock_feature_detector_factory):
         """
         Test processing of image tiles using a tiling strategy, ensuring all expected tiles are processed
         without errors. The test also validates successful integration with GDAL datasets.
@@ -139,7 +146,13 @@ class TestTileWorkerUtils(TestCase):
         from aws.osml.model_runner.tile_worker.tile_worker_utils import process_tiles, setup_tile_workers
 
         mock_feature_detector = Mock()
+        mock_feature_detector.endpoint = "test-model-endpoint"
+        mock_feature_detector.find_features.return_value = {"features": []}
         mock_feature_detector_factory.return_value.build.return_value = mock_feature_detector
+
+        # Mock the database tables
+        mock_feature_table.return_value = Mock()
+        mock_region_request_table.return_value = Mock()
 
         # Mock the RegionRequest and RegionRequestItem
         mock_region_request = RegionRequest(
