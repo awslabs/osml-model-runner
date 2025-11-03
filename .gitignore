@@ -36,6 +36,7 @@ __pycache__/
 
 # Documentation auto-generated files
 /doc/autoapi/
+/doc/_apidoc/
 
 # Build and distribution directories
 /build
