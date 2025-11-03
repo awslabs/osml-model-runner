@@ -11,6 +11,7 @@ across instances to process images as quickly as possible.
 .. toctree::
    :maxdepth: 4
 
+   autoapi/index
 
 Indices and tables
 __________________
