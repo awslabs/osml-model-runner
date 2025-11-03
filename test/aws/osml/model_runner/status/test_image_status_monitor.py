@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import os
 import unittest
@@ -8,7 +8,7 @@ from moto import mock_aws
 
 from aws.osml.model_runner.app_config import BotoConfig, ServiceConfig
 from aws.osml.model_runner.common import RequestStatus
-from aws.osml.model_runner.database.job_table import JobItem
+from aws.osml.model_runner.database.image_request_table import ImageRequestItem
 from aws.osml.model_runner.status.exceptions import StatusMonitorException
 from aws.osml.model_runner.status.image_status_monitor import ImageStatusMonitor
 
@@ -25,7 +25,7 @@ class TestImageStatusMonitor(unittest.TestCase):
         self.monitor = ImageStatusMonitor(sns_response.get("TopicArn"))
 
         # Set up test job item
-        self.test_job_item = JobItem(
+        self.test_image_request_item = ImageRequestItem(
             job_id="test-job",
             image_id="test-image",
             processing_duration=1000,
@@ -41,7 +41,7 @@ class TestImageStatusMonitor(unittest.TestCase):
 
         # No exception should be raised for a valid job item
         try:
-            self.monitor.process_event(self.test_job_item, status, message)
+            self.monitor.process_event(self.test_image_request_item, status, message)
         except StatusMonitorException:
             self.fail("process_event raised StatusMonitorException unexpectedly!")
 
@@ -51,7 +51,7 @@ class TestImageStatusMonitor(unittest.TestCase):
 
     def test_process_event_failure(self):
         """Tests process_event for a failed image request item with missing fields."""
-        invalid_job_item = JobItem(
+        invalid_image_request_item = ImageRequestItem(
             job_id=None,
             image_id="test-image",
             processing_duration=None,
@@ -63,33 +63,33 @@ class TestImageStatusMonitor(unittest.TestCase):
         message = "Processing failed."
 
         with self.assertRaises(StatusMonitorException):
-            self.monitor.process_event(invalid_job_item, status, message)
+            self.monitor.process_event(invalid_image_request_item, status, message)
 
     def test_get_status_success(self):
         """Tests get_status for a successful image request."""
-        status = self.monitor.get_status(self.test_job_item)
+        status = self.monitor.get_status(self.test_image_request_item)
         self.assertEqual(status, RequestStatus.SUCCESS)
 
     def test_get_status_partial(self):
         """Tests get_status for a partial image request."""
-        self.test_job_item.region_success = 3
-        self.test_job_item.region_error = 2
-        status = self.monitor.get_status(self.test_job_item)
+        self.test_image_request_item.region_success = 3
+        self.test_image_request_item.region_error = 2
+        status = self.monitor.get_status(self.test_image_request_item)
         self.assertEqual(status, RequestStatus.PARTIAL)
 
     def test_get_status_failed(self):
         """Tests get_status for a failed image request."""
-        self.test_job_item.region_success = 0
-        self.test_job_item.region_error = 5  # All regions failed
-        status = self.monitor.get_status(self.test_job_item)
+        self.test_image_request_item.region_success = 0
+        self.test_image_request_item.region_error = 5  # All regions failed
+        status = self.monitor.get_status(self.test_image_request_item)
         self.assertEqual(status, RequestStatus.FAILED)
 
     def test_get_status_in_progress(self):
         """Tests get_status for an in-progress image request."""
-        self.test_job_item.region_success = 2
-        self.test_job_item.region_error = 1
-        self.test_job_item.region_count = 5  # Still in progress
-        status = self.monitor.get_status(self.test_job_item)
+        self.test_image_request_item.region_success = 2
+        self.test_image_request_item.region_error = 1
+        self.test_image_request_item.region_count = 5  # Still in progress
+        status = self.monitor.get_status(self.test_image_request_item)
         self.assertEqual(status, RequestStatus.IN_PROGRESS)
 
 

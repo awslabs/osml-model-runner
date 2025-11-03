@@ -44,7 +44,7 @@ class TestModelRunner(unittest.TestCase):
         self.runner._get_or_create_region_request_item = MagicMock(return_value=mock_region_request_item)
         mock_load_gdal.return_value = (MagicMock(), MagicMock())
         mock_process_region.return_value = mock_image_request_item
-        self.runner.job_table.is_image_request_complete = MagicMock(return_value=True)
+        self.runner.image_request_table.is_image_request_complete = MagicMock(return_value=True)
 
         # Simulate queue data
         self.runner.region_requests_iter = iter([("receipt_handle", {"region_id": "region_123"})])

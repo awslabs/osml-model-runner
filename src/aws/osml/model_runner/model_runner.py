@@ -10,7 +10,14 @@ from aws.osml.model_runner.api import get_image_path
 from .api import ImageRequest, RegionRequest
 from .app_config import ServiceConfig
 from .common import EndpointUtils, ThreadingLocalContextFilter
-from .database import EndpointStatisticsTable, JobItem, JobTable, RegionRequestItem, RegionRequestTable, RequestedJobsTable
+from .database import (
+    EndpointStatisticsTable,
+    ImageRequestItem,
+    ImageRequestTable,
+    RegionRequestItem,
+    RegionRequestTable,
+    RequestedJobsTable,
+)
 from .exceptions import RetryableJobException, SelfThrottledRegionException
 from .image_request_handler import ImageRequestHandler
 from .queue import BufferedImageRequestQueue, RequestQueue
@@ -47,7 +54,7 @@ class ModelRunner:
         self.region_requests_iter = iter(self.region_request_queue)
 
         # Set up tables and status monitors
-        self.job_table = JobTable(self.config.job_table)
+        self.image_request_table = ImageRequestTable(self.config.image_request_table)
         self.region_request_table = RegionRequestTable(self.config.region_request_table)
         self.endpoint_statistics_table = EndpointStatisticsTable(self.config.endpoint_statistics_table)
         self.image_status_monitor = ImageStatusMonitor(self.config.image_status_topic)
@@ -57,7 +64,7 @@ class ModelRunner:
         # Handlers for image and region processing
         self.region_request_handler = RegionRequestHandler(
             region_request_table=self.region_request_table,
-            job_table=self.job_table,
+            image_request_table=self.image_request_table,
             region_status_monitor=self.region_status_monitor,
             endpoint_statistics_table=self.endpoint_statistics_table,
             tiling_strategy=self.tiling_strategy,
@@ -65,7 +72,7 @@ class ModelRunner:
             config=self.config,
         )
         self.image_request_handler = ImageRequestHandler(
-            job_table=self.job_table,
+            image_request_table=self.image_request_table,
             image_status_monitor=self.image_status_monitor,
             endpoint_statistics_table=self.endpoint_statistics_table,
             tiling_strategy=self.tiling_strategy,
@@ -153,7 +160,7 @@ class ModelRunner:
                 image_request_item = self.region_request_handler.process_region_request(
                     region_request, region_request_item, raster_dataset, sensor_model
                 )
-                if self.job_table.is_image_request_complete(image_request_item):
+                if self.image_request_table.is_image_request_complete(image_request_item):
                     self.image_request_handler.complete_image_request(
                         region_request, str(raster_dataset.GetDriver().ShortName).upper(), raster_dataset, sensor_model
                     )
@@ -214,8 +221,8 @@ class ModelRunner:
         """
         min_image_id = image_request.image_id if image_request else ""
         min_job_id = image_request.job_id if image_request else ""
-        minimal_job_item = JobItem(image_id=min_image_id, job_id=min_job_id, processing_duration=0)
-        self.image_request_handler.fail_image_request(minimal_job_item, error)
+        minimal_image_request_item = ImageRequestItem(image_id=min_image_id, job_id=min_job_id, processing_duration=0)
+        self.image_request_handler.fail_image_request(minimal_image_request_item, error)
 
     def _get_or_create_region_request_item(self, region_request: RegionRequest) -> RegionRequestItem:
         """

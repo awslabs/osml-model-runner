@@ -33,7 +33,14 @@ from .common import (
     get_credentials_for_assumed_role,
     mr_post_processing_options_factory,
 )
-from .database import EndpointStatisticsTable, FeatureTable, JobItem, JobTable, RegionRequestItem, RegionRequestTable
+from .database import (
+    EndpointStatisticsTable,
+    FeatureTable,
+    ImageRequestItem,
+    ImageRequestTable,
+    RegionRequestItem,
+    RegionRequestTable,
+)
 from .exceptions import (
     AggregateFeaturesException,
     AggregateOutputFeaturesException,
@@ -64,7 +71,7 @@ class ImageRequestHandler:
 
     def __init__(
         self,
-        job_table: JobTable,
+        image_request_table: ImageRequestTable,
         image_status_monitor: ImageStatusMonitor,
         endpoint_statistics_table: EndpointStatisticsTable,
         tiling_strategy: TilingStrategy,
@@ -77,7 +84,7 @@ class ImageRequestHandler:
         """
         Initialize the ImageRequestHandler with the necessary dependencies.
 
-        :param job_table: The job table for managing image processing jobs.
+        :param image_request_table: The image request table for managing image processing jobs.
         :param image_status_monitor: A monitor to track image request statuses.
         :param endpoint_statistics_table: Table for tracking endpoint statistics.
         :param tiling_strategy: The strategy for handling image tiling into regions.
@@ -88,7 +95,7 @@ class ImageRequestHandler:
         :param region_request_handler: Handler for processing individual region requests.
         """
 
-        self.job_table = job_table
+        self.image_request_table = image_request_table
         self.image_status_monitor = image_status_monitor
         self.endpoint_statistics_table = endpoint_statistics_table
         self.tiling_strategy = tiling_strategy
@@ -111,7 +118,7 @@ class ImageRequestHandler:
         :return: None
         """
         logger.info("Starting image processing.", extra={"tag": "TIMELINE EVENT", "job_id": image_request.job_id})
-        job_item = None
+        image_request_item = None
         try:
             image_request = self.set_default_model_endpoint_variant(image_request)
             if self.config.self_throttling:
@@ -123,63 +130,65 @@ class ImageRequestHandler:
 
             # Update the image status to started and include relevant image meta-data
             logger.debug(f"Starting processing of {image_request.image_url}")
-            job_item = JobItem.from_image_request(image_request)
+            image_request_item = ImageRequestItem.from_image_request(image_request)
             feature_distillation_option_list = image_request.get_feature_distillation_option()
             if feature_distillation_option_list:
-                job_item.feature_distillation_option = dumps(
+                image_request_item.feature_distillation_option = dumps(
                     asdict(feature_distillation_option_list[0], dict_factory=mr_post_processing_options_factory)
                 )
 
             # Start the image processing
-            self.job_table.start_image_request(job_item)
-            self.image_status_monitor.process_event(job_item, RequestStatus.STARTED, "Started image request")
+            self.image_request_table.start_image_request(image_request_item)
+            self.image_status_monitor.process_event(image_request_item, RequestStatus.STARTED, "Started image request")
 
             # Check we have a valid image request, throws if not
-            self.validate_model_hosting(job_item)
+            self.validate_model_hosting(image_request_item)
 
             # Load the relevant image meta data into memory
-            extension, ds, sensor_model, regions = self.load_image_request(job_item, image_request.roi)
+            extension, ds, sensor_model, regions = self.load_image_request(image_request_item, image_request.roi)
 
             if sensor_model is None:
-                logger.warning(f"Dataset {job_item.image_id} has no geo transform. Results are not geo-referenced.")
+                logger.warning(
+                    f"Dataset {image_request_item.image_id} has no geo transform. Results are not geo-referenced."
+                )
 
             # If we got valid outputs
             if ds and regions and extension:
-                job_item.region_count = len(regions)
-                job_item.width = int(ds.RasterXSize)
-                job_item.height = int(ds.RasterYSize)
+                image_request_item.region_count = len(regions)
+                image_request_item.width = int(ds.RasterXSize)
+                image_request_item.height = int(ds.RasterYSize)
 
-                feature_properties: List[dict] = json.loads(job_item.feature_properties)
+                feature_properties: List[dict] = json.loads(image_request_item.feature_properties)
 
                 # If we can get a valid source metadata from the source image - attach it to features
                 # else, just pass in whatever custom features if they were provided
-                source_metadata = get_source_property(job_item.image_url, extension, ds)
+                source_metadata = get_source_property(image_request_item.image_url, extension, ds)
                 if isinstance(source_metadata, dict):
                     feature_properties.append(source_metadata)
 
                 # Update the feature properties
-                job_item.feature_properties = json.dumps(feature_properties)
+                image_request_item.feature_properties = json.dumps(feature_properties)
 
                 # Update the image request job to have new derived image data
-                self.job_table.update_image_request(job_item)
-                self.on_image_update(job_item)
+                self.image_request_table.update_image_request(image_request_item)
+                self.on_image_update(image_request_item)
 
-                self.image_status_monitor.process_event(job_item, RequestStatus.IN_PROGRESS, "Processing regions")
+                self.image_status_monitor.process_event(image_request_item, RequestStatus.IN_PROGRESS, "Processing regions")
 
                 # Place the resulting region requests on the appropriate work queue
                 self.queue_region_request(regions, image_request, ds, sensor_model, extension)
 
         except Exception as err:
             # We failed try and gracefully update our image request
-            if job_item:
-                self.fail_image_request(job_item, err)
+            if image_request_item:
+                self.fail_image_request(image_request_item, err)
             else:
-                minimal_job_item = JobItem(
+                minimal_image_request_item = ImageRequestItem(
                     image_id=image_request.image_id,
                     job_id=image_request.job_id,
                     processing_duration=0,
                 )
-                self.fail_image_request(minimal_job_item, err)
+                self.fail_image_request(minimal_image_request_item, err)
 
             # Let the application know that we failed to process image
             raise ProcessImageException("Failed to process image region!") from err
@@ -245,25 +254,25 @@ class ImageRequestHandler:
         logger.debug(f"Adding region_id: {first_region_request_item.region_id}")
 
         # Processes our region request and return the updated item
-        job_item = self.region_request_handler.process_region_request(
+        image_request_item = self.region_request_handler.process_region_request(
             first_region_request, first_region_request_item, raster_dataset, sensor_model
         )
 
         # If the image is finished then complete it
-        if self.job_table.is_image_request_complete(job_item):
+        if self.image_request_table.is_image_request_complete(image_request_item):
             image_format = str(raster_dataset.GetDriver().ShortName).upper()
             self.complete_image_request(first_region_request, image_format, raster_dataset, sensor_model)
 
     def load_image_request(
         self,
-        job_item: JobItem,
+        image_request_item: ImageRequestItem,
         roi: shapely.geometry.base.BaseGeometry,
     ) -> Tuple[str, Dataset, Optional[SensorModel], List[ImageRegion]]:
         """
         Loads image metadata and prepares it for processing. The image is divided into regions
         for distribution across workers.
 
-        :param job_item: The image request object containing job information.
+        :param image_request_item: The image request object containing job information.
         :param roi: Region of interest to restrict image processing, provided as a geometry.
 
         :raises InvalidImageURLException: If the image URL is not valid.
@@ -273,8 +282,8 @@ class ImageRequestHandler:
         # If this request contains an execution role retrieve credentials that will be used to
         # access data
         assumed_credentials = None
-        if job_item.image_read_role:
-            assumed_credentials = get_credentials_for_assumed_role(job_item.image_read_role)
+        if image_request_item.image_read_role:
+            assumed_credentials = get_credentials_for_assumed_role(image_request_item.image_read_role)
 
         # This will update the GDAL configuration options to use the security credentials for this
         # request. Any GDAL managed AWS calls (i.e. incrementally fetching pixels from a dataset
@@ -282,7 +291,7 @@ class ImageRequestHandler:
         # the end of the "with" scope the credentials will be removed.
         with GDALConfigEnv().with_aws_credentials(assumed_credentials):
             # Extract the virtual image path from the request
-            image_path = get_image_path(job_item.image_url, job_item.image_read_role)
+            image_path = get_image_path(image_request_item.image_url, image_request_item.image_read_role)
 
             # Use gdal to load the image url we were given
             raster_dataset, sensor_model = load_gdal_dataset(image_path)
@@ -299,11 +308,11 @@ class ImageRequestHandler:
                 # Region size chosen to break large images into pieces that can be handled by a
                 # single tile worker
                 region_size: ImageDimensions = ast.literal_eval(self.config.region_size)
-                tile_size: ImageDimensions = ast.literal_eval(job_item.tile_size)
-                if not job_item.tile_overlap:
+                tile_size: ImageDimensions = ast.literal_eval(image_request_item.tile_size)
+                if not image_request_item.tile_overlap:
                     minimum_overlap = (0, 0)
                 else:
-                    minimum_overlap = ast.literal_eval(job_item.tile_overlap)
+                    minimum_overlap = ast.literal_eval(image_request_item.tile_overlap)
 
                 all_regions = self.tiling_strategy.compute_regions(
                     processing_bounds, region_size, tile_size, minimum_overlap
@@ -311,18 +320,18 @@ class ImageRequestHandler:
 
         return image_extension, raster_dataset, sensor_model, all_regions
 
-    def fail_image_request(self, job_item: JobItem, err: Exception) -> None:
+    def fail_image_request(self, image_request_item: ImageRequestItem, err: Exception) -> None:
         """
         Handles image request failure. Updates the status to 'failed' and ends the request in the job table.
 
-        :param job_item: The job item for the failed image request.
+        :param image_request_item: The job item for the failed image request.
         :param err: The exception that caused the failure.
 
         :return: None
         """
         logger.exception(f"Failed to start image processing!: {err}")
-        self.image_status_monitor.process_event(job_item, RequestStatus.FAILED, str(err))
-        self.job_table.end_image_request(job_item.image_id)
+        self.image_status_monitor.process_event(image_request_item, RequestStatus.FAILED, str(err))
+        self.image_request_table.end_image_request(image_request_item.image_id)
 
     def complete_image_request(
         self, region_request: RegionRequest, image_format: str, raster_dataset: gdal.Dataset, sensor_model: SensorModel
@@ -341,35 +350,39 @@ class ImageRequestHandler:
         """
         try:
             # Retrieve the full image request
-            job_item = self.job_table.get_image_request(region_request.image_id)
+            image_request_item = self.image_request_table.get_image_request(region_request.image_id)
 
             # Log the completion of the last region and proceed with aggregation
-            logger.info("Aggregating features...", extra={"tag": "TIMELINE EVENT", "job_id": job_item.job_id})
+            logger.info("Aggregating features...", extra={"tag": "TIMELINE EVENT", "job_id": image_request_item.job_id})
 
             # Set up the feature table
             feature_table = FeatureTable(self.config.feature_table, region_request.tile_size, region_request.tile_overlap)
 
             # Aggregate features
-            features = feature_table.aggregate_features(job_item)
-            logger.debug(f"Aggregated {len(features)} features for job {job_item.job_id}")
+            features = feature_table.aggregate_features(image_request_item)
+            logger.debug(f"Aggregated {len(features)} features for job {image_request_item.job_id}")
 
             # Deduplicate features
             logger.info(
                 "Consolidating duplicate features caused by tiling...",
-                extra={"tag": "TIMELINE EVENT", "job_id": job_item.job_id},
+                extra={"tag": "TIMELINE EVENT", "job_id": image_request_item.job_id},
             )
-            deduped_features = self.deduplicate(job_item, features, raster_dataset, sensor_model)
+            deduped_features = self.deduplicate(image_request_item, features, raster_dataset, sensor_model)
 
             # Add the relevant properties to our final features
-            final_features = add_properties_to_features(job_item.job_id, job_item.feature_properties, deduped_features)
+            final_features = add_properties_to_features(
+                image_request_item.job_id, image_request_item.feature_properties, deduped_features
+            )
 
             # Sink features to target outputs
-            logger.info("Writing features to outputs...", extra={"tag": "TIMELINE EVENT", "job_id": job_item.job_id})
-            self.sink_features(job_item, final_features)
+            logger.info(
+                "Writing features to outputs...", extra={"tag": "TIMELINE EVENT", "job_id": image_request_item.job_id}
+            )
+            self.sink_features(image_request_item, final_features)
 
             # Finalize and update the job table with the completed request
-            self.end_image_request(job_item, image_format)
-            logger.info("Completed image processing.", extra={"tag": "TIMELINE EVENT", "job_id": job_item.job_id})
+            self.end_image_request(image_request_item, image_format)
+            logger.info("Completed image processing.", extra={"tag": "TIMELINE EVENT", "job_id": image_request_item.job_id})
 
         except Exception as err:
             raise AggregateFeaturesException("Failed to aggregate features for region!") from err
@@ -377,7 +390,7 @@ class ImageRequestHandler:
     @metric_scope
     def deduplicate(
         self,
-        job_item: JobItem,
+        image_request_item: ImageRequestItem,
         features: List[Feature],
         raster_dataset: gdal.Dataset,
         sensor_model: SensorModel,
@@ -387,7 +400,7 @@ class ImageRequestHandler:
         Deduplicate the features and add additional properties to them, if applicable.
 
         :param metrics:
-        :param job_item: The image processing job item containing job-specific information.
+        :param image_request_item: The image processing job item containing job-specific information.
         :param features: A list of GeoJSON features to deduplicate.
         :param raster_dataset: The GDAL dataset representing the image being processed.
         :param sensor_model: The sensor model associated with the dataset, used for georeferencing.
@@ -409,22 +422,22 @@ class ImageRequestHandler:
             metrics_logger=metrics,
         ):
             # Calculate processing bounds based on the region of interest (ROI) and sensor model
-            processing_bounds = self.calculate_processing_bounds(raster_dataset, sensor_model, job_item.roi_wkt)
+            processing_bounds = self.calculate_processing_bounds(raster_dataset, sensor_model, image_request_item.roi_wkt)
 
             # Select and deduplicate features based on configuration options and processing bounds
             deduplicated_features = select_features(
-                job_item.feature_distillation_option,
+                image_request_item.feature_distillation_option,
                 features,
                 processing_bounds,
                 self.config.region_size,
-                job_item.tile_size,
-                job_item.tile_overlap,
+                image_request_item.tile_size,
+                image_request_item.tile_overlap,
                 self.tiling_strategy,
             )
 
         return deduplicated_features
 
-    def validate_model_hosting(self, image_request: JobItem):
+    def validate_model_hosting(self, image_request: ImageRequestItem):
         """
         Validates that the image request's model invocation mode is supported. If not, raises an exception.
 
@@ -443,21 +456,25 @@ class ImageRequestHandler:
             raise UnsupportedModelException(error)
 
     @metric_scope
-    def end_image_request(self, job_item: JobItem, image_format: str, metrics: MetricsLogger = None) -> None:
+    def end_image_request(
+        self, image_request_item: ImageRequestItem, image_format: str, metrics: MetricsLogger = None
+    ) -> None:
         """
         Finalizes the image request, updates the job status, and logs the necessary metrics.
 
-        :param job_item: The image processing job item to finalize.
+        :param image_request_item: The image processing job item to finalize.
         :param image_format: The format of the image being processed (e.g., TIFF, NITF).
         :param metrics: Optional metrics logger for tracking performance metrics.
 
         :return: None
         """
-        completed_job_item = self.job_table.end_image_request(job_item.image_id)
+        completed_image_request_item = self.image_request_table.end_image_request(image_request_item.image_id)
 
         # Retrieve the image request status and send status updates
-        image_request_status = self.image_status_monitor.get_status(completed_job_item)
-        self.image_status_monitor.process_event(completed_job_item, image_request_status, "Completed image processing")
+        image_request_status = self.image_status_monitor.get_status(completed_image_request_item)
+        self.image_status_monitor.process_event(
+            completed_image_request_item, image_request_status, "Completed image processing"
+        )
 
         # Log metrics for the image processing duration, invocation, and errors (if any)
         if isinstance(metrics, MetricsLogger):
@@ -465,13 +482,13 @@ class ImageRequestHandler:
             metrics.put_dimensions(
                 {
                     MetricLabels.OPERATION_DIMENSION: MetricLabels.IMAGE_PROCESSING_OPERATION,
-                    MetricLabels.MODEL_NAME_DIMENSION: job_item.model_name,
+                    MetricLabels.MODEL_NAME_DIMENSION: image_request_item.model_name,
                     MetricLabels.INPUT_FORMAT_DIMENSION: image_format,
                 }
             )
-            metrics.put_metric(MetricLabels.DURATION, float(job_item.processing_duration), str(Unit.SECONDS.value))
+            metrics.put_metric(MetricLabels.DURATION, float(image_request_item.processing_duration), str(Unit.SECONDS.value))
             metrics.put_metric(MetricLabels.INVOCATIONS, 1, str(Unit.COUNT.value))
-            if job_item.region_error > 0:
+            if image_request_item.region_error > 0:
                 metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
 
     @staticmethod
@@ -505,11 +522,11 @@ class ImageRequestHandler:
 
     @staticmethod
     @metric_scope
-    def sink_features(job_item: JobItem, features: List[Feature], metrics: MetricsLogger = None) -> None:
+    def sink_features(image_request_item: ImageRequestItem, features: List[Feature], metrics: MetricsLogger = None) -> None:
         """
         Sink the deduplicated features to the specified output (e.g., S3, Kinesis, etc.).
 
-        :param job_item: The job item representing the image processing request.
+        :param image_request_item: The job item representing the image processing request.
         :param features: The list of deduplicated GeoJSON features to sink.
         :param metrics: Optional metrics logger to track feature sinking performance.
 
@@ -530,7 +547,7 @@ class ImageRequestHandler:
             metrics_logger=metrics,
         ):
             # Sink features to the desired output (S3, Kinesis, etc.)
-            is_write_succeeded = SinkFactory.sink_features(job_item.job_id, job_item.outputs, features)
+            is_write_succeeded = SinkFactory.sink_features(image_request_item.job_id, image_request_item.outputs, features)
             if not is_write_succeeded:
                 raise AggregateOutputFeaturesException("Failed to write features to S3 or Kinesis!")
 

@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import os
 import unittest
@@ -161,13 +161,13 @@ class TestFeatureTable(unittest.TestCase):
         """
         Test that `aggregate_features` correctly aggregates features across an entire image request.
         """
-        from aws.osml.model_runner.database.job_table import JobItem
+        from aws.osml.model_runner.database.image_request_table import ImageRequestItem
 
         features = self.get_feature_list()
         self.feature_table.add_features(features)
 
-        job_item = JobItem(image_id=TEST_IMAGE_ID)
-        aggregated_features = self.feature_table.aggregate_features(job_item)
+        image_request_item = ImageRequestItem(image_id=TEST_IMAGE_ID)
+        aggregated_features = self.feature_table.aggregate_features(image_request_item)
         assert len(aggregated_features) == len(features), "Expected features to be aggregated correctly"
 
     def test_generate_tile_key_bad_bbox(self):

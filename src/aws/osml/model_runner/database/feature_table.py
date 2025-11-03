@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import logging
 import random
@@ -21,7 +21,7 @@ from aws.osml.model_runner.common import ImageDimensions, Timer, get_feature_ima
 
 from .ddb_helper import DDBHelper, DDBItem, DDBKey
 from .exceptions import AddFeaturesException
-from .job_table import JobItem
+from .image_request_table import ImageRequestItem
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +48,14 @@ setattr(parser, "_handle_json_body", handle_json_body)
 class FeatureItem(DDBItem):
     """
     FeatureItem is a dataclass meant to represent a single item in the FeatureTable
+
     The data schema is defined as follows:
-        hash_key: str
-        range_key: str
-        tile_id: str
-        features: [str]
-        expire_time: Optional[int] = None
+
+    hash_key: str
+    range_key: str
+    tile_id: str
+    features: [str]
+    expire_time: Optional[int] = None
     """
 
     hash_key: str
@@ -253,12 +255,12 @@ class FeatureTable(DDBHelper):
         return f"{feature['properties']['image_id']}-region-{min_x_index}:{max_x_index}:{min_y_index}:{max_y_index}"
 
     @metric_scope
-    def aggregate_features(self, image_request_item: JobItem, metrics: MetricsLogger = None) -> List[Feature]:
+    def aggregate_features(self, image_request_item: ImageRequestItem, metrics: MetricsLogger = None) -> List[Feature]:
         """
         For a given image processing job - aggregate all the features that were collected for it and
         put them in the correct output sink locations.
 
-        :param image_request_item: JobItem = the image request
+        :param image_request_item: ImageRequestItem = the image request
         :param metrics: the current metrics scope
 
         :return: List[geojson.Feature] = the list of features

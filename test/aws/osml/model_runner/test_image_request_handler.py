@@ -10,7 +10,7 @@ from botocore.stub import Stubber
 from aws.osml.model_runner.api import ImageRequest, ModelInvokeMode
 from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.common import EndpointUtils, RequestStatus
-from aws.osml.model_runner.database import EndpointStatisticsTable, JobItem, JobTable, RegionRequestTable
+from aws.osml.model_runner.database import EndpointStatisticsTable, ImageRequestItem, ImageRequestTable, RegionRequestTable
 from aws.osml.model_runner.exceptions import ProcessImageException
 from aws.osml.model_runner.image_request_handler import ImageRequestHandler
 from aws.osml.model_runner.queue import RequestQueue
@@ -31,7 +31,7 @@ MOCK_DESCRIBE_ENDPOINT_RESPONSE = {
 class TestImageRequestHandler(TestCase):
     def setUp(self):
         # Mock dependencies
-        self.mock_job_table = MagicMock(spec=JobTable)
+        self.mock_image_request_table = MagicMock(spec=ImageRequestTable)
         self.mock_image_status_monitor = MagicMock(spec=ImageStatusMonitor)
         self.mock_endpoint_statistics_table = MagicMock(spec=EndpointStatisticsTable)
         self.mock_tiling_strategy = MagicMock(spec=TilingStrategy)
@@ -45,7 +45,7 @@ class TestImageRequestHandler(TestCase):
 
         # Instantiate the handler with mocked dependencies
         self.handler = ImageRequestHandler(
-            job_table=self.mock_job_table,
+            image_request_table=self.mock_image_request_table,
             image_status_monitor=self.mock_image_status_monitor,
             endpoint_statistics_table=self.mock_endpoint_statistics_table,
             tiling_strategy=self.mock_tiling_strategy,
@@ -75,7 +75,7 @@ class TestImageRequestHandler(TestCase):
             }
         )
 
-        self.mock_job_item = JobItem.from_image_request(self.mock_image_request)
+        self.mock_image_request_item = ImageRequestItem.from_image_request(self.mock_image_request)
 
         # Create and stub the SageMaker client
         self.sm_client = boto3.client("sagemaker")
@@ -104,7 +104,7 @@ class TestImageRequestHandler(TestCase):
         self.handler.process_image_request(self.mock_image_request)
 
         # Assert that the STARTED status was called first
-        self.mock_job_table.start_image_request.assert_called_once()
+        self.mock_image_request_table.start_image_request.assert_called_once()
 
         # Ensure the regions were queued
         self.handler.queue_region_request.assert_called_once()
@@ -152,10 +152,10 @@ class TestImageRequestHandler(TestCase):
         """
         Test successful completion of image request.
         """
-        # Set up mock return values for our JobItem to complete
-        self.mock_job_table.get_image_request.return_value = self.mock_job_item
-        self.mock_job_item.processing_duration = 1000
-        self.mock_job_item.region_error = 0
+        # Set up mock return values for our ImageRequestItem to complete
+        self.mock_image_request_table.get_image_request.return_value = self.mock_image_request_item
+        self.mock_image_request_item.processing_duration = 1000
+        self.mock_image_request_item.region_error = 0
 
         # Set up mock return values for RegionRequest to complete
         mock_region_request = MagicMock()
@@ -188,13 +188,13 @@ class TestImageRequestHandler(TestCase):
         Test fail_image_request method behavior.
         """
         # Call fail_image_request
-        self.handler.fail_image_request(self.mock_job_item, Exception("Test failure"))
+        self.handler.fail_image_request(self.mock_image_request_item, Exception("Test failure"))
 
         # Ensure status monitor was updated and job table was called
         self.mock_image_status_monitor.process_event.assert_called_once_with(
-            self.mock_job_item, RequestStatus.FAILED, "Test failure"
+            self.mock_image_request_item, RequestStatus.FAILED, "Test failure"
         )
-        self.mock_job_table.end_image_request.assert_called_once_with(self.mock_job_item.image_id)
+        self.mock_image_request_table.end_image_request.assert_called_once_with(self.mock_image_request_item.image_id)
 
     def test_select_target_variant_single_variant(self):
         """
