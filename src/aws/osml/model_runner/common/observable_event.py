@@ -24,6 +24,9 @@ class ObservableEvent:
     If the same handler is subscribed more than once it will be executed multiple times.
 
     Example:
+
+    .. code-block:: python
+
         class MyClass:
             def __init__(self):
                 self.my_event = ObservableEvent()
@@ -39,10 +42,9 @@ class ObservableEvent:
         # Usage
         obj = MyClass()
         obj.my_event.subscribe(my_handler) # Subscribe to the event
-        obj.do_something() # Output: Something happened!\nEvent was triggered!
+        obj.do_something() # Output: Something happened!\\nEvent was triggered!
         obj.my_event.unsubscribe(my_handler) # Unsubscribe from the event
         obj.do_something() # Output: Something happened!
-
     """
 
     def __init__(self):

@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import logging
 from dataclasses import dataclass
@@ -19,11 +19,11 @@ class EndpointStatisticsItem(DDBItem):
     EndpointStatisticsTable
 
     The data schema is defined as follows:
-    endpoint: str = the Sagemaker endpoint to which the statistics pertain
-    regions_in_progress: int = the number of regions currently being processed
-        for the associated endpoint
-    max_regions: int = the maximum number of regions that an endpoint can concurrently
-        process before region requests should be throttled
+
+    - endpoint: str = the Sagemaker endpoint to which the statistics pertain
+    - regions_in_progress: int = the number of regions currently being processed for the associated endpoint
+    - max_regions: int = the maximum number of regions that an endpoint can concurrently process before
+      region requests should be throttled
     """
 
     endpoint: str

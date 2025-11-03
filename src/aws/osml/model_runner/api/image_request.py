@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from json import dumps, loads
 from typing import Any, Dict, List, Optional
 
-import shapely.geometry
 import shapely.wkt
 from dacite import from_dict
 from shapely.geometry.base import BaseGeometry
