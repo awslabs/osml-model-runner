@@ -13,7 +13,7 @@ from aws.osml.photogrammetry import SensorModel
 from .api import RegionRequest
 from .app_config import MetricLabels, ServiceConfig
 from .common import EndpointUtils, ObservableEvent, RequestStatus, Timer
-from .database import EndpointStatisticsTable, JobItem, JobTable, RegionRequestItem, RegionRequestTable
+from .database import EndpointStatisticsTable, ImageRequestItem, ImageRequestTable, RegionRequestItem, RegionRequestTable
 from .exceptions import ProcessRegionException, SelfThrottledRegionException
 from .status import RegionStatusMonitor
 from .tile_worker import TilingStrategy, process_tiles, setup_tile_workers
@@ -30,7 +30,7 @@ class RegionRequestHandler:
     def __init__(
         self,
         region_request_table: RegionRequestTable,
-        job_table: JobTable,
+        image_request_table: ImageRequestTable,
         region_status_monitor: RegionStatusMonitor,
         endpoint_statistics_table: EndpointStatisticsTable,
         tiling_strategy: TilingStrategy,
@@ -41,7 +41,7 @@ class RegionRequestHandler:
         Initialize the RegionRequestHandler with the necessary dependencies.
 
         :param region_request_table: The table that handles region requests.
-        :param job_table: The job table for image/region processing.
+        :param image_request_table: The image request table for image/region processing.
         :param region_status_monitor: A monitor to track region request status.
         :param endpoint_statistics_table: Table for tracking endpoint statistics.
         :param tiling_strategy: The strategy for handling image tiling.
@@ -49,7 +49,7 @@ class RegionRequestHandler:
         :param config: Configuration settings for the service.
         """
         self.region_request_table = region_request_table
-        self.job_table = job_table
+        self.image_request_table = image_request_table
         self.region_status_monitor = region_status_monitor
         self.endpoint_statistics_table = endpoint_statistics_table
         self.tiling_strategy = tiling_strategy
@@ -65,7 +65,7 @@ class RegionRequestHandler:
         raster_dataset: gdal.Dataset,
         sensor_model: Optional[SensorModel] = None,
         metrics: MetricsLogger = None,
-    ) -> JobItem:
+    ) -> ImageRequestItem:
         """
         Processes RegionRequest objects that are delegated for processing. Loads the specified region of an image into
         memory to be processed by tile-workers. If a raster_dataset is not provided directly it will poll the image
@@ -77,7 +77,7 @@ class RegionRequestHandler:
         :param sensor_model: Optional[SensorModel] = the sensor model for this raster dataset
         :param metrics: MetricsLogger = the metrics logger to use to report metrics.
 
-        :return: JobItem
+        :return: ImageRequestItem
         """
         logger.info(
             "Starting region processing.",
@@ -147,7 +147,9 @@ class RegionRequestHandler:
                 region_request_item = self.region_request_table.update_region_request(region_request_item)
 
             # Update the image request to complete this region
-            image_request_item = self.job_table.complete_region_request(region_request.image_id, bool(failed_tile_count))
+            image_request_item = self.image_request_table.complete_region_request(
+                region_request.image_id, bool(failed_tile_count)
+            )
 
             # Update region request table if that region succeeded
             region_status = self.region_status_monitor.get_status(region_request_item)
@@ -172,9 +174,9 @@ class RegionRequestHandler:
             logger.error(failed_msg)
             # Update the table to record the failure
             region_request_item.message = failed_msg
-            job_item = self.fail_region_request(region_request_item)
-            self.on_region_complete(job_item, region_request_item, RequestStatus.FAILED)
-            return job_item
+            image_request_item = self.fail_region_request(region_request_item)
+            self.on_region_complete(image_request_item, region_request_item, RequestStatus.FAILED)
+            return image_request_item
 
         finally:
             # Decrement the endpoint region counter
@@ -186,7 +188,7 @@ class RegionRequestHandler:
         self,
         region_request_item: RegionRequestItem,
         metrics: MetricsLogger = None,
-    ) -> JobItem:
+    ) -> ImageRequestItem:
         """
         Fails a region if it failed to process successfully and updates the table accordingly before
         raising an exception
@@ -202,7 +204,7 @@ class RegionRequestHandler:
             region_status = RequestStatus.FAILED
             region_request_item = self.region_request_table.complete_region_request(region_request_item, region_status)
             self.region_status_monitor.process_event(region_request_item, region_status, "Completed region processing")
-            return self.job_table.complete_region_request(region_request_item.image_id, error=True)
+            return self.image_request_table.complete_region_request(region_request_item.image_id, error=True)
         except Exception as status_error:
             logger.error("Unable to update region status in job table")
             logger.exception(status_error)

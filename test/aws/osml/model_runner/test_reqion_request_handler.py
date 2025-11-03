@@ -8,7 +8,13 @@ from osgeo import gdal
 from aws.osml.model_runner.api import RegionRequest
 from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.common import EndpointUtils, RequestStatus
-from aws.osml.model_runner.database import EndpointStatisticsTable, JobItem, JobTable, RegionRequestItem, RegionRequestTable
+from aws.osml.model_runner.database import (
+    EndpointStatisticsTable,
+    ImageRequestItem,
+    ImageRequestTable,
+    RegionRequestItem,
+    RegionRequestTable,
+)
 from aws.osml.model_runner.exceptions import SelfThrottledRegionException
 from aws.osml.model_runner.region_request_handler import RegionRequestHandler
 from aws.osml.model_runner.status import RegionStatusMonitor
@@ -20,7 +26,7 @@ class TestRegionRequestHandler(TestCase):
     def setUp(self):
         # Set up mock dependencies
         self.mock_region_request_table = MagicMock(spec=RegionRequestTable)
-        self.mock_job_table = MagicMock(spec=JobTable)
+        self.mock_image_request_table = MagicMock(spec=ImageRequestTable)
         self.mock_region_status_monitor = MagicMock(spec=RegionStatusMonitor)
         self.mock_endpoint_statistics_table = MagicMock(spec=EndpointStatisticsTable)
         self.mock_tiling_strategy = MagicMock(spec=TilingStrategy)
@@ -33,7 +39,7 @@ class TestRegionRequestHandler(TestCase):
         # Instantiate the handler with mocked dependencies
         self.handler = RegionRequestHandler(
             region_request_table=self.mock_region_request_table,
-            job_table=self.mock_job_table,
+            image_request_table=self.mock_image_request_table,
             region_status_monitor=self.mock_region_status_monitor,
             endpoint_statistics_table=self.mock_endpoint_statistics_table,
             tiling_strategy=self.mock_tiling_strategy,
@@ -85,7 +91,7 @@ class TestRegionRequestHandler(TestCase):
         mock_process_tiles.return_value = (10, 0)  # total_tiles, failed_tiles
         self.mock_region_request_table.start_region_request.return_value = self.mock_region_request_item
         self.mock_region_request_table.update_region_request.return_value = self.mock_region_request_item
-        self.mock_job_table.complete_region_request.return_value = MagicMock(spec=JobItem)
+        self.mock_image_request_table.complete_region_request.return_value = MagicMock(spec=ImageRequestItem)
 
         # Call process_region_request
         result = self.handler.process_region_request(
@@ -98,9 +104,9 @@ class TestRegionRequestHandler(TestCase):
         # Assert that the region request was started and updated correctly
         self.mock_region_request_table.start_region_request.assert_called_once_with(self.mock_region_request_item)
         self.mock_region_request_table.update_region_request.assert_called_once()
-        self.mock_job_table.complete_region_request.assert_called_once()
+        self.mock_image_request_table.complete_region_request.assert_called_once()
         self.mock_region_status_monitor.process_event.assert_called()
-        assert isinstance(result, JobItem)
+        assert isinstance(result, ImageRequestItem)
 
     def test_process_region_request_throttling(self):
         """
@@ -152,7 +158,7 @@ class TestRegionRequestHandler(TestCase):
         mock_process_tiles.side_effect = Exception("Tile processing failed")
 
         self.mock_region_request_table.start_region_request.return_value = self.mock_region_request_item
-        self.mock_job_table.complete_region_request.return_value = MagicMock(spec=JobItem)
+        self.mock_image_request_table.complete_region_request.return_value = MagicMock(spec=ImageRequestItem)
 
         # Call process_region_request and expect failure
         result = self.handler.process_region_request(
@@ -166,13 +172,13 @@ class TestRegionRequestHandler(TestCase):
         self.mock_region_request_table.start_region_request.assert_called_once()
         self.mock_region_status_monitor.process_event.assert_called()
         assert self.mock_region_request_item.message == "Failed to process image region: Tile processing failed"
-        assert isinstance(result, JobItem)
+        assert isinstance(result, ImageRequestItem)
 
     def test_fail_region_request(self):
         """
         Test fail_region_request method behavior.
         """
-        self.mock_job_table.complete_region_request.return_value = MagicMock(spec=JobItem)
+        self.mock_image_request_table.complete_region_request.return_value = MagicMock(spec=ImageRequestItem)
         result = self.handler.fail_region_request(self.mock_region_request_item)
 
         # Assert that the region request was updated with FAILED status
@@ -180,8 +186,8 @@ class TestRegionRequestHandler(TestCase):
             self.mock_region_request_item, RequestStatus.FAILED
         )
         self.mock_region_status_monitor.process_event.assert_called_once()
-        self.mock_job_table.complete_region_request.assert_called_once()
-        assert isinstance(result, JobItem)
+        self.mock_image_request_table.complete_region_request.assert_called_once()
+        assert isinstance(result, ImageRequestItem)
 
 
 if __name__ == "__main__":

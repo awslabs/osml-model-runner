@@ -21,9 +21,9 @@ from .exceptions import (
 
 
 @dataclass
-class JobItem(DDBItem):
+class ImageRequestItem(DDBItem):
     """
-    JobItem is a dataclass meant to represent a single item in the JobStatus table.
+    ImageRequestItem is a dataclass meant to represent a single item in the ImageRequest table.
 
     The data schema is defined as follows:
     image_id: str = unique identifier for the image associated with the job
@@ -75,13 +75,13 @@ class JobItem(DDBItem):
         self.ddb_key = DDBKey(hash_key="image_id", hash_value=self.image_id)
 
     @classmethod
-    def from_image_request(cls, image_request: ImageRequest) -> "JobItem":
+    def from_image_request(cls, image_request: ImageRequest) -> "ImageRequestItem":
         """
-        Create a JobItem from an ImageRequest instance.
+        Create an ImageRequestItem from an ImageRequest instance.
 
-        :param image_request: ImageRequest = The image request from which to generate the JobItem.
+        :param image_request: ImageRequest = The image request from which to generate the ImageRequestItem.
 
-        :return: JobItem = A new JobItem instance with the relevant fields populated.
+        :return: ImageRequestItem = A new ImageRequestItem instance with the relevant fields populated.
         """
         return cls(
             image_id=image_request.image_id,
@@ -98,10 +98,10 @@ class JobItem(DDBItem):
         )
 
 
-class JobTable(DDBHelper):
+class ImageRequestTable(DDBHelper):
     """
-    JobTable is a class meant to help OSML with accessing and interacting with the image processing jobs we track
-    as part of the job status table. It extends the DDBHelper class and provides its own item data class for use when
+    ImageRequestTable is a class meant to help OSML with accessing and interacting with the image processing jobs we track
+    as part of the image request table. It extends the DDBHelper class and provides its own item data class for use when
     working with items from the table. It also  sets the key for which we index on this table in the constructor.
 
     :param table_name: str = the name of the table to interact with
@@ -112,14 +112,14 @@ class JobTable(DDBHelper):
     def __init__(self, table_name: str) -> None:
         super().__init__(table_name)
 
-    def start_image_request(self, image_request_item: JobItem) -> JobItem:
+    def start_image_request(self, image_request_item: ImageRequestItem) -> ImageRequestItem:
         """
         Start an image processing request for given image_id, this should be the first record for this image in the
         table.
 
         :param image_request_item: the unique identifier for the image we want to add to ddb
 
-        :return: JobItem = response from ddb
+        :return: ImageRequestItem = response from ddb
         """
 
         try:
@@ -144,7 +144,7 @@ class JobTable(DDBHelper):
         except Exception as err:
             raise StartImageException("Failed to start image processing!") from err
 
-    def complete_region_request(self, image_id: str, error: bool) -> JobItem:
+    def complete_region_request(self, image_id: str, error: bool) -> ImageRequestItem:
         """
         Update the image job to reflect that a region has succeeded or failed.
 
@@ -166,11 +166,11 @@ class JobTable(DDBHelper):
                 # Build custom update attributes for updating region_error in DDB
                 update_attr = {":success_count": int(1)}
 
-            # Update item in the table and translate to a JobItem
+            # Update item in the table and translate to an ImageRequestItem
             return from_dict(
-                JobItem,
+                ImageRequestItem,
                 self.update_ddb_item(
-                    ddb_item=JobItem(image_id=image_id),
+                    ddb_item=ImageRequestItem(image_id=image_id),
                     update_exp=update_exp,
                     update_attr=update_attr,
                 ),
@@ -180,12 +180,12 @@ class JobTable(DDBHelper):
             raise CompleteRegionException("Failed to complete region!") from err
 
     @staticmethod
-    def is_image_request_complete(image_request_item: JobItem) -> bool:
+    def is_image_request_complete(image_request_item: ImageRequestItem) -> bool:
         """
         Read the table for a ddb item and determine if the image_id associated with the job has completed processing all
         regions associated with that image.
 
-        :param image_request_item: JobItem = the unique identifier for the image we want to check if the image is completed
+        :param image_request_item: ImageRequestItem = the item for the image we want to check is completed
 
         :return: bool
         """
@@ -201,7 +201,7 @@ class JobTable(DDBHelper):
         else:
             raise IsImageCompleteException("Failed to check if image is complete!")
 
-    def end_image_request(self, image_id: str) -> JobItem:
+    def end_image_request(self, image_id: str) -> ImageRequestItem:
         """
         Stop an image processing job for given image_id and record the time the job ended, this should be the last
         record for this image in the table.
@@ -223,25 +223,25 @@ class JobTable(DDBHelper):
         except Exception as e:
             raise EndImageException("Failed to end image!") from e
 
-    def get_image_request(self, image_id: str) -> JobItem:
+    def get_image_request(self, image_id: str) -> ImageRequestItem:
         """
-        Get a JobItem object from the table based on the image_id provided
+        Get an ImageRequestItem object from the table based on the image_id provided
 
         :param image_id: str = the unique identifier for the image we want to start processing
 
-        :return: JobItem = updated image request item from ddb
+        :return: ImageRequestItem = updated image request item from ddb
         """
         try:
-            # Retrieve job item from our table and set to expected JobItem class
-            return from_dict(JobItem, self.get_ddb_item(JobItem(image_id=image_id)))
+            # Retrieve job item from our table and set to expected ImageRequestItem class
+            return from_dict(ImageRequestItem, self.get_ddb_item(ImageRequestItem(image_id=image_id)))
         except Exception as e:
             raise GetImageRequestItemException("Failed to get ImageRequestItem!") from e
 
-    def update_image_request(self, image_request_item: JobItem) -> JobItem:
+    def update_image_request(self, image_request_item: ImageRequestItem) -> ImageRequestItem:
         """
-        Get a JobItem object from the table based on the image_id provided
+        Update an ImageRequestItem object in the table
 
-        :param image_request_item: JobItem =
+        :param image_request_item: ImageRequestItem =
 
         :return: ImageRequestItem = updated image request item from ddb
         """
@@ -249,7 +249,7 @@ class JobTable(DDBHelper):
         if image_request_item.start_time is not None:
             image_request_item.processing_duration = self.get_processing_duration(int(image_request_item.start_time))
 
-        return from_dict(JobItem, self.update_ddb_item(image_request_item))
+        return from_dict(ImageRequestItem, self.update_ddb_item(image_request_item))
 
     @staticmethod
     def get_processing_duration(start_time: int) -> int:

@@ -19,6 +19,6 @@ from .exceptions import (
     UpdateRegionException,
 )
 from .feature_table import FeatureTable
-from .job_table import JobItem, JobTable
+from .image_request_table import ImageRequestItem, ImageRequestTable
 from .region_request_table import RegionRequestItem, RegionRequestTable
 from .requested_jobs_table import ImageRequestStatusRecord, RequestedJobsTable
