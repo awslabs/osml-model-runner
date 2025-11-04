@@ -3,7 +3,7 @@ import traceback
 from queue import Queue
 from typing import List, Optional, Tuple
 
-from aws.osml.model_runner.api import RegionRequest, TileRequest
+from aws.osml.model_runner.api import TileRequest, ImageRequest
 from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.common import get_credentials_for_assumed_role
 from aws.osml.model_runner.database import FeatureTable, RegionRequestTable
@@ -19,11 +19,11 @@ from .tile_worker import TileWorker
 logger = logging.getLogger(__name__)
 
 
-def setup_batch_submission_worker(region_request: RegionRequest) -> Tuple[Queue, List[TileWorker]]:
+def setup_batch_submission_worker(image_request: ImageRequest) -> Tuple[Queue, List[TileWorker]]:
 
     try:
         model_invocation_credentials = None
-        if region_request.model_invocation_role:
+        if image_request.model_invocation_role:
             model_invocation_credentials = get_credentials_for_assumed_role(tile_request.model_invocation_role)
 
         in_queue: Queue = Queue()
@@ -31,8 +31,8 @@ def setup_batch_submission_worker(region_request: RegionRequest) -> Tuple[Queue,
         # Ignoring mypy error - if model_name was None the call to validate the region
         # request at the start of this function would have failed
         feature_detector = FeatureDetectorFactory(
-            endpoint=region_request.model_name,
-            endpoint_mode=region_request.model_invoke_mode,
+            endpoint=image_request.model_name,
+            endpoint_mode=image_request.model_invoke_mode,
             assumed_credentials=model_invocation_credentials,
         ).build()
 
@@ -55,14 +55,14 @@ def setup_batch_submission_worker(region_request: RegionRequest) -> Tuple[Queue,
 
 
 def setup_upload_tile_workers(
-    region_request: RegionRequest,
+    image_request: ImageRequest,
     sensor_model: Optional[SensorModel] = None,
     elevation_model: Optional[ElevationModel] = None,
 ) -> Tuple[Queue, List[TileWorker]]:
     """
     Sets up a pool of tile-workers to process image tiles from a region request
 
-    :param region_request: RegionRequest = the region request to update.
+    :param image_request: ImageRequest = the region request to update.
     :param sensor_model: Optional[SensorModel] = the sensor model for this raster dataset
     :param elevation_model: Optional[ElevationModel] = an elevation model used to fix the elevation of the image coordinate
 
@@ -70,7 +70,7 @@ def setup_upload_tile_workers(
     """
     try:
         model_invocation_credentials = None
-        if region_request.model_invocation_role:
+        if image_request.model_invocation_role:
             model_invocation_credentials = get_credentials_for_assumed_role(region_request.model_invocation_role)
 
         # Set up a Queue to manage our tile workers
@@ -82,8 +82,8 @@ def setup_upload_tile_workers(
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed
             feature_detector = FeatureDetectorFactory(
-                endpoint=region_request.model_name,
-                endpoint_mode=region_request.model_invoke_mode,
+                endpoint=image_request.model_name,
+                endpoint_mode=image_request.model_invoke_mode,
                 assumed_credentials=model_invocation_credentials,
             ).build()
 

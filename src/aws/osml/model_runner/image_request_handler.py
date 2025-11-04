@@ -164,7 +164,11 @@ class ImageRequestHandler:
                 self.image_status_monitor.process_event(job_item, RequestStatus.IN_PROGRESS, "Processing regions")
 
                 # Place the resulting region requests on the appropriate work queue
-                self.queue_region_request(regions, image_request, ds, sensor_model, extension)
+                if image_request.model_invoke_mode == ModelInvokeMode.SM_BATCH:
+                    # handle batch inference at the image level
+                    self.queue_batch_request(regions, image_request, ds, sensor_model, extension)
+                else:
+                    self.queue_region_request(regions, image_request, ds, sensor_model, extension)
 
         except Exception as err:
             # We failed try and gracefully update our image request
@@ -527,3 +531,62 @@ class ImageRequestHandler:
             is_write_succeeded = SinkFactory.sink_features(job_item.job_id, job_item.outputs, features)
             if not is_write_succeeded:
                 raise AggregateOutputFeaturesException("Failed to write features to S3 or Kinesis!")
+
+    def queue_batch_request(
+        self,
+        all_regions: List[ImageRegion],
+        image_request: ImageRequest,
+        raster_dataset: Dataset,
+        sensor_model: Optional[SensorModel],
+        image_extension: Optional[str],
+    ) -> None:
+
+        # Set up our threaded tile worker pool
+        tile_queue, tile_workers = setup_upload_tile_workers(
+            image_request, sensor_model, ServiceConfig.elevation_model
+        )
+        
+        for region in all_regions:
+
+            region_request = RegionRequest(
+                image_request.get_shared_values(),
+                region_bounds=region,
+                region_id=f"{region[0]}{region[1]}-{image_request.job_id}",
+                image_extension=image_extension,
+            )
+
+            # Create a new entry to the region request being started
+            region_request_item = RegionRequestItem.from_region_request(region_request)
+
+            # Start region request processing
+            self.region_request_table.start_region_request(region_request_item)
+            logger.debug(f"Enhanced handler starting region request: region id: {region_request_item.region_id}")
+
+            # Upload tiles to S3
+            total_tile_count, failed_tile_count = BatchTileProcessor(self.tile_request_table).process_tiles(
+                self.tiling_strategy,
+                region_request,
+                region_request_item,
+                tile_queue,
+                tile_workers,
+                raster_dataset,
+                sensor_model,
+            )
+
+            # update the expected number of tiles
+            region_request_item.total_tiles = total_tile_count
+            region_request_item = self.region_request_table.update_region_request(region_request_item)
+            # image_request_item = self.job_table.get_image_request(region_request.image_id)
+
+        # submit to Batch processing
+        in_queue, worker = setup_batch_submission_worker(image_request)
+
+        # Place the image info onto our processing queue
+        image_info = dict(
+            job_id=image_request.job_id,
+            instance_type=image_request.instance_type,
+            instance_count=int(image_request.instance_count)
+        )
+        in_queue.put(image_info)
+        in_queue.put(None)
+        worker.join()

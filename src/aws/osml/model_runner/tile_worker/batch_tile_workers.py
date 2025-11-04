@@ -286,15 +286,15 @@ class BatchSubmissionWorker(Thread):
             )
 
     @metric_scope
-    def process_tile_submission(self, tile_info: Dict[str, Any], metrics) -> bool:
+    def process_tile_submission(self, job_info: Dict[str, Any], metrics) -> bool:
         """
         Process a single tile submission to async endpoint.
 
-        :param tile_info: Tile information dictionary
+        :param job_info: Tile information dictionary
         :return: True if submission successful, False otherwise
         """
         try:
-            job_id = tile_info["job_id"]
+            job_id = job_info["job_id"]
             logger.info(f"BatchSubmissionWorker-{self.worker_id} processing key: {job_id}")
             input_s3_uri = f"s3://{ServiceConfig.input_bucket}/{os.path.join(ServiceConfig.batch_input_prefix, job_id)}"
             output_s3_uri = f"s3://{ServiceConfig.input_bucket}/{os.path.join(ServiceConfig.batch_output_prefix, job_id)}"
@@ -303,7 +303,13 @@ class BatchSubmissionWorker(Thread):
             # output_s3_uri = "s3://bucket/async-inference/output/08d733f7-d471-4a4b-bd59-761ab430add7"
 
             inference_id = f"batch_{job_id}"
-            self.feature_detector._submit_batch_job(inference_id, input_s3_uri, output_s3_uri)
+            self.feature_detector._submit_batch_job(
+                inference_id, 
+                input_s3_uri, 
+                output_s3_uri,
+                instance_type=job_info["instance_type"],
+                instance_count=int(job_info["instance_count"])
+                )
 
             logger.info(f"Async inference job submitted with {inference_id=}, {output_s3_uri=}")
             return True

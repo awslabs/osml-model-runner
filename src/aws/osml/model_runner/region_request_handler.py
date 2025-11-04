@@ -97,13 +97,14 @@ class RegionRequestHandler:
                 metrics=metrics,
             )
         elif region_request.model_invoke_mode == ModelInvokeMode.SM_BATCH:
-            return self.process_region_request_batch(
-                region_request=region_request,
-                region_request_item=region_request_item,
-                raster_dataset=raster_dataset,
-                sensor_model=sensor_model,
-                metrics=metrics,
-            )
+            raise NotImplementedError("Batch processing moved to image level")
+            # return self.process_region_request_batch(
+            #     region_request=region_request,
+            #     region_request_item=region_request_item,
+            #     raster_dataset=raster_dataset,
+            #     sensor_model=sensor_model,
+            #     metrics=metrics,
+            # )
         else:
             return self.process_region_request_realtime(
                 region_request=region_request,
@@ -444,7 +445,11 @@ class RegionRequestHandler:
                 in_queue, worker = setup_batch_submission_worker(region_request)
 
                 # Place the image info onto our processing queue
-                image_info = {"job_id": region_request.job_id}
+                image_info = dict(
+                    job_id=region_request.job_id,
+                    instance_type="ml.m4.xlarge", # TODO: The resources need to be configurable or perhaps configurable
+                    instance_count=1
+                )
                 in_queue.put(image_info)
                 in_queue.put(None)
                 worker.join()

@@ -55,7 +55,14 @@ class BatchSMDetector(SMDetector):
             logger.warning(f"S3 bucket validation failed during initialization: {e}")
             # Don't fail initialization, but log the warning
 
-    def _submit_batch_job(self, transform_job_name: str, input_s3_uri: str, output_s3_uri: str):
+    def _submit_batch_job(
+        self, 
+        transform_job_name: str, 
+        input_s3_uri: str, 
+        output_s3_uri: str,
+        instance_type: str, 
+        instance_count: int = 1
+        ):
 
         transform_input = {
             "DataSource": {
@@ -75,9 +82,10 @@ class BatchSMDetector(SMDetector):
             "Accept": "application/json", # Or the content type your model outputs (e.g., application/json)
         }
 
+        # Choose an appropriate instance type
         transform_resources = {
-            "InstanceType": "ml.m4.xlarge", # Choose an appropriate instance type
-            "InstanceCount": 1,
+            "InstanceType": instance_type,
+            "InstanceCount": instance_count, 
         }
 
         # Optional: Add environment variables if your inference script requires them
