@@ -2,7 +2,7 @@
 
 import os
 from importlib import reload
-from test.configuration import MOCK_MODEL_RESPONSE, TEST_CONFIG
+from test.unit_config import MOCK_MODEL_RESPONSE, TEST_CONFIG
 from unittest import TestCase, main
 from unittest.mock import Mock, patch
 
