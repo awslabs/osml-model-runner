@@ -5,6 +5,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2025-11-04
+
 ### Changed
 
 - Added `build-unit-test` job to both AWS and Green CI environments for dedicated unit test image builds
