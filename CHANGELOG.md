@@ -5,6 +5,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Added `build-unit-test` job to both AWS and Green CI environments for dedicated unit test image builds
+- Updated unit test jobs to use dedicated unit-test images instead of production images
+- Removed redundant package installation in Dockerfile since gdal-base provides all required dependencies
+- Pointed GDAL base image to gdal-base:v3-8-5-1-python313
+
+### Fixed
+
+- Fixed entrypoint script creation permission issues by moving script generation before USER 1000 switch
+- Resolved potential dnf availability issues by leveraging gdal-base's complete package installation
+
 ## [2.7.2] - 2025-10-21
 
 ### Changed
@@ -14,7 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated unit-test stage to use `${PYTHON_BINARY} -m pytest` instead of hardcoded `pytest`
 - Updated unit-test pip install to use `${PYTHON_BINARY} -m pip` for consistency
 - Remove Tox
-- Pointed GDAL base image to gdal-base:v3-8-5-1-python3-13
 
 ## [2.7.1] - 2025-10-13
 

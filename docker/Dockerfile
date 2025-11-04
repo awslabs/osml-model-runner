@@ -15,7 +15,6 @@ ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 ENV PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}
 #checkov:skip=CKV2_DOCKER_16: PIP_TRUSTED_HOST used for accessing approved mirrors.
 
-ARG PACKAGES="cmake wget gcc gcc-c++ libstdc++ sqlite-libs libcurl libtiff zlib libzstd libjpeg-turbo libpng openjpeg2 libwebp expat libpq"
 ARG PYTHON_BINARY=python3.13
 ARG PIP_BINARY=pip3.13
 
@@ -24,14 +23,14 @@ ARG PIP_BINARY=pip3.13
 # We pass this same check in checkov.
 # nosemgrep: dockerfile.security.last-user-is-root.last-user-is-root
 USER root
-RUN dnf update -y \
-    && dnf install -y --setopt=tsflags=nodocs --allowerasing $PACKAGES  \
-    # libturbojpeg.so is not used by GDAL. Only libjpeg.so*, I don't think this exists here though
-    && rm -f /usr/lib/libturbojpeg.so* \
-    # Only libwebp.so is used by GDAL
-    && rm -f /usr/lib/libwebpmux.so* /usr/lib/libwebpdemux.so* /usr/lib/libwebpdecoder.so* \
-    && dnf clean all \
-    && rm -rf /var/cache/dnf/ /var/tmp/* /tmp/* /var/tmp/.???* /tmp/.???*
+
+# Skip package installation - gdal-base already includes required packages
+# RUN dnf update -y \
+#     && dnf install -y --setopt=tsflags=nodocs --allowerasing $PACKAGES  \
+#     && rm -f /usr/lib/libturbojpeg.so* \
+#     && rm -f /usr/lib/libwebpmux.so* /usr/lib/libwebpdemux.so* /usr/lib/libwebpdecoder.so* \
+#     && dnf clean all \
+#     && rm -rf /var/cache/dnf/ /var/tmp/* /tmp/* /var/tmp/.???* /tmp/.???*
 
 WORKDIR /home
 
@@ -58,13 +57,6 @@ RUN ${PYTHON_BINARY} -m pip install \
 
 # Resolve broken simlinks for gdal python header bindings after python installs.
 RUN ldconfig
-# Clean up old python installs
-USER root
-RUN rm -rf /usr/lib/python3.6/site-packages/urllib3* \
-           /usr/lib/python3.9 \
-           /home/osml-model-runner/.venv/lib/python3.11 \
-           /usr/share/python3-wheels/setuptools-*.whl \
-           /usr/share/python3.11-wheels
 
 # Create directory that pip can install required packages
 # for unit tests to run. Needed for pipeline unit-test job.
@@ -72,9 +64,14 @@ RUN mkdir -p /.local/lib
 RUN chown -R 1000:1000 /.local
 RUN chmod -R 744 /.local
 
+# Create entrypoint script for variable support (as root)
+RUN echo '#!/bin/bash' > /entrypoint.sh && \
+    echo "exec ${PYTHON_BINARY} osml-model-runner/bin/oversightml-mr-entry-point.py \"\$@\"" >> /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
 USER 1000
 
-ENTRYPOINT ${PYTHON_BINARY} osml-model-runner/bin/oversightml-mr-entry-point.py
+ENTRYPOINT ["/entrypoint.sh"]
 
 FROM runner as unit-test
 
@@ -111,7 +108,13 @@ RUN ${PYTHON_BINARY} -m pip install \
 RUN chown -R 1000:1000 /home/osml-model-runner
 RUN chmod -R 744 /home/osml-model-runner
 
+# Create entrypoint script for unit tests (as root)
+RUN echo '#!/bin/bash' > /test-entrypoint.sh && \
+    echo "exec ${PYTHON_BINARY} -m pytest \"\$@\"" >> /test-entrypoint.sh && \
+    chmod +x /test-entrypoint.sh
+
 USER 1000
-ENTRYPOINT ${PYTHON_BINARY} -m pytest
+
+ENTRYPOINT ["/test-entrypoint.sh"]
 CMD ["--durations=10", "--cov-config", ".coveragerc", "--cov", "aws.osml.model_runner"] 
 #checkov:skip=CKV_DOCKER_2:HEALTHCHECK to be added later.

@@ -37,7 +37,7 @@ variables:
   GITLAB_ANALYZER_SEVERITY: high  # tuned for customer requirements
   # PROJECT_ROOT will be set as a group variable in GitLab CI/CD settings
   NEXUS_URL: ${NEXUS_URL}  # GitLab group CI variable
-  GDAL_BASE_IMG: ${CI_REGISTRY}/${PROJECT_ROOT}/common/gdal-base:v3-8-5-1-python3-13
+  GDAL_BASE_IMG: ${CI_REGISTRY}/${PROJECT_ROOT}/common/gdal-base:v3-8-5-1-python313
   MICROSERVICE: "ie-model-runner"
   MICROSERVICE_IMAGE: ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CI_COMMIT_REF_SLUG}
   DOCKERFILE: docker/Dockerfile

@@ -10,3 +10,13 @@ build:
     TARGET: "runner"
     PYTHON_BINARY: "python3.13"
     PIP_BINARY: "pip3.13"
+
+build-unit-test:
+  extends: .docker_build_template
+  variables:
+    # Build the unit-test stage for testing
+    BASE_IMG: ${GDAL_BASE_IMG}
+    TARGET: "unit-test"
+    DESTINATION: "${MICROSERVICE_IMAGE}-unit-test"
+    PYTHON_BINARY: "python3.13"
+    PIP_BINARY: "pip3.13"

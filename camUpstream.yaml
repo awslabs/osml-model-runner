@@ -1,9 +1,9 @@
 git:
   sc:
-    sshCloneUrl: git@gitlab.gs.smil.mil:maven-daas/inference-engine/model-runner.git
+    sshCloneUrl: git@gitlab.gs.smil.mil:maven-daas/data-processors/model-runner.git
     branchStartingPoint: main
     remoteAlias: origin
   tc:
-    sshCloneUrl: git@gitlab.gs.ic.gov:maven-daas/inference-engine/model-runner.git
+    sshCloneUrl: git@gitlab.gs.ic.gov:maven-daas/data-processors/model-runner.git
     branchStartingPoint: main
     remoteAlias: origin
