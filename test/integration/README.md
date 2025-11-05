@@ -4,34 +4,55 @@ This directory contains a unified integration test suite for OSML Model Runner w
 
 ## Prerequisites
 
-Install the required dependencies:
+1. **Install dependencies:**
 
-```bash
-pip install -r test/integration/requirements.txt
-```
+   ```bash
+   pip install -r test/integration/requirements.txt
+   ```
+
+2. **Deployed Model Runner**: Integration tests require a deployed OSML Model Runner with an ECS task definition. The tests automatically import environment variables (SQS queues, DynamoDB tables, etc.) from the task definition, ensuring tests run against the actual deployed configuration.
+
+3. **AWS Credentials**: Configure AWS credentials with access to:
+   - ECS (to read task definitions)
+   - SQS (to send/receive messages)
+   - DynamoDB (to read results)
+   - S3 (to read test images and write results)
+   - Kinesis (to read results)
+   - SageMaker/ELB (to invoke models)
+
+4. **Task Definition Pattern**: By default, tests look for a task definition containing `"ModelRunnerDataplane"`, as this is the defaulted pattern for the CDK deployments. To use a different pattern:
+
+   ```bash
+   export TASK_DEFINITION_PATTERN="YourPattern"
+   ```
+
+   Or specify it programmatically when calling the test runner.
 
 ## Quick Start
 
 The simplest way to run an integration test:
 
 ```bash
+# Move into the integration test folder
+cd test/integration/
+
 # Test with your image and model
-python test/integration/integ_runner.py s3://mr-test-imagery-975050113711/small.tif centerpoint
+python integ_runner.py s3://mr-test-imagery-975050113711/small.tif centerpoint
 
 # Test with expected output validation
-python test/integration/integ_runner.py s3://mr-test-imagery-975050113711/small.tif centerpoint expected.json
+python integ_runner.py s3://mr-test-imagery-975050113711/small.tif centerpoint expected.json
 
 # Test HTTP endpoint
-python test/integration/integ_runner.py s3://my-bucket/image.tif my-model expected.json --http
+python integ_runner.py s3://my-bucket/image.tif my-model expected.json --http
 
 # Test with SageMaker model variant
-python test/integration/integ_runner.py s3://my-bucket/image.tif flood expected.json --model-variant flood-50
+python integ_runner.py s3://my-bucket/image.tif flood expected.json --model-variant flood-50
 
 # Test with multi-container endpoint
-python test/integration/integ_runner.py s3://my-bucket/image.tif multi-container expected.json --target-container centerpoint-container
+python integ_runner.py s3://my-bucket/image.tif multi-container expected.json --target-container centerpoint-container
 
 # Run with verbose logging
-python test/integration/integ_runner.py s3://my-bucket/image.tif centerpoint --verbose
+python integ_runner.py s3://my-bucket/image.tif centerpoint --verbose
 
 # Save results to JSON file
 python test/integration/integ_runner.py s3://my-bucket/image.tif centerpoint --output results.json
@@ -45,13 +66,13 @@ Run multiple tests from a JSON configuration:
 
 ```bash
 # Run full test suite
-python test/integration/integ_runner.py --suite test_suites/model_runner_full.json
+python integ_runner.py --suite test_suites/model_runner_full
 
 # Run with custom timeout and delay
-python test/integration/integ_runner.py --suite test_suites/model_runner_full.json --timeout 45 --delay 10
+python integ_runner.py --suite test_suites/model_runner_full --timeout 45 --delay 10
 
 # Run with verbose logging and save results
-python test/integration/integ_runner.py --suite test_suites/model_runner_full.json --verbose --output test_results.json
+python integ_runner.py --suite test_suites/model_runner_full --verbose --output test_results.json
 ```
 
 ## File Structure
@@ -193,13 +214,24 @@ For flood model tests, validation is automatically performed using count-based v
 
 **Note**: Cannot specify both `--suite` and individual test parameters.
 
+## Configuration
+
+Integration tests automatically import environment variables from the ECS task definition, ensuring tests run against your deployed Model Runner configuration. This includes:
+
+- SQS queue names (ImageRequestQueue, ImageStatusQueue, etc.)
+- DynamoDB table names (ImageRequestTable, FeatureTable, etc.)
+- Result stream/bucket prefixes
+- Other Model Runner configuration
+
+**No manual configuration needed**: Simply ensure your Model Runner is deployed and the tests will automatically discover and use the correct configuration. If the task definition cannot be found, tests will fail with a clear error message indicating that a deployed Model Runner is required.
+
 ## Benefits
 
 ✅ **Simple**: Just 2-3 parameters instead of complex configuration
-✅ **Clear**: No hidden environment variables or configuration files
+✅ **Clear**: Environment variables automatically imported from deployed task definition
 ✅ **Flexible**: Works with any image URI and model name, supports multiple endpoint types
-✅ **Fast**: No complex setup or configuration management
-✅ **Reliable**: Direct parameter passing eliminates configuration errors
+✅ **Fast**: No manual configuration setup - automatically uses deployed configuration
+✅ **Reliable**: Tests run against actual deployed configuration, eliminating configuration drift
 ✅ **Independent**: No dependency on the main model runner package
 ✅ **Comprehensive**: Supports both feature-based and count-based validation
 
