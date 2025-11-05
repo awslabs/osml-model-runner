@@ -57,7 +57,6 @@ RUN ${PYTHON_BINARY} -m pip install \
     --trusted-host ${PIP_TRUSTED_HOST} \
     osml-model-runner/.
 
-
 # Resolve broken simlinks for gdal python header bindings after python installs.
 RUN ldconfig
 # Clean up old python installs
@@ -111,7 +110,6 @@ ENV AWS_SECRET_ACCESS_KEY=testing
 ENV AWS_SECURITY_TOKEN=testing
 ENV AWS_SESSION_TOKEN=testing
 
-
 RUN ${PYTHON_BINARY} -m pip install \
     --no-cache-dir \
     --index-url ${PIP_INDEX_URL} \
@@ -131,5 +129,4 @@ USER 1000
 
 ENTRYPOINT ["/test-entrypoint.sh"]
 CMD ["--durations=10", "--cov-config", ".coveragerc", "--cov", "aws.osml.model_runner"] 
-
 #checkov:skip=CKV_DOCKER_2:HEALTHCHECK to be added later.

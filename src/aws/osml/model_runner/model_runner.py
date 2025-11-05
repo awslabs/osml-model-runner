@@ -31,7 +31,6 @@ from .queue import RequestQueue
 from .region_request_handler import RegionRequestHandler
 from .status import ImageStatusMonitor, RegionStatusMonitor, TileStatusMonitor
 from .tile_worker import TilingStrategy, VariableOverlapTilingStrategy
-from .utilities import parse_s3_event_for_output_location
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
@@ -109,37 +108,6 @@ class ModelRunner:
         )
 
         self.running = False
-
-        self.region_request_handler = None
-        self.image_request_handler = None
-
-        self._setup_tile_components()
-
-    def _setup_tile_components(self) -> None:
-        """
-        Set up enhanced components for async workflow processing.
-
-        :return: None
-        """
-        try:
-            # Set up async-specific components
-            self.tile_request_queue = RequestQueue(ServiceConfig.tile_queue, wait_seconds=0)
-            self.tile_requests_iter = iter(self.tile_request_queue)
-
-            self.tile_request_table = TileRequestTable(ServiceConfig.tile_request_table)
-            self.tile_status_monitor = TileStatusMonitor(ServiceConfig.tile_status_topic)
-
-            # Create enhanced handlers with async workflow
-            self.tile_request_handler_async = TileRequestHandler(
-                tile_request_table=self.tile_request_table,
-                job_table=self.job_table,
-                tile_status_monitor=self.tile_status_monitor,
-            )
-            logger.debug("Successfully configured enhanced components for async workflow")
-
-        except Exception as e:
-            logger.error(f"Unexpected error setting up enhanced components: {e}", exc_info=True)
-            raise
 
     def run(self) -> None:
         """
@@ -281,6 +249,7 @@ class ModelRunner:
                 )
             except InvocationFailure as err:
                 # handle SageMake invocation errors
+                tile_request_item = self.tile_request_table.get_tile_request_by_inference_id(inference_id)
                 self.tile_request_handler.fail_tile_request(tile_request_item)
             except Exception as err:
                 logger.exception(f"Error processing tile request: {err}")

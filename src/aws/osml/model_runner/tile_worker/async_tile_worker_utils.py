@@ -52,11 +52,9 @@ def setup_result_tile_workers(
 
             # Set up our feature table to work with the region quest
             region_request_table = RegionRequestTable(ServiceConfig.region_request_table)
-            region_request_table = RegionRequestTable(ServiceConfig.region_request_table)
 
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed
-            feature_detector = FeatureDetectorFactory(
             feature_detector = FeatureDetectorFactory(
                 endpoint=tile_request.model_name,
                 endpoint_mode=tile_request.model_invoke_mode,
@@ -118,7 +116,6 @@ def setup_submission_tile_workers(
 
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed
-            feature_detector = FeatureDetectorFactory(
             feature_detector = FeatureDetectorFactory(
                 endpoint=region_request.model_name,
                 endpoint_mode=region_request.model_invoke_mode,

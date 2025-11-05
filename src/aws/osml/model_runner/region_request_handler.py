@@ -198,7 +198,6 @@ class RegionRequestHandler:
 
                 # Process all our tiles
                 total_tile_count, failed_tile_count = TileProcessor().process_tiles(
-                total_tile_count, failed_tile_count = TileProcessor().process_tiles(
                     self.tiling_strategy,
                     region_request,
                     region_request_item,
