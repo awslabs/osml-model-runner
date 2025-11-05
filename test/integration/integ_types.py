@@ -9,7 +9,7 @@ to avoid dependencies on the OSML model runner package.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Dict, Optional, Tuple, Union
 
 
 class ModelInvokeMode(str, Enum):
@@ -45,6 +45,9 @@ class ImageRequest:
         tile_overlap: Overlap between tiles, defined in dimensions.
         tile_format: The format of the tiles (e.g., NITF, GeoTIFF).
         tile_compression: Compression type to use for the tiles (e.g., None, JPEG).
+        kinesis_stream_name: Optional full Kinesis stream name for results (e.g., "mr-stream-sink-123456789").
+        s3_bucket_name: Optional full S3 bucket name for results (e.g., "mr-bucket-sink-123456789").
+        region_of_interest: Optional region of interest specification for processing.
     """
 
     job_id: str = ""
@@ -52,19 +55,23 @@ class ImageRequest:
     image_url: str = ""
     model_name: str = ""
     model_invoke_mode: ModelInvokeMode = ModelInvokeMode.NONE
-    model_endpoint_parameters: Optional[Dict[str, Any]] = None
-    tile_size: tuple = (512, 512)
-    tile_overlap: tuple = (128, 128)
+    model_endpoint_parameters: Optional[Dict[str, Union[str, int, float, bool]]] = None
+    tile_size: Tuple[int, int] = (512, 512)
+    tile_overlap: Tuple[int, int] = (128, 128)
     tile_format: str = "GTIFF"
     tile_compression: str = "NONE"
+    # Result destination names (per-test configuration, full resolved names)
+    kinesis_stream_name: Optional[str] = None
+    s3_bucket_name: Optional[str] = None
+    # Test-specific parameters
+    region_of_interest: Optional[str] = None
 
     @property
     def tile_size_scalar(self) -> int:
         """
         Get tile size as a scalar value.
 
-        Returns:
-            The first element of tile_size tuple if it's a tuple, otherwise tile_size itself
+        :returns: The first element of tile_size tuple, or tile_size itself if not a tuple.
         """
         return self.tile_size[0] if isinstance(self.tile_size, tuple) else self.tile_size
 
@@ -73,7 +80,6 @@ class ImageRequest:
         """
         Get tile overlap as a scalar value.
 
-        Returns:
-            The first element of tile_overlap tuple if it's a tuple, otherwise tile_overlap itself
+        :returns: The first element of tile_overlap tuple, or tile_overlap itself if not a tuple.
         """
         return self.tile_overlap[0] if isinstance(self.tile_overlap, tuple) else self.tile_overlap
