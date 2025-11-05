@@ -42,7 +42,7 @@ class ImageRequest:
         model_invoke_mode: The mode in which the model is invoked, such as synchronous or asynchronous.
         model_endpoint_parameters: Optional parameters for the model endpoint.
         tile_size: Dimensions of the tiles into which the image is split for processing.
-        tile_overlap: Overlap between tiles, defined in dimensions.
+        tile_overlap: Overlap between tiles as a scalar value.
         tile_format: The format of the tiles (e.g., NITF, GeoTIFF).
         tile_compression: Compression type to use for the tiles (e.g., None, JPEG).
         kinesis_stream_name: Optional full Kinesis stream name for results (e.g., "mr-stream-sink-123456789").
@@ -57,7 +57,7 @@ class ImageRequest:
     model_invoke_mode: ModelInvokeMode = ModelInvokeMode.NONE
     model_endpoint_parameters: Optional[Dict[str, Union[str, int, float, bool]]] = None
     tile_size: Tuple[int, int] = (512, 512)
-    tile_overlap: Tuple[int, int] = (128, 128)
+    tile_overlap: int = 128
     tile_format: str = "GTIFF"
     tile_compression: str = "NONE"
     # Result destination names (per-test configuration, full resolved names)
@@ -74,12 +74,3 @@ class ImageRequest:
         :returns: The first element of tile_size tuple, or tile_size itself if not a tuple.
         """
         return self.tile_size[0] if isinstance(self.tile_size, tuple) else self.tile_size
-
-    @property
-    def tile_overlap_scalar(self) -> int:
-        """
-        Get tile overlap as a scalar value.
-
-        :returns: The first element of tile_overlap tuple, or tile_overlap itself if not a tuple.
-        """
-        return self.tile_overlap[0] if isinstance(self.tile_overlap, tuple) else self.tile_overlap

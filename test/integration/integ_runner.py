@@ -141,7 +141,7 @@ class IntegRunner:
                     else None
                 ),
                 tile_size=image_request.tile_size_scalar,
-                tile_overlap=image_request.tile_overlap_scalar,
+                tile_overlap=image_request.tile_overlap,
                 tile_format=image_request.tile_format,
                 tile_compression=image_request.tile_compression,
                 region_of_interest=image_request.region_of_interest,
