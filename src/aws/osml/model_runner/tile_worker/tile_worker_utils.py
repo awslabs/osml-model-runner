@@ -100,7 +100,7 @@ def setup_tile_workers(
 
 class TileProcessor:
     def __init__(self):
-        pass
+        self.shutdown_workers = True
 
     def handle_tile(
         self,
@@ -229,19 +229,8 @@ class TileProcessor:
 
                     self.handle_tile(tile_queue, region_request, region_request_item, tmp_image_path, tile_bounds)
 
-                # Put enough empty messages on the queue to shut down the workers
-                for i in range(len(tile_workers)):
-                    tile_queue.put(None)
-
-            # Ensure the wait for tile workers happens within the context where we create
-            # the temp directory. If the context is exited before all workers return then
-            # the directory will be deleted, and we will potentially lose tiles.
-            # Wait for all the workers to finish gracefully before we clean up the temp directory
-            tile_error_count = 0
-            for worker in tile_workers:
-                worker.join()
-                tile_error_count += worker.failed_tile_count
-
+            tile_error_count = self.shut_down_workers(tile_workers, tile_queue)
+            
             logger.debug(
                 (
                     f"Model Runner Stats Processed {total_tile_count} image tiles for "
@@ -254,9 +243,27 @@ class TileProcessor:
 
         return total_tile_count, tile_error_count
 
+    def shut_down_workers(self, tile_workers, tile_queue):
+
+        tile_error_count = 0
+        if self.shutdown_workers:
+            # Put enough empty messages on the queue to shut down the workers
+            for i in range(len(tile_workers)):
+                tile_queue.put(None)
+
+            # Ensure the wait for tile workers happens within the context where we create
+            # the temp directory. If the context is exited before all workers return then
+            # the directory will be deleted, and we will potentially lose tiles.
+            # Wait for all the workers to finish gracefully before we clean up the temp directory
+            for worker in tile_workers:
+                worker.join()
+                tile_error_count += worker.failed_tile_count
+
+        return tile_error_count
 
 class AsyncTileProcessor(TileProcessor):
     def __init__(self, tile_request_table):
+        super().__init__()
         self.tiles_submitted = 0
         self.tile_request_table = tile_request_table
 
@@ -306,6 +313,7 @@ class BatchTileProcessor(AsyncTileProcessor):
     """
     def __init__(self, tile_request_table):
         super().__init__(tile_request_table)
+        self.shutdown_workers = False # delay shutdown until all regions completed
 
 
 @metric_scope

@@ -132,7 +132,9 @@ class BatchUploadWorker(Thread):
             job_id = tile_info["job_id"]
             tile_name = tile_info["tile_id"] + str(Path(tile_info["image_path"]).suffix)
             file_name = os.path.join(job_id, tile_name)
-            input_key = f"{ServiceConfig.batch_input_prefix}{file_name}"
+            input_key = os.path.join(ServiceConfig.batch_input_prefix, file_name)
+
+            # s3://<BUCKET>/<batch_input_prefix>/<job_id>/(0, 0)(9340, 8972)-9d4cb7e1-cb49-4dfb-b0bc-dd0074107053-0-0.NITF
 
             logger.info(f"Uploading {tile_info['image_path']} to {input_key}")
 
@@ -302,16 +304,16 @@ class BatchSubmissionWorker(Thread):
             # input_s3_uri  = "s3://bucket/async-inference/input/08d733f7-d471-4a4b-bd59-761ab430add7"
             # output_s3_uri = "s3://bucket/async-inference/output/08d733f7-d471-4a4b-bd59-761ab430add7"
 
-            inference_id = f"batch_{job_id}"
+            transform_job_name = f"batch-{job_id}"
             self.feature_detector._submit_batch_job(
-                inference_id, 
+                transform_job_name, 
                 input_s3_uri, 
                 output_s3_uri,
                 instance_type=job_info["instance_type"],
                 instance_count=int(job_info["instance_count"])
                 )
 
-            logger.info(f"Async inference job submitted with {inference_id=}, {output_s3_uri=}")
+            logger.info(f"Async inference job submitted with {transform_job_name=}, {output_s3_uri=}")
             return True
 
         except Exception as e:

@@ -1,5 +1,6 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
+import os
 import json
 import logging
 import time
@@ -7,7 +8,7 @@ import traceback
 from dataclasses import dataclass
 from typing import List, Optional
 from pathlib import Path
-
+from urllib.parse import unquote_plus
 from dacite import from_dict
 
 from aws.osml.model_runner.app_config import ServiceConfig
@@ -578,6 +579,19 @@ class TileRequestTable(DDBHelper):
                     "eventSource": "aws:sagemaker",
                     "eventName": "InferenceResult"
                 }
+
+        S3 event notification for Batch notification
+            {
+                'Records': [{
+                    ...,
+                    's3': {
+                        ...,
+                        'bucket': { 'name': <BUCKET>, ... },
+                        'object': { 'key': 'batch-inference/output/EO/<...>.NITF.out', ... }
+                    }
+                }]
+            }
+
         """
         # Handle both direct S3 events and SNS-wrapped S3 events
         try:
@@ -604,6 +618,7 @@ class TileRequestTable(DDBHelper):
 
                         # Construct S3 URI
                         output_location = f"s3://{bucket_name}/{object_key}"
+                        output_location = unquote_plus(output_location) # parse for possible spaces in key
                         logger.debug(f"Extracted output location: {output_location}")
                         return self.get_tile_request_by_output_location(output_location)
             elif "Message" in event_message:
@@ -642,6 +657,7 @@ class TileRequestTable(DDBHelper):
         job_id = tile_request_item.job_id
         img_ext = str(Path(tile_request_item.image_path).suffix)
         tile_name = tile_request_item.tile_id + img_ext
+        file_name = os.path.join(job_id, tile_name)
 
         # Batch image
         input_key = os.path.join(ServiceConfig.batch_input_prefix, file_name)

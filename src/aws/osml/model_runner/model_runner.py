@@ -105,6 +105,7 @@ class ModelRunner:
             endpoint_utils=self.endpoint_utils,
             config=self.config,
             region_request_handler=self.region_request_handler,
+            tile_request_table=self.tile_request_table,
         )
 
         self.running = False

@@ -5,7 +5,7 @@ from typing import Dict, Optional
 import time
 import boto3
 
-from aws.osml.model_runner.app_config import ServiceConfig
+from aws.osml.model_runner.app_config import BotoConfig, ServiceConfig
 from aws.osml.model_runner.inference.detector import Detector
 from aws.osml.model_runner.inference.sm_detector import SMDetector
 from aws.osml.model_runner.utilities import S3Manager, S3OperationError
@@ -102,8 +102,7 @@ class BatchSMDetector(SMDetector):
             Environment=environment_variables, # Include if you have environment variables
         )
 
-
-        response = sagemaker_client.create_transform_job(**create_inputs)
+        response = self.sagemaker_client.create_transform_job(**create_inputs)
         logger.info(f"Transform Job created: {transform_job_name}")
 
 class BatchSMDetectorBuilder:

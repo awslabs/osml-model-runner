@@ -18,7 +18,7 @@ from aws.osml.gdal import GDALConfigEnv, get_image_extension, load_gdal_dataset
 from aws.osml.model_runner.api import get_image_path
 from aws.osml.photogrammetry import SensorModel
 
-from .api import VALID_MODEL_HOSTING_OPTIONS, ImageRequest, RegionRequest
+from .api import VALID_MODEL_HOSTING_OPTIONS, ImageRequest, RegionRequest, ModelInvokeMode
 from .app_config import MetricLabels, ServiceConfig
 from .common import (
     EndpointUtils,
@@ -29,7 +29,7 @@ from .common import (
     get_credentials_for_assumed_role,
     mr_post_processing_options_factory,
 )
-from .database import EndpointStatisticsTable, FeatureTable, JobItem, JobTable, RegionRequestItem, RegionRequestTable
+from .database import EndpointStatisticsTable, FeatureTable, JobItem, JobTable, RegionRequestItem, RegionRequestTable, TileRequestTable
 from .exceptions import (
     AggregateFeaturesException,
     AggregateOutputFeaturesException,
@@ -43,7 +43,7 @@ from .queue import RequestQueue
 from .region_request_handler import RegionRequestHandler
 from .sink import SinkFactory
 from .status import ImageStatusMonitor
-from .tile_worker import TilingStrategy, select_features
+from .tile_worker import select_features, TilingStrategy, BatchTileProcessor, setup_upload_tile_workers, setup_batch_submission_worker
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
@@ -69,6 +69,7 @@ class ImageRequestHandler:
         endpoint_utils: EndpointUtils,
         config: ServiceConfig,
         region_request_handler: RegionRequestHandler,
+        tile_request_table: Optional[TileRequestTable] = None,
     ) -> None:
         """
         Initialize the ImageRequestHandler with the necessary dependencies.
@@ -93,6 +94,7 @@ class ImageRequestHandler:
         self.endpoint_utils = endpoint_utils
         self.config = config
         self.region_request_handler = region_request_handler
+        self.tile_request_table = tile_request_table
 
     def process_image_request(self, image_request: ImageRequest) -> None:
         """
@@ -546,8 +548,10 @@ class ImageRequestHandler:
             image_request, sensor_model, ServiceConfig.elevation_model
         )
         
-        for region in all_regions:
+        batch_tile_processor = BatchTileProcessor(self.tile_request_table)
 
+        # process all regions
+        for region in all_regions:
             region_request = RegionRequest(
                 image_request.get_shared_values(),
                 region_bounds=region,
@@ -563,7 +567,7 @@ class ImageRequestHandler:
             logger.debug(f"Enhanced handler starting region request: region id: {region_request_item.region_id}")
 
             # Upload tiles to S3
-            total_tile_count, failed_tile_count = BatchTileProcessor(self.tile_request_table).process_tiles(
+            total_tile_count, failed_tile_count = batch_tile_processor.process_tiles(
                 self.tiling_strategy,
                 region_request,
                 region_request_item,
@@ -577,6 +581,10 @@ class ImageRequestHandler:
             region_request_item.total_tiles = total_tile_count
             region_request_item = self.region_request_table.update_region_request(region_request_item)
             # image_request_item = self.job_table.get_image_request(region_request.image_id)
+
+        # shutdown workers
+        batch_tile_processor.shutdown_workers = True # turn ON shutdown of workers
+        tile_error_count = batch_tile_processor.shut_down_workers(tile_workers, tile_queue)
 
         # submit to Batch processing
         in_queue, worker = setup_batch_submission_worker(image_request)
