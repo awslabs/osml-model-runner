@@ -38,7 +38,7 @@ def configure_logging(verbose: bool) -> None:
 
     ch = logging.StreamHandler()
     ch.setLevel(logging_level)
-    ch.addFilter(ThreadingLocalContextFilter(["job_id", "image_id", "runner_type"]))
+    ch.addFilter(ThreadingLocalContextFilter(["job_id", "image_id"]))
 
     formatter = jsonlogger.JsonFormatter(
         fmt="%(levelname)s %(message)s %(job_id)s %(image_id)s", datefmt="%Y-%m-%dT%H:%M:%S"
