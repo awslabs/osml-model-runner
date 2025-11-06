@@ -1,0 +1,18 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.10
+    commands:
+      - python -m pip install --upgrade pip
+      - pip install -r test/integration/requirements.txt
+
+  build:
+    commands:
+      # Run the integration test suite (succeeds if all tests pass)
+      - python test/integration/integration_test_runner.py --suite test/integration/test_suites/model_runner_full.json
+
+  post_build:
+    commands:
+      - echo "Integration testing completed at $(date)"

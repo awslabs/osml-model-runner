@@ -1,0 +1,28 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      # Re-create deployment.json for destruction; must match deploy step
+      - cp .github/deployment.github.json.example cdk/bin/deployment/deployment.json
+      - >
+        sed -i "s/ACCOUNT_PLACEHOLDER/$AWS_ACCOUNT_ID/" cdk/bin/deployment/deployment.json
+      - >
+        if [[ "$BASE_REF" == "dev" ]]; then
+          sed -i 's/"BUILD_FROM_SOURCE_PLACEHOLDER"/true/g' cdk/bin/deployment/deployment.json;
+        else
+          sed -i 's/"BUILD_FROM_SOURCE_PLACEHOLDER"/false/g' cdk/bin/deployment/deployment.json;
+        fi
+      - cat cdk/bin/deployment/deployment.json
+      - cd cdk
+      - npm install
+      - npm run build
+      - cd ..
+  build:
+    commands:
+      - cd cdk
+      - cdk destroy --all --force
+      - cd ..
+  post_build:
+    commands:
+      - echo "Infrastructure destroyed on $(date)"

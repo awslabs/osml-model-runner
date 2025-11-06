@@ -1,0 +1,95 @@
+name: 'Build, Test, and Destroy OSML Model Runner'
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+
+env:
+  AWS_REGION: "us-west-2"
+  AWS_PAGER: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  CheckPendingWorkflow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for pending workflows
+        uses: ahmadnassri/action-workflow-queue@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN || github.token }}
+          delay: 300000
+          timeout: 7200000
+
+  DeployModelRunner:
+    needs: CheckPendingWorkflow
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: arn:aws:iam::${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}:role/GithubAction-AssumeRoleWithAction
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          role-duration-seconds: 7200
+      - name: Deploy Model Runner CDK infrastructure
+        uses: aws-actions/aws-codebuild-run-build@v1
+        with:
+          project-name: CodeBuild-DeployGithubOSMLModelRunner
+          buildspec-override: .github/codebuild/build.yml
+          env-vars-for-codebuild: |
+            BASE_REF
+            AWS_ACCOUNT_ID
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          AWS_ACCOUNT_ID: ${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}
+
+  RunIntegrationTests:
+    needs: DeployModelRunner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: arn:aws:iam::${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}:role/GithubAction-AssumeRoleWithAction
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+      - name: Run OSML Model Runner Integration Tests
+        uses: aws-actions/aws-codebuild-run-build@v1
+        with:
+          project-name: CodeBuild-TestGithubOSMLModelRunner
+          buildspec-override: .github/codebuild/integration_test.yml
+          env-vars-for-codebuild: |
+            BASE_REF
+            AWS_ACCOUNT_ID
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          AWS_ACCOUNT_ID: ${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}
+
+  DestroyModelRunner:
+    if: ${{ always() }}
+    needs: [ CheckPendingWorkflow, DeployModelRunner, RunIntegrationTests ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: arn:aws:iam::${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}:role/GithubAction-AssumeRoleWithAction
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          role-duration-seconds: 14400
+      - name: Destroy OSML Model Runner infrastructure
+        uses: aws-actions/aws-codebuild-run-build@v1
+        with:
+          project-name: CodeBuild-DestroyGithubOSMLModelRunner
+          buildspec-override: .github/codebuild/destroy.yml
+          env-vars-for-codebuild: |
+            BASE_REF
+            AWS_ACCOUNT_ID
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          AWS_ACCOUNT_ID: ${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}

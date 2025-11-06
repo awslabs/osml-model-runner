@@ -1,0 +1,39 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 16
+    commands:
+      - cd cdk
+      - npm install -g aws-cdk
+      - npm install
+      - cd ..
+
+  pre_build:
+    commands:
+      # Generate deployment.json from template
+      - cp .github/deployment.github.json.example cdk/bin/deployment/deployment.json
+      - >
+        sed -i "s/ACCOUNT_PLACEHOLDER/$AWS_ACCOUNT_ID/" cdk/bin/deployment/deployment.json
+      - >
+        if [[ "$BASE_REF" == "dev" ]]; then
+          sed -i 's/"BUILD_FROM_SOURCE_PLACEHOLDER"/true/g' cdk/bin/deployment/deployment.json;
+        else
+          sed -i 's/"BUILD_FROM_SOURCE_PLACEHOLDER"/false/g' cdk/bin/deployment/deployment.json;
+        fi
+      - cat cdk/bin/deployment/deployment.json
+      - cd cdk
+      - npm run build
+      - cd ..
+
+  build:
+    commands:
+      - cd cdk
+      - cdk bootstrap --force
+      - cdk deploy --all --require-approval never --concurrency 3
+      - cd ..
+
+  post_build:
+    commands:
+      - echo "Build and deployment completed on $(date)"
