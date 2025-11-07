@@ -1,7 +1,7 @@
 #  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 """
-Feature validation utilities for integration tests.
+Integration validation utilities for integration tests.
 
 This module provides utilities for validating GeoJSON features and feature
 collections against expected results in integration tests.
@@ -18,7 +18,7 @@ from boto3 import dynamodb
 from geojson import Feature
 
 if TYPE_CHECKING:
-    from test.integration.integ_config import IntegConfig
+    from test.integ.config import Config
 
 # Type aliases for boto3 clients/resources (using object as base since boto3 types vary)
 # These represent boto3.client() and boto3.resource() return types
@@ -26,10 +26,10 @@ S3ClientType = object  # boto3.client("s3")
 KinesisClientType = object  # boto3.client("kinesis")
 DynamoDBResourceType = object  # boto3.resource("dynamodb")
 DynamoDBTableType = object  # DynamoDB Table resource
-IntegConfigType = Union["IntegConfig", object]
+ConfigType = Union["Config", object]
 
 
-class FeatureValidator:
+class Validator:
     """
     Validates GeoJSON features and feature collections.
 
@@ -39,7 +39,7 @@ class FeatureValidator:
 
     def __init__(self) -> None:
         """
-        Initialize the feature validator.
+        Initialize the integration validator.
 
         Sets up logging for validation operations.
         """
@@ -345,7 +345,7 @@ class FeatureValidator:
         expected_feature_counts: List[int],
         expected_region_count: int,
         ddb_clients: Optional[DynamoDBResourceType] = None,
-        config: Optional[IntegConfigType] = None,
+        config: Optional[ConfigType] = None,
     ) -> Dict[str, Union[bool, int, List[int], str]]:
         """
         Generic count-based validation for any model.
@@ -398,7 +398,7 @@ class FeatureValidator:
             "message": "Count-based validation passed!",
         }
 
-    def count_features(self, ddb_clients: DynamoDBResourceType, config: IntegConfigType, image_id: str) -> int:
+    def count_features(self, ddb_clients: DynamoDBResourceType, config: ConfigType, image_id: str) -> int:
         """
         Count features in DynamoDB for a given image ID.
 
@@ -419,7 +419,7 @@ class FeatureValidator:
         total_features = len(features)
         return total_features
 
-    def count_region_requests(self, ddb_clients: DynamoDBResourceType, config: IntegConfigType, image_id: str) -> int:
+    def count_region_requests(self, ddb_clients: DynamoDBResourceType, config: ConfigType, image_id: str) -> int:
         """
         Count successful region requests for a given image.
 

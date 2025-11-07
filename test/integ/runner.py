@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 #  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 """
@@ -7,9 +5,11 @@ Unified integration test runner for OSML Model Runner.
 
 This module provides a clean, simple interface for running integration tests
 without external dependencies on scripts/integration/test.py.
+
+The Runner class can be used programmatically or via the CLI entry point
+in bin/run-integration-tests.py.
 """
 
-import argparse
 import json
 import logging
 import os
@@ -20,18 +20,17 @@ from secrets import token_hex
 from typing import Any, Dict, List, Optional, Tuple
 
 # Add the project root to Python path before importing other modules
-# This allows imports like 'test.integration.integ_config' to work when running the script directly
+# This allows imports like 'test.integ.config' to work when running the script directly
 _project_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../..")
 sys.path.insert(0, _project_root)
 
 # Get the script directory for resolving relative paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-from test.integration.feature_validator import FeatureValidator  # noqa: E402
-
-# Import IntegConfig to build configuration from task definition
-from test.integration.integ_config import IntegConfig  # noqa: E402
-from test.integration.integ_types import ImageRequest, ModelInvokeMode  # noqa: E402
+# Import Config to build configuration from task definition
+from test.integ.config import Config  # noqa: E402
+from test.integ.types import ImageRequest, ModelInvokeMode  # noqa: E402
+from test.integ.validator import Validator  # noqa: E402
 
 import boto3  # noqa: E402
 import geojson  # noqa: E402
@@ -39,7 +38,7 @@ from botocore.exceptions import ClientError, ParamValidationError  # noqa: E402
 from geojson import Feature  # noqa: E402
 
 
-class IntegRunner:
+class Runner:
     """
     Unified integration test runner for OSML Model Runner.
 
@@ -56,8 +55,8 @@ class IntegRunner:
         self.setup_logging(verbose)
         self.logger = logging.getLogger(__name__)
         self.clients = self._get_aws_clients()
-        self.config = IntegConfig()
-        self.validator = FeatureValidator()
+        self.config = Config()
+        self.validator = Validator()
         self._account_placeholder_logged = False
 
     def setup_logging(self, verbose: bool = False) -> None:
@@ -103,6 +102,7 @@ class IntegRunner:
         image_request: ImageRequest,
         expected_output_path: Optional[str] = None,
         timeout_minutes: int = 30,
+        test_identifier: Optional[str] = None,
     ) -> Tuple[bool, Dict[str, Any]]:
         """
         Run a complete integration test.
@@ -110,10 +110,14 @@ class IntegRunner:
         :param image_request: ImageRequest object containing all request parameters.
         :param expected_output_path: Path to expected output file for validation.
         :param timeout_minutes: Maximum time to wait for completion.
+        :param test_identifier: Optional test identifier to include in header (e.g., "[7/12] Test Name").
         :returns: Tuple of (success: bool, results: dict).
         """
         self.logger.info(f"\n{'=' * 60}")
-        self.logger.info("🧪  OSML Model Runner Integration Test")
+        if test_identifier:
+            self.logger.info(f"🧪  {test_identifier}")
+        else:
+            self.logger.info("🧪  OSML Model Runner Integration Test")
         self.logger.info(f"{'=' * 60}")
         self.logger.info(f"Image: {image_request.image_url}")
         self.logger.info(f"Model: {image_request.model_name}")
@@ -140,7 +144,7 @@ class IntegRunner:
                     if image_request.model_endpoint_parameters
                     else None
                 ),
-                tile_size=image_request.tile_size_scalar,
+                tile_size=image_request.tile_size,
                 tile_overlap=image_request.tile_overlap,
                 tile_format=image_request.tile_format,
                 tile_compression=image_request.tile_compression,
@@ -768,7 +772,7 @@ class IntegRunner:
         results = {"total_tests": len(test_cases), "passed": 0, "failed": 0, "test_results": []}
 
         for i, test_case in enumerate(test_cases, 1):
-            self.logger.info(f"\n[{i}/{len(test_cases)}] {test_case.get('name', 'Unnamed test')}")
+            test_identifier = f"[{i}/{len(test_cases)}] {test_case.get('name', 'Unnamed test')}"
 
             if i > 1:
                 time.sleep(delay_between_tests)
@@ -778,6 +782,7 @@ class IntegRunner:
                 image_request=image_request,
                 expected_output_path=test_case.get("expected_output"),
                 timeout_minutes=test_case.get("timeout_minutes", timeout_minutes),
+                test_identifier=test_identifier,
             )
 
             test_result["test_name"] = test_case.get("name", f"Test {i}")
@@ -793,116 +798,3 @@ class IntegRunner:
         self.logger.info(f"Test suite completed: {results['passed']} passed, {results['failed']} failed")
         self.logger.info("=" * 60 + "\n")
         return results
-
-
-def main() -> None:
-    """
-    Main entry point for the integration test runner.
-
-    Provides command-line interface for running single tests or test suites.
-    """
-    parser = argparse.ArgumentParser(
-        description="OSML Integration Test Runner",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-            Examples:
-            # Run a single test
-            python integ_runner.py s3://mr-test-imagery-975050113711/small.tif centerpoint
-
-            # Run a test with expected output validation
-            python integ_runner.py s3://mr-test-imagery-975050113711/small.tif centerpoint expected.json
-
-            # Run a test with HTTP endpoint
-            python integ_runner.py s3://my-bucket/image.tif my-model expected.json --http
-
-            # Run a test suite
-            python integ_runner.py --suite centerpoint_tests.json
-
-            # Run with custom timeout and delay
-            python integ_runner.py --suite centerpoint_tests.json --timeout 1 --delay 10
-        """,
-    )
-
-    # Positional arguments for single test (backward compatibility)
-    parser.add_argument("image_uri", nargs="?", help="S3 URI to the test image")
-    parser.add_argument("model_name", nargs="?", help="Name of the model to test")
-    parser.add_argument("expected_output", nargs="?", help="Path to expected output file (optional)")
-
-    # Test suite option
-    parser.add_argument("--suite", help="Path to test suite JSON file")
-
-    # Optional arguments
-    parser.add_argument("--http", action="store_true", help="Use HTTP endpoint instead of SageMaker")
-    parser.add_argument("--timeout", type=int, default=30, help="Timeout in minutes (default: 30)")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
-    parser.add_argument("--output", help="Output file for test results (JSON format)")
-    parser.add_argument("--delay", type=int, default=5, help="Delay in seconds between tests (default: 5)")
-    parser.add_argument("--model-variant", help="SageMaker model variant (e.g., 'AllTraffic', 'flood-50')")
-    parser.add_argument("--target-container", help="Target container hostname for multi-container endpoints")
-
-    args = parser.parse_args()
-
-    # Validate arguments
-    if args.suite:
-        if args.image_uri or args.model_name:
-            parser.error("Cannot specify both --suite and individual test parameters")
-    else:
-        if not args.image_uri or not args.model_name:
-            parser.error("Either --suite or both image_uri and model_name must be provided")
-
-    # Initialize test runner
-    runner = IntegRunner(verbose=args.verbose)
-
-    # Run tests
-    if args.suite:
-        # Load test suite - resolve path relative to script directory
-        resolved_suite_path = os.path.abspath(args.suite)
-        with open(resolved_suite_path, "r") as f:
-            test_cases = json.load(f)
-
-        results = runner.run_test_suite(test_cases, args.timeout, args.delay)
-    else:
-        # Run single test
-        model_invoke_mode = ModelInvokeMode.HTTP_ENDPOINT if args.http else ModelInvokeMode.SM_ENDPOINT
-
-        image_request = runner._create_image_request(
-            image_url=args.image_uri,
-            model_name=args.model_name,
-            model_invoke_mode=model_invoke_mode,
-            model_variant=args.model_variant,
-            target_container=args.target_container,
-        )
-
-        success, test_result = runner.run_test(
-            image_request=image_request,
-            expected_output_path=args.expected_output,
-            timeout_minutes=args.timeout,
-        )
-
-        results = {
-            "total_tests": 1,
-            "passed": 1 if success else 0,
-            "failed": 0 if success else 1,
-            "test_results": [test_result],
-        }
-
-    # Output results
-    if args.output:
-        with open(args.output, "w") as f:
-            json.dump(results, f, indent=2)
-        print(f"Results saved to {args.output}")
-    else:
-        print("\n=== Test Results ===")
-        print(json.dumps(results, indent=2))
-
-    # Exit with appropriate code
-    if results["failed"] > 0:
-        print(f"\n❌ {results['failed']} test(s) FAILED")
-        sys.exit(1)
-    else:
-        print(f"\n✅ All {results['passed']} test(s) PASSED")
-        sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()
