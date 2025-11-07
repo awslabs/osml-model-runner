@@ -9,7 +9,7 @@ to avoid dependencies on the OSML model runner package.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 
 class ModelInvokeMode(str, Enum):
@@ -41,7 +41,7 @@ class ImageRequest:
         model_name: The name of the model to use for image processing.
         model_invoke_mode: The mode in which the model is invoked, such as synchronous or asynchronous.
         model_endpoint_parameters: Optional parameters for the model endpoint.
-        tile_size: Dimensions of the tiles into which the image is split for processing.
+        tile_size: Size of image tiles for processing (scalar value, assumes square tiles).
         tile_overlap: Overlap between tiles as a scalar value.
         tile_format: The format of the tiles (e.g., NITF, GeoTIFF).
         tile_compression: Compression type to use for the tiles (e.g., None, JPEG).
@@ -56,7 +56,7 @@ class ImageRequest:
     model_name: str = ""
     model_invoke_mode: ModelInvokeMode = ModelInvokeMode.NONE
     model_endpoint_parameters: Optional[Dict[str, Union[str, int, float, bool]]] = None
-    tile_size: Tuple[int, int] = (512, 512)
+    tile_size: int = 512
     tile_overlap: int = 128
     tile_format: str = "GTIFF"
     tile_compression: str = "NONE"
@@ -65,12 +65,3 @@ class ImageRequest:
     s3_bucket_name: Optional[str] = None
     # Test-specific parameters
     region_of_interest: Optional[str] = None
-
-    @property
-    def tile_size_scalar(self) -> int:
-        """
-        Get tile size as a scalar value.
-
-        :returns: The first element of tile_size tuple, or tile_size itself if not a tuple.
-        """
-        return self.tile_size[0] if isinstance(self.tile_size, tuple) else self.tile_size

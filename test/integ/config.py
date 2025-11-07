@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class IntegConfig:
+class Config:
     """
     Configuration class for OSML integration tests.
 
@@ -58,7 +58,7 @@ class IntegConfig:
         :returns: Queue name extracted from URL, or the original value if already a name.
 
         Examples:
-            https://sqs.us-west-2.amazonaws.com/975050113711/ImageRequestQueue -> ImageRequestQueue
+            https://sqs.us-west-2.amazonaws.com/${ACCOUNT}/ImageRequestQueue -> ImageRequestQueue
             ImageRequestQueue -> ImageRequestQueue (already a name)
         """
         if not url:
@@ -207,16 +207,16 @@ class IntegConfig:
         return None
 
     @staticmethod
-    def from_task_definition(pattern: str = "ModelRunnerDataplane", region: Optional[str] = None) -> "IntegConfig":
+    def from_task_definition(pattern: str = "ModelRunnerDataplane", region: Optional[str] = None) -> "Config":
         """
-        Build an IntegConfig instance from ECS task definition environment variables.
+        Build a Config instance from ECS task definition environment variables.
 
         :param pattern: Pattern to match task definition names. Defaults to "ModelRunnerDataplane".
         :param region: AWS region to search in. Defaults to auto-detected.
-        :returns: IntegConfig instance configured with values from the task definition.
+        :returns: Config instance configured with values from the task definition.
         :raises RuntimeError: If task definition cannot be found or accessed.
         """
-        config = IntegConfig()
+        config = Config()
         try:
             config._load_from_task_definition(pattern=pattern, region=region)
         except ClientError as e:
@@ -245,4 +245,4 @@ class IntegConfig:
 
 
 # Global configuration instance
-config = IntegConfig()
+config = Config()

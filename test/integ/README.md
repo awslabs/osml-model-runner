@@ -7,7 +7,7 @@ This directory contains a unified integration test suite for OSML Model Runner w
 1. **Install dependencies:**
 
    ```bash
-   pip install -r test/integration/requirements.txt
+   pip install -r test/integ/requirements.txt
    ```
 
 2. **Deployed Model Runner**: Integration tests require a deployed OSML Model Runner with an ECS task definition. The tests automatically import environment variables (SQS queues, DynamoDB tables, etc.) from the task definition, ensuring tests run against the actual deployed configuration.
@@ -34,28 +34,28 @@ The simplest way to run an integration test:
 
 ```bash
 # Move into the integration test folder
-cd test/integration/
+cd test/integ/
 
 # Test with your image and model
-python integ_runner.py s3://mr-test-imagery-975050113711/small.tif centerpoint
+python runner.py s3://mr-test-imagery-${ACCOUNT}/small.tif centerpoint
 
 # Test with expected output validation
-python integ_runner.py s3://mr-test-imagery-975050113711/small.tif centerpoint expected.json
+python runner.py s3://mr-test-imagery-${ACCOUNT}/small.tif centerpoint expected.json
 
 # Test HTTP endpoint
-python integ_runner.py s3://my-bucket/image.tif my-model expected.json --http
+python runner.py s3://my-bucket/image.tif my-model expected.json --http
 
 # Test with SageMaker model variant
-python integ_runner.py s3://my-bucket/image.tif flood expected.json --model-variant flood-50
+python runner.py s3://my-bucket/image.tif flood expected.json --model-variant flood-50
 
 # Test with multi-container endpoint
-python integ_runner.py s3://my-bucket/image.tif multi-container expected.json --target-container centerpoint-container
+python runner.py s3://my-bucket/image.tif multi-container expected.json --target-container centerpoint-container
 
 # Run with verbose logging
-python integ_runner.py s3://my-bucket/image.tif centerpoint --verbose
+python runner.py s3://my-bucket/image.tif centerpoint --verbose
 
 # Save results to JSON file
-python test/integration/integ_runner.py s3://my-bucket/image.tif centerpoint --output results.json
+python test/integ/runner.py s3://my-bucket/image.tif centerpoint --output results.json
 ```
 
 **Note**: For test suites, you can use the `${ACCOUNT}` placeholder in JSON configuration files to automatically use your current AWS account ID.
@@ -66,28 +66,28 @@ Run multiple tests from a JSON configuration:
 
 ```bash
 # Run full test suite
-python integ_runner.py --suite test_suites/model_runner_full
+python runner.py --suite suites/model_runner_full
 
 # Run with custom timeout and delay
-python integ_runner.py --suite test_suites/model_runner_full --timeout 45 --delay 10
+python runner.py --suite suites/model_runner_full --timeout 45 --delay 10
 
 # Run with verbose logging and save results
-python integ_runner.py --suite test_suites/model_runner_full --verbose --output test_results.json
+python runner.py --suite suites/model_runner_full --verbose --output test_results.json
 ```
 
 ## File Structure
 
 ```text
-test/integration/
-├── integ_runner.py                 # Unified test runner (supports single tests and test suites)
-├── integ_types.py                  # Local type definitions (no dependency on model runner)
-├── integ_config.py                 # Configuration management
-├── feature_validator.py            # GeoJSON feature validation utilities
-├── requirements.txt                # Python dependencies for integration tests
-├── __init__.py                     # Package initialization
-└── test_suites/                    # JSON test suite definitions
-    ├── model_runner_full.json      # Full test suite with multiple test cases
-    └── results/                    # Expected output files for validation
+test/integ/
+├── runner.py              # Unified test runner (supports single tests and test suites)
+├── types.py               # Local type definitions (no dependency on model runner)
+├── config.py              # Configuration management
+├── validator.py           # GeoJSON feature validation utilities
+├── requirements.txt       # Python dependencies for integration tests
+├── __init__.py            # Package initialization
+└── suites/                # JSON test suite definitions
+    ├── default.json       # Default test suite for model runner
+    └── results/           # Expected output files for validation
 ```
 
 ## Test Suite Format
@@ -98,23 +98,23 @@ Test suites are defined in JSON format as an array of test case objects:
 [
   {
     "name": "Centerpoint Basic Test",
-    "image_uri": "s3://mr-test-imagery-975050113711/small.tif",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
-    "expected_output": "test_suites/results/sample_centerpoint_model_output.geojson",
+    "expected_output": "suites/results/centerpoint.geojson",
     "timeout_minutes": 30
   },
   {
     "name": "Centerpoint HTTP Test",
-    "image_uri": "s3://mr-test-imagery-975050113711/small.tif",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
     "model_name": "centerpoint",
     "endpoint_type": "HTTP_ENDPOINT",
-    "expected_output": "test_suites/results/sample_centerpoint_http_model_small_output.geojson",
+    "expected_output": "suites/results/centerpoint_http_small.geojson",
     "timeout_minutes": 10
   },
   {
     "name": "Flood Detection Test (flood-50 variant)",
-    "image_uri": "s3://mr-test-imagery-975050113711/large.tif",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/large.tif",
     "model_name": "flood",
     "endpoint_type": "SM_ENDPOINT",
     "model_variant": "flood-50",
@@ -122,11 +122,11 @@ Test suites are defined in JSON format as an array of test case objects:
   },
   {
     "name": "Multi-Container Test",
-    "image_uri": "s3://mr-test-imagery-975050113711/small.tif",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
     "model_name": "multi-container",
     "endpoint_type": "SM_ENDPOINT",
     "target_container": "centerpoint-container",
-    "expected_output": "test_suites/results/sample_centerpoint_model_small_output.geojson",
+    "expected_output": "suites/results/centerpoint_small.geojson",
     "timeout_minutes": 10
   }
 ]
@@ -139,7 +139,7 @@ Test suites are defined in JSON format as an array of test case objects:
 - **`model_name`** (required): Name of the model to test
 - **`endpoint_type`** (required): Either `"SM_ENDPOINT"` or `"HTTP_ENDPOINT"` (default: `"SM_ENDPOINT"`)
 - **`expected_output`** (optional): Path to expected GeoJSON output file for validation
-  - Can be absolute path, relative to current directory, or relative to `test/integration/` directory
+  - Can be absolute path, relative to current directory, or relative to `test/integ/` directory
   - Not required for models that use count-based validation (e.g., flood model)
 - **`timeout_minutes`** (optional): Maximum time to wait for test completion (default: 30)
 - **`model_variant`** (optional): SageMaker model variant name (e.g., `"flood-50"`, `"flood-100"`, `"AllTraffic"`)
@@ -153,7 +153,7 @@ Supported placeholders:
 
 - `${ACCOUNT}`: Current AWS account ID (detected from your AWS credentials/environment)
 
-Example in `model_runner_full.json`:
+Example in `default.json`:
 
 ```json
 {
@@ -169,7 +169,7 @@ The `expected_output` field supports flexible path resolution:
 
 1. **Absolute paths**: Used as-is (e.g., `/absolute/path/to/file.geojson`)
 2. **Relative paths**: First checked relative to current working directory
-3. **Fallback**: If not found, checked relative to `test/integration/` directory
+3. **Fallback**: If not found, checked relative to `test/integ/` directory
 
 This allows test suite JSON files to work regardless of where the test runner is invoked from.
 
