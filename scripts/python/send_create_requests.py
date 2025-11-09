@@ -28,7 +28,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-ib", "--input-bucket", default="spacenet-dataset")
-    parser.add_argument("-ip", "--input-prefix", default="AOIs/AOI_1_Rio/srcData/mosaic_3band/013022223131.tif")
+    parser.add_argument(
+        "-ip", "--input-prefix", default="AOIs/AOI_1_Rio/srcData/mosaic_3band/013022223131.tif"
+    )
     parser.add_argument("-ob", "--output-bucket", default="oversightml-iad-beta-hydratest")
     parser.add_argument("-op", "--output-prefix", default="results")
     parser.add_argument("-ts", "--tile-size", default=1024)
@@ -36,7 +38,9 @@ if __name__ == "__main__":
     parser.add_argument("-tf", "--tile-format", default="NITF")
     parser.add_argument("-m", "--model", default="charon-xview-endpoint")
     parser.add_argument("-ni", "--num-images", default=100)
-    parser.add_argument("-e", "--endpoint", default="https://kojefgt238.execute-api.us-east-1.amazonaws.com/Beta")
+    parser.add_argument(
+        "-e", "--endpoint", default="https://kojefgt238.execute-api.us-east-1.amazonaws.com/Beta"
+    )
     args = parser.parse_args()
 
     s3_client = boto3.client("s3")
@@ -70,7 +74,10 @@ if __name__ == "__main__":
             imageProcessorTileOverlap=int(args.tile_overlap),
             imageProcessorTileFormat=args.tile_format,
         )
-        if "ResponseMetadata" not in response or response["ResponseMetadata"]["HTTPStatusCode"] != 201:
+        if (
+            "ResponseMetadata" not in response
+            or response["ResponseMetadata"]["HTTPStatusCode"] != 201
+        ):
             print("Response Not Accepted!")
             print(response)
             break

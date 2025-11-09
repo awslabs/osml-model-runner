@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Dict
+from typing import Dict, Optional
 
 import boto3
 from botocore.exceptions import ClientError
@@ -10,7 +10,6 @@ from botocore.exceptions import ClientError
 from aws.osml.model_runner.app_config import BotoConfig
 
 logger = logging.getLogger(__name__)
-
 
 class RequestQueue:
     def __init__(
@@ -90,7 +89,7 @@ class RequestQueue:
         except ClientError as err:
             logger.error(f"Unable to reset message visibility: {err}")
 
-    def send_request(self, request: Dict) -> None:
+    def send_request(self, request: Dict, delay_seconds: Optional[int]=None) -> None:
         """
         Send the message via SQS
 
@@ -99,6 +98,10 @@ class RequestQueue:
         :return: None
         """
         try:
-            self.sqs_client.send_message(QueueUrl=self.queue_url, MessageBody=json.dumps(request))
+            self.sqs_client.send_message(
+                QueueUrl=self.queue_url, 
+                MessageBody=json.dumps(request),
+                DelaySeconds=delay_seconds
+                )
         except ClientError as err:
             logger.error(f"Unable to send message visibility: {err}")

@@ -8,7 +8,7 @@ import sys
 from types import FrameType
 from typing import Optional
 
-from codeguru_profiler_agent import Profiler
+# from codeguru_profiler_agent import Profiler
 from pythonjsonlogger import jsonlogger
 
 from aws.osml.model_runner import ModelRunner
@@ -39,13 +39,12 @@ def configure_logging(verbose: bool) -> None:
     ch = logging.StreamHandler()
     ch.setLevel(logging_level)
     ch.addFilter(ThreadingLocalContextFilter(["job_id", "image_id"]))
-
+    
     formatter = jsonlogger.JsonFormatter(
         fmt="%(levelname)s %(message)s %(job_id)s %(image_id)s", datefmt="%Y-%m-%dT%H:%M:%S"
     )
     ch.setFormatter(formatter)
     root_logger.addHandler(ch)
-
 
 def map_signals(model_runner: ModelRunner) -> None:
     signal.signal(signal.SIGINT, lambda signum, frame: handler_stop_signals(signum, frame, model_runner))
@@ -58,10 +57,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def setup_code_profiling() -> None:
-    codeguru_profiling_group = os.environ.get("CODEGURU_PROFILING_GROUP")
-    if codeguru_profiling_group:
-        Profiler(profiling_group_name=codeguru_profiling_group).start()
+# def setup_code_profiling() -> None:
+#     codeguru_profiling_group = os.environ.get("CODEGURU_PROFILING_GROUP")
+#     if codeguru_profiling_group:
+#         Profiler(profiling_group_name=codeguru_profiling_group).start()
 
 
 def main() -> int:
@@ -75,10 +74,8 @@ def main() -> int:
         # Create and configure model runner
         model_runner = ModelRunner()
 
-        logger.info(f"Running model runner version: {model_runner}")
-
         map_signals(model_runner)
-        setup_code_profiling()
+        # setup_code_profiling()
 
         model_runner.run()
         

@@ -12,7 +12,7 @@ from aws_embedded_metrics.unit import Unit
 
 from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
 from aws.osml.model_runner.app_config import BotoConfig, MetricLabels, ServiceConfig
-from aws.osml.model_runner.common import TileState
+from aws.osml.model_runner.common import TileState, RequestStatus
 from aws.osml.model_runner.database import FeatureTable, JobTable, RegionRequestTable, TileRequestTable
 from aws.osml.model_runner.inference.async_sm_detector import AsyncSMDetector
 from aws.osml.model_runner.utilities import S3Manager
@@ -233,7 +233,7 @@ class AsyncResultsWorker(TileWorker):
 
             logger.debug(f"AsyncResultsWorker-{self.worker_id} image_info: {tile_item}")
 
-            if job_status == "PROCESSING":
+            if job_status == RequestStatus.IN_PROGRESS:
                 # Get output location from image_info's output_s3_uri
                 output_location = image_info.get("output_location")
                 if output_location:
@@ -242,7 +242,7 @@ class AsyncResultsWorker(TileWorker):
                     logger.error(f"Job [{type(image_info)}]{image_info} completed but no output location")
                     self._handle_failed_job(image_info, "No output location")
 
-            elif job_status == "FAILED":
+            elif job_status == RequestStatus.FAILED:
                 error_message = tile_item.error_message or "Job failed"
                 self._handle_failed_job(image_info, error_message)
 
@@ -286,12 +286,12 @@ class AsyncResultsWorker(TileWorker):
                 TileState.SUCCEEDED,
             )
 
-            # Update tile status to COMPLETED
+            # Update tile status to RequestStatus.SUCCESS
             if self.tile_request_table and image_info.get("tile_id") and image_info.get("region_id"):
                 try:
-                    self.tile_request_table.update_tile_status(image_info["tile_id"], image_info["region_id"], "COMPLETED")
+                    self.tile_request_table.update_tile_status(image_info["tile_id"], image_info["region_id"], RequestStatus.SUCCESS)
                 except Exception as e:
-                    logger.warning(f"Failed to update tile status to COMPLETED: {e}")
+                    logger.warning(f"Failed to update tile status to {RequestStatus.SUCCESS}: {e}")
 
             logger.debug(f"AsyncResultsWorker-{self.worker_id} completed image_info: {image_info}")
 
@@ -309,7 +309,7 @@ class AsyncResultsWorker(TileWorker):
         # Update tile status to FAILED
         if self.tile_request_table and image_info.get("tile_id") and image_info.get("region_id"):
             try:
-                self.tile_request_table.update_tile_status(image_info["tile_id"], image_info["region_id"], "FAILED", reason)
+                self.tile_request_table.update_tile_status(image_info["tile_id"], image_info["region_id"], RequestStatus.FAILED, reason)
             except Exception as e:
                 logger.warning(f"Failed to update tile status to FAILED: {e}")
 

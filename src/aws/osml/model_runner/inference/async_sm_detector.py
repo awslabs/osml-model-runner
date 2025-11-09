@@ -13,14 +13,11 @@ from geojson import FeatureCollection
 
 from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.common import Timer
-from aws.osml.model_runner.exceptions import ExtensionConfigurationError
 from aws.osml.model_runner.inference.detector import Detector
 from aws.osml.model_runner.inference.sm_detector import SMDetector
-
-from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.api import ModelInvokeMode
 from aws.osml.model_runner.utilities import S3Manager, S3OperationError
-from aws.osml.model_runner.exceptions import ExtensionConfigurationError
+from aws.osml.model_runner.exceptions import ProcessTileException
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +115,7 @@ class AsyncSMDetector(SMDetector):
             output_location = response.get("OutputLocation")
             failure_location = response.get("FailureLocation")
             if not inference_id:
-                raise ExtensionConfigurationError("No inference ID returned from async endpoint")
+                raise ProcessTileException("No inference ID returned from async endpoint")
 
             logger.debug(f"Async inference submitted with ID: {inference_id}")
             return inference_id, output_location, failure_location
@@ -155,35 +152,14 @@ class AsyncSMDetectorBuilder:
 
         logger.debug(f"AsyncSMDetectorBuilder initialized for endpoint: {endpoint}")
 
-    def _validate_parameters(self) -> None:
-        """
-        Validate the builder parameters including async configuration.
-
-        :raises ExtensionConfigurationError: If parameters are invalid
-        """
-        if not self.endpoint:
-            raise ExtensionConfigurationError("Endpoint name is required for AsyncSMDetector")
-
-        if not isinstance(self.endpoint, str):
-            raise ExtensionConfigurationError("Endpoint name must be a string")
-
-        if self.assumed_credentials is not None and not isinstance(self.assumed_credentials, dict):
-            raise ExtensionConfigurationError("Assumed credentials must be a dictionary")
-
-        logger.debug("AsyncSMDetectorBuilder parameters validated successfully")
-
     def build(self) -> Optional[Detector]:
         """
         Build an AsyncSMDetector instance with async configuration.
 
         :return: AsyncSMDetector instance or None if creation fails
-        :raises ExtensionConfigurationError: If parameters are invalid
         """
         try:
             logger.debug(f"Building AsyncSMDetector for endpoint: {self.endpoint}")
-
-            # Validate parameters
-            self._validate_parameters()
 
             # Create the detector with async configuration
             detector = AsyncSMDetector(endpoint=self.endpoint, assumed_credentials=self.assumed_credentials)
@@ -191,11 +167,7 @@ class AsyncSMDetectorBuilder:
             logger.debug(f"Successfully created AsyncSMDetector for endpoint: {self.endpoint}")
             return detector
 
-        except ExtensionConfigurationError:
-            # Re-raise configuration errors
-            raise
         except Exception as e:
-            logger.error(f"Failed to create AsyncSMDetector: {e}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            logger.error(f"Failed to create AsyncSMDetector: {e}", exc_info=True)
             # Return None to allow fallback handling
             return None

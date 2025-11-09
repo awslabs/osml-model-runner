@@ -87,7 +87,7 @@ class TileRequestHandler:
             if result["status"] == "failed":
                 raise Exception(result.get("error", "Worker processing failed"))
 
-            logger.info(f"Tile request {result['request_id']} completed successfully")
+            logger.debug(f"Tile request {result['request_id']} completed successfully")
 
         except Exception as err:
             failed_msg = f"Failed to process image tile: {err}"
@@ -97,13 +97,14 @@ class TileRequestHandler:
             self.fail_tile_request(tile_request_item)
 
     @metric_scope
-    def fail_tile_request(self, tile_request_item: TileRequestItem, metrics: Optional[MetricsLogger] = None):
+    def fail_tile_request(self, tile_request_item: TileRequestItem, metrics: Optional[MetricsLogger] = None) -> TileRequestItem:
         if isinstance(metrics, MetricsLogger):
             metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
         try:
             tile_status = RequestStatus.FAILED
             tile_request_item = self.tile_request_table.complete_tile_request(tile_request_item, tile_status)
             self.tile_status_monitor.process_event(tile_request_item, tile_status, "Completed tile processing")
+            return tile_request_item
         except Exception as status_error:
             logger.error("Unable to update tile status in job table")
             logger.exception(status_error)

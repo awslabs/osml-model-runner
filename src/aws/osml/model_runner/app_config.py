@@ -64,10 +64,10 @@ class ServiceConfig:
     # input/output locations for async and batch data
     input_bucket = os.getenv("ARTIFACT_BUCKET")
     modality = os.getenv("MODALITY") # EO/SAR
-    async_input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", "async-inference/input/")
-    # async_output_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", "async-inference/output/")
-    batch_input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", f"batch-inference/input/{modality}/")
-    batch_output_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", f"batch-inference/output/{modality}/")
+    async_input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", f"input/{modality}/async-inference/")
+    # async_output_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", f"output/{modality}/async-inference/")
+    batch_input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", f"input/{modality}/batch-inference/")
+    batch_output_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX", f"output/{modality}/batch-inference/")
 
     # Optional parameters
 

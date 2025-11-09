@@ -27,10 +27,12 @@ from aws.osml.model_runner.common import (
     ImageRegion,
     Timer,
     get_credentials_for_assumed_role,
+    RequestStatus
 )
 from aws.osml.model_runner.database import FeatureTable, RegionRequestItem, RegionRequestTable, TileRequestItem
 from aws.osml.model_runner.inference import FeatureSelector
 from aws.osml.model_runner.inference.endpoint_factory import FeatureDetectorFactory
+from aws.osml.model_runner.queue import RequestQueue
 from aws.osml.photogrammetry import ElevationModel, SensorModel
 
 from .exceptions import ProcessTilesException, SetupTileWorkersException
@@ -101,6 +103,7 @@ def setup_tile_workers(
 class TileProcessor:
     def __init__(self):
         self.shutdown_workers = True
+        self.tile_request_queue = RequestQueue(ServiceConfig.tile_queue, wait_seconds=0)
 
     def handle_tile(
         self,
@@ -278,33 +281,44 @@ class AsyncTileProcessor(TileProcessor):
 
         tile_id = f"{region_request_item.region_id}-{tile_bounds[0][0]}-{tile_bounds[0][1]}"
 
-        # Check if tile item is None, or if not None and status is failed
-        tile_item = self.tile_request_table.get_tile_request(tile_id, region_request.region_id)
-        if tile_item is None or (tile_item is not None and tile_item.tile_status == "FAILED"):
-            # Create image info
-            tile_request = TileRequest(
-                tile_id=tile_id,
-                region_id=region_request_item.region_id,
-                image_id=region_request_item.image_id,
-                job_id=region_request_item.job_id,
-                image_path=str(tmp_image_path.absolute()),
-                image_url=region_request.image_url,
-                tile_bounds=tile_bounds,
-                model_invocation_role=region_request.model_invocation_role,
-                tile_size=region_request.tile_size,
-                tile_overlap=region_request.tile_overlap,
-                model_invoke_mode=region_request.model_invoke_mode,
-                model_name=region_request.model_name,
-                image_read_role=region_request.image_read_role,
+        # Create image info
+        tile_request = TileRequest(
+            tile_id=tile_id,
+            region_id=region_request_item.region_id,
+            image_id=region_request_item.image_id,
+            job_id=region_request_item.job_id,
+            image_path=str(tmp_image_path.absolute()),
+            image_url=region_request.image_url,
+            tile_bounds=tile_bounds,
+            model_invocation_role=region_request.model_invocation_role,
+            tile_size=region_request.tile_size,
+            tile_overlap=region_request.tile_overlap,
+            model_invoke_mode=region_request.model_invoke_mode,
+            model_name=region_request.model_name,
+            image_read_role=region_request.image_read_role,
+        )
+
+        # tile_item = self.tile_request_table.get_tile_request(tile_id, tile_request.region_id)
+
+        # Add tile to tracking database
+        tile_request_item = self.tile_request_table.get_or_create_tile_request_item(tile_request)
+        
+        # Check if tile is already done
+        if tile_request_item.tile_status == RequestStatus.SUCCESS:
+            return
+
+        # submit tile to submission worker
+        tile_queue.put(tile_request.__dict__)
+        self.tiles_submitted += 1
+
+        # remind me in 1 minute - Insurance in case notifications are not received from S3/SageMaker
+        message = dict(
+            PollerInfo=dict(
+                tile_id=tile_request.tile_id, 
+                region_id=tile_request.region_id
+                )
             )
-
-            # Add tile to tracking database
-            tile_request_item = TileRequestItem.from_tile_request(tile_request)
-            self.tile_request_table.start_tile_request(tile_request_item)
-            # submit tile to submission worker
-            tile_queue.put(tile_request.__dict__)
-            self.tiles_submitted += 1
-
+        self.tile_request_queue.send_request(message, delay_seconds=60)
 
 class BatchTileProcessor(AsyncTileProcessor):
     """

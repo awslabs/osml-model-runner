@@ -11,7 +11,6 @@ from .status_message import StatusMessage
 
 logger = logging.getLogger(__name__)
 
-
 class ImageStatusMonitor(BaseStatusMonitor):
     """
     ImageStatusMonitor is responsible for monitoring and publishing the status of image processing requests.

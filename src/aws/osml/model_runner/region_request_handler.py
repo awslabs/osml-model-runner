@@ -15,7 +15,7 @@ from .api import ModelInvokeMode, RegionRequest
 from .app_config import MetricLabels, ServiceConfig
 from .common import EndpointUtils, RequestStatus, Timer
 from .database import EndpointStatisticsTable, JobItem, JobTable, RegionRequestItem, RegionRequestTable, TileRequestTable
-from .exceptions import ExtensionRuntimeError, ProcessRegionException, SelfThrottledRegionException
+from .exceptions import ProcessRegionException, SelfThrottledRegionException
 from .queue import RequestQueue
 from .status import RegionStatusMonitor
 from .tile_worker import BatchTileProcessor, AsyncTileProcessor, TileProcessor, TilingStrategy, setup_submission_tile_workers, setup_tile_workers, setup_upload_tile_workers, setup_batch_submission_worker
@@ -241,6 +241,7 @@ class RegionRequestHandler:
             if self.config.self_throttling:
                 self.endpoint_statistics_table.decrement_region_count(region_request.model_name)
 
+
     def process_region_request_async(
         self,
         region_request: RegionRequest,
@@ -262,123 +263,7 @@ class RegionRequestHandler:
 
         :return: JobItem
         """
-        logger.info(f"EnhancedRegionRequestHandler processing region: {region_request.region_id}")
-
-        try:
-            # Validate the enhanced region request
-            if not region_request.is_valid():
-                logger.error(f"Invalid Enhanced Region Request! {region_request.__dict__}")
-                raise ValueError("Invalid Enhanced Region Request")
-
-            # Set up enhanced dimensions for metrics
-            if isinstance(metrics, MetricsLogger):
-                image_format = str(raster_dataset.GetDriver().ShortName).upper()
-                metrics.put_dimensions(
-                    {
-                        "Operation": "EnhancedRegionProcessing",
-                        "ModelName": region_request.model_name,
-                        "InputFormat": image_format,
-                        "HandlerType": "EnhancedRegionRequestHandler",
-                    }
-                )
-
-            # Handle self-throttling with enhanced monitoring
-            if ServiceConfig.self_throttling:
-                max_regions = self.endpoint_utils.calculate_max_regions(
-                    region_request.model_name, region_request.model_invocation_role
-                )
-                self.endpoint_statistics_table.upsert_endpoint(region_request.model_name, max_regions)
-                in_progress = self.endpoint_statistics_table.current_in_progress_regions(region_request.model_name)
-
-                if in_progress >= max_regions:
-                    if isinstance(metrics, MetricsLogger):
-                        metrics.put_metric("EnhancedRegionRequestHandler.Throttles", 1, str(Unit.COUNT.value))
-                    logger.warning(
-                        f"Enhanced handler throttling region request. (Max: {max_regions} In-progress: {in_progress})"
-                    )
-                    from aws.osml.model_runner.exceptions import SelfThrottledRegionException
-
-                    raise SelfThrottledRegionException
-
-                self.endpoint_statistics_table.increment_region_count(region_request.model_name)
-
-            try:
-                # Start region request processing
-                self.region_request_table.start_region_request(region_request_item)
-                logger.debug(f"Enhanced handler starting region request: region id: {region_request_item.region_id}")
-
-                # Set up our threaded tile worker pool
-                tile_queue, tile_workers = setup_submission_tile_workers(
-                    region_request, sensor_model, ServiceConfig.elevation_model
-                )
-
-                # Process tiles using appropriate method
-                self.queue_tile_request(
-                    tile_queue,
-                    tile_workers,
-                    self.tiling_strategy,
-                    region_request,
-                    region_request_item,
-                    raster_dataset,
-                    sensor_model,
-                    metrics=metrics,
-                )
-
-                image_request_item = self.job_table.get_image_request(region_request.image_id)
-
-                return image_request_item
-
-            except Exception as err:
-                failed_msg = f"Enhanced handler failed to process image region: {err}"
-                logger.error(failed_msg, exc_info=True)
-                region_request_item.message = failed_msg
-
-                # Add enhanced error metrics
-                if isinstance(metrics, MetricsLogger):
-                    metrics.put_metric("EnhancedRegionRequestHandler.ProcessingErrors", 1, str(Unit.COUNT.value))
-
-                return self.fail_region_request(region_request_item)
-
-            finally:
-                # Decrement the endpoint region counter
-                if ServiceConfig.self_throttling:
-                    self.endpoint_statistics_table.decrement_region_count(region_request.model_name)
-
-        except Exception as e:
-            failed_msg = f"EnhancedRegionRequestHandler error: {e}"
-            logger.error(failed_msg, exc_info=True)
-            if isinstance(metrics, MetricsLogger):
-                metrics.put_metric("EnhancedRegionRequestHandler.Errors", 1, str(Unit.COUNT.value))
-
-            # Check if we should fallback or re-raise
-            if not ServiceConfig.extension_fallback_enabled:
-                raise ExtensionRuntimeError(f"Enhanced region processing failed: {e}") from e
-
-            region_request_item.message = failed_msg
-            return self.fail_region_request(region_request_item)
-
-    def process_region_request_batch(
-        self,
-        region_request: RegionRequest,
-        region_request_item: RegionRequestItem,
-        raster_dataset: gdal.Dataset,
-        sensor_model: Optional[SensorModel] = None,
-        metrics: MetricsLogger = None,
-    ) -> JobItem:
-        """
-        Enhanced region request processing with preprocessing hooks and enhanced monitoring.
-
-        This method extends the base implementation while maintaining full compatibility.
-
-        :param region_request: RegionRequest = the region request
-        :param region_request_item: RegionRequestItem = the region request to update
-        :param raster_dataset: gdal.Dataset = the raster dataset containing the region
-        :param sensor_model: Optional[SensorModel] = the sensor model for this raster dataset
-        :param metrics: MetricsLogger = the metrics logger to use to report metrics.
-
-        :return: JobItem
-        """
-        logger.info(f"Batch processing region: {region_request.region_id}")
+        logger.info(f"Async processing region: {region_request.region_id}")
 
         try:
             # Validate the enhanced region request
@@ -420,12 +305,12 @@ class RegionRequestHandler:
                 logger.debug(f"Enhanced handler starting region request: region id: {region_request_item.region_id}")
 
                 # Set up our threaded tile worker pool
-                tile_queue, tile_workers = setup_upload_tile_workers(
+                tile_queue, tile_workers = setup_submission_tile_workers(
                     region_request, sensor_model, ServiceConfig.elevation_model
                 )
 
-                # Upload tiles to S3
-                total_tile_count, failed_tile_count = BatchTileProcessor(self.tile_request_table).process_tiles(
+                # Process tiles using appropriate method
+                total_tile_count, failed_tile_count = AsyncTileProcessor(self.tile_request_table).process_tiles(
                     self.tiling_strategy,
                     region_request,
                     region_request_item,
@@ -439,19 +324,6 @@ class RegionRequestHandler:
                 region_request_item.total_tiles = total_tile_count
                 region_request_item = self.region_request_table.update_region_request(region_request_item)
                 image_request_item = self.job_table.get_image_request(region_request.image_id)
-
-                # submit to Batch processing
-                in_queue, worker = setup_batch_submission_worker(region_request)
-
-                # Place the image info onto our processing queue
-                image_info = dict(
-                    job_id=region_request.job_id,
-                    instance_type="ml.m4.xlarge", # TODO: The resources need to be configurable or perhaps configurable
-                    instance_count=1
-                )
-                in_queue.put(image_info)
-                in_queue.put(None)
-                worker.join()
 
                 return image_request_item
 
@@ -477,9 +349,128 @@ class RegionRequestHandler:
             if isinstance(metrics, MetricsLogger):
                 metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
 
-            # Check if we should fallback or re-raise
-            if not ServiceConfig.extension_fallback_enabled:
-                raise ExtensionRuntimeError(f"Enhanced region processing failed: {e}") from e
-
             region_request_item.message = failed_msg
             return self.fail_region_request(region_request_item)
+
+    # def process_region_request_batch(
+    #     self,
+    #     region_request: RegionRequest,
+    #     region_request_item: RegionRequestItem,
+    #     raster_dataset: gdal.Dataset,
+    #     sensor_model: Optional[SensorModel] = None,
+    #     metrics: MetricsLogger = None,
+    # ) -> JobItem:
+    #     """
+    #     Enhanced region request processing with preprocessing hooks and enhanced monitoring.
+
+    #     This method extends the base implementation while maintaining full compatibility.
+
+    #     :param region_request: RegionRequest = the region request
+    #     :param region_request_item: RegionRequestItem = the region request to update
+    #     :param raster_dataset: gdal.Dataset = the raster dataset containing the region
+    #     :param sensor_model: Optional[SensorModel] = the sensor model for this raster dataset
+    #     :param metrics: MetricsLogger = the metrics logger to use to report metrics.
+
+    #     :return: JobItem
+    #     """
+    #     logger.info(f"Batch processing region: {region_request.region_id}")
+
+    #     try:
+    #         # Validate the enhanced region request
+    #         if not region_request.is_valid():
+    #             logger.error(f"Invalid Enhanced Region Request! {region_request.__dict__}")
+    #             raise ValueError("Invalid Enhanced Region Request")
+
+    #         # Set up enhanced dimensions for metrics
+    #         if isinstance(metrics, MetricsLogger):
+    #             image_format = str(raster_dataset.GetDriver().ShortName).upper()
+    #             metrics.put_dimensions(
+    #                 {
+    #                     "Operation": "EnhancedRegionProcessing",
+    #                     "ModelName": region_request.model_name,
+    #                     "InputFormat": image_format,
+    #                     "HandlerType": "RegionRequestHandler",
+    #                 }
+    #             )
+
+    #         # Handle self-throttling with enhanced monitoring
+    #         if ServiceConfig.self_throttling:
+    #             max_regions = self.endpoint_utils.calculate_max_regions(
+    #                 region_request.model_name, region_request.model_invocation_role
+    #             )
+    #             self.endpoint_statistics_table.upsert_endpoint(region_request.model_name, max_regions)
+    #             in_progress = self.endpoint_statistics_table.current_in_progress_regions(region_request.model_name)
+
+    #             if in_progress >= max_regions:
+    #                 if isinstance(metrics, MetricsLogger):
+    #                     metrics.put_metric(MetricLabels.THROTTLES, 1, str(Unit.COUNT.value))
+    #                 logger.warning(f"Throttling region request. (Max: {max_regions} In-progress: {in_progress})")
+    #                 raise SelfThrottledRegionException
+
+    #             self.endpoint_statistics_table.increment_region_count(region_request.model_name)
+
+    #         try:
+    #             # Start region request processing
+    #             self.region_request_table.start_region_request(region_request_item)
+    #             logger.debug(f"Enhanced handler starting region request: region id: {region_request_item.region_id}")
+
+    #             # Set up our threaded tile worker pool
+    #             tile_queue, tile_workers = setup_upload_tile_workers(
+    #                 region_request, sensor_model, ServiceConfig.elevation_model
+    #             )
+
+    #             # Upload tiles to S3
+    #             total_tile_count, failed_tile_count = BatchTileProcessor(self.tile_request_table).process_tiles(
+    #                 self.tiling_strategy,
+    #                 region_request,
+    #                 region_request_item,
+    #                 tile_queue,
+    #                 tile_workers,
+    #                 raster_dataset,
+    #                 sensor_model,
+    #             )
+
+    #             # update the expected number of tiles
+    #             region_request_item.total_tiles = total_tile_count
+    #             region_request_item = self.region_request_table.update_region_request(region_request_item)
+    #             image_request_item = self.job_table.get_image_request(region_request.image_id)
+
+    #             # submit to Batch processing
+    #             in_queue, worker = setup_batch_submission_worker(region_request)
+
+    #             # Place the image info onto our processing queue
+    #             image_info = dict(
+    #                 job_id=region_request.job_id,
+    #                 instance_type=region_request.instance_type,
+    #                 instance_count=region_request.instance_count
+    #             )
+    #             in_queue.put(image_info)
+    #             in_queue.put(None)
+    #             worker.join()
+
+    #             return image_request_item
+
+    #         except Exception as err:
+    #             failed_msg = f"Enhanced handler failed to process image region: {err}"
+    #             logger.error(failed_msg, exc_info=True)
+    #             region_request_item.message = failed_msg
+
+    #             # Add enhanced error metrics
+    #             if isinstance(metrics, MetricsLogger):
+    #                 metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+
+    #             return self.fail_region_request(region_request_item)
+
+    #         finally:
+    #             # Decrement the endpoint region counter
+    #             if ServiceConfig.self_throttling:
+    #                 self.endpoint_statistics_table.decrement_region_count(region_request.model_name)
+
+    #     except Exception as e:
+    #         failed_msg = f"RegionRequestHandler error: {e}"
+    #         logger.error(failed_msg, exc_info=True)
+    #         if isinstance(metrics, MetricsLogger):
+    #             metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+
+    #         region_request_item.message = failed_msg
+    #         return self.fail_region_request(region_request_item)

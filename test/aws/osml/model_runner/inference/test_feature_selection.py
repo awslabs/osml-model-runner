@@ -173,8 +173,8 @@ class TestFeatureSelection(TestCase):
     def test_feature_selection_return_no_duplicates(self):
         """
         Test that feature selection does not add a duplicate detection to the map.
-
-        When multiple detections have the same key, the second detection overwrites the first.
+        
+        When multiple detections have the same key, the second detection overwrites the first. 
         """
         from aws.osml.model_runner.common import FeatureDistillationNMS
         from aws.osml.model_runner.inference import FeatureSelector

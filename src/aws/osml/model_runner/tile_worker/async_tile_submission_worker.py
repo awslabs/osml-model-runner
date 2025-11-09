@@ -4,11 +4,13 @@ import logging
 from queue import Empty, Queue
 from threading import Thread
 from typing import Any, Dict, Optional
+from pathlib import Path
 
 from aws_embedded_metrics.metric_scope import metric_scope
 from aws.osml.model_runner.app_config import ServiceConfig
 
 from aws.osml.model_runner.app_config import ServiceConfig
+from aws.osml.model_runner.common import RequestStatus
 from aws.osml.model_runner.database import TileRequestTable
 from aws.osml.model_runner.inference import AsyncSMDetector
 from aws.osml.model_runner.utilities import S3Manager
@@ -88,7 +90,7 @@ class AsyncSubmissionWorker(Thread):
 
                     # Mark task as done
                     self.tile_queue.task_done()
-                    logger.info(f"Completing task on submission worker: {self.worker_id} for {tile_info.get('tile_id')}")
+                    logger.info(f"Completing task on async submission worker: {self.worker_id} for {tile_info.get('tile_id')}")
 
                 except Empty:
                     # Timeout waiting for tile, continue loop
@@ -154,14 +156,12 @@ class AsyncSubmissionWorker(Thread):
             if self.tile_request_table and tile_info.get("tile_id") and tile_info.get("region_id"):
                 try:
                     # Update status to PROCESSING
-                    self.tile_request_table.update_tile_status(tile_info["tile_id"], tile_info["region_id"], "PROCESSING")
+                    self.tile_request_table.update_tile_status(tile_info["tile_id"], tile_info["region_id"], RequestStatus.IN_PROGRESS)
 
                     # Update inference_id and output_location
                     self.tile_request_table.update_tile_inference_info(
                         tile_info["tile_id"], tile_info["region_id"], inference_id, output_location, failure_location
                     )
-
-                    # TODO: Send polling reminder message to tile queue
 
                 except Exception as e:
                     logger.warning(f"Failed to update tile status and inference info: {e}")
@@ -176,7 +176,7 @@ class AsyncSubmissionWorker(Thread):
                 try:
                     logger.info(f"Updating status for {tile_info=}")
                     self.tile_request_table.update_tile_status(
-                        tile_info["tile_id"], tile_info["region_id"], "FAILED", f"Submission error: {str(e)}"
+                        tile_info["tile_id"], tile_info["region_id"], RequestStatus.FAILED, f"Submission error: {str(e)}"
                     )
                 except Exception as update_e:
                     logger.warning(f"Failed to update tile status to FAILED: {update_e}")

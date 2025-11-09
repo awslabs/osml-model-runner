@@ -21,18 +21,18 @@ class TileStatusMonitor(BaseStatusMonitor):
         """
         try:
             if hasattr(tile_request_item, "tile_status") and tile_request_item.tile_status:
-                status_str = tile_request_item.tile_status.upper()
+                status = tile_request_item.tile_status
 
-                if status_str == "COMPLETED":
+                if status == RequestStatus.SUCCESS:
                     return RequestStatus.SUCCESS
-                elif status_str == "FAILED":
+                elif status == RequestStatus.FAILED:
                     return RequestStatus.FAILED
-                elif status_str == "PROCESSING":
+                elif status == RequestStatus.IN_PROGRESS:
                     return RequestStatus.IN_PROGRESS
-                elif status_str == "PENDING":
+                elif status == RequestStatus.PENDING:
                     return RequestStatus.IN_PROGRESS
                 else:
-                    logger.warning(f"Unknown tile_status: {status_str}, defaulting to IN_PROGRESS")
+                    logger.warning(f"Unknown tile_status: {status}, defaulting to IN_PROGRESS")
                     return RequestStatus.IN_PROGRESS
             else:
                 logger.warning("Tile request item has no tile_status, defaulting to IN_PROGRESS")

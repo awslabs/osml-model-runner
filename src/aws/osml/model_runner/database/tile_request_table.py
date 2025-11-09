@@ -12,15 +12,17 @@ from urllib.parse import unquote_plus
 from dacite import from_dict
 
 from aws.osml.model_runner.app_config import ServiceConfig
-from aws.osml.model_runner.exceptions import InvocationFailure
+from aws.osml.model_runner.exceptions import InvocationFailure, SkipException
 from aws.osml.model_runner.database.ddb_helper import DDBHelper, DDBItem, DDBKey
 from aws.osml.model_runner.database.exceptions import (
     CompleteRegionException,
     GetRegionRequestItemException,
     StartRegionException,
-    UpdateRegionException,
+    UpdateRegionException
 )
 from aws.osml.model_runner.utilities import S3Manager
+from aws.osml.model_runner.common import RequestStatus
+from aws.osml.model_runner.api import TileRequest
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ class TileRequestItem(DDBItem):
         expire_time (Optional[int]): TTL timestamp (7 days from creation)
         start_time (Optional[int]): Processing start time in epoch milliseconds
         end_time (Optional[int]): Processing end time in epoch milliseconds
-        tile_status (Optional[str]): Processing status - PENDING, PROCESSING, COMPLETED, FAILED
+        tile_status (Optional[RequestStatus]): Processing status - PENDING, PROCESSING, SUCCESS, FAILED
         processing_duration (Optional[int]): Processing time in milliseconds (end_time - start_time)
         retry_count (Optional[int]): Number of processing retries (initialized to 0)
         error_message (Optional[str]): Error message if processing failed
@@ -105,7 +107,7 @@ class TileRequestItem(DDBItem):
         )
 
     @classmethod
-    def from_tile_request(cls, tile_request) -> "TileRequestItem":
+    def from_tile_request(cls, tile_request: TileRequest) -> "TileRequestItem":
         """
         Create a TileRequestItem from a TileRequest.
 
@@ -171,7 +173,7 @@ class TileRequestTable(DDBHelper):
 
             # Update the tile item to have the correct start parameters
             tile_request_item.start_time = start_time_millisec
-            tile_request_item.tile_status = "PENDING"
+            tile_request_item.tile_status = RequestStatus.PENDING
             tile_request_item.retry_count = 0
             tile_request_item.processing_duration = 0
             # Set TTL to 7 days from now
@@ -185,14 +187,14 @@ class TileRequestTable(DDBHelper):
             raise StartRegionException("Failed to add tile request to the table!") from err
 
     def update_tile_status(
-        self, tile_id: str, region_id: str, tile_status: str, error_message: Optional[str] = None
+        self, tile_id: str, region_id: str, tile_status: RequestStatus, error_message: Optional[str] = None
     ) -> TileRequestItem:
         """
         Update the tile_status of a tile processing request.
 
         :param tile_id: str = the unique identifier for the tile
         :param region_id: str = the region identifier
-        :param tile_status: str = new status (PROCESSING, COMPLETED, FAILED)
+        :param tile_status: RequestStatus = new status (PROCESSING, SUCCESS, FAILED)
         :param error_message: Optional[str] = error message if tile_status is FAILED
 
         :return: TileRequestItem = Updated tile request item
@@ -209,13 +211,12 @@ class TileRequestTable(DDBHelper):
             expr_attr_names = {"#tile_status": "tile_status"}
 
             # Add start_time when tile_status changes to PROCESSING
-            # TODO: Update these to use RequestStatus
-            if tile_status == "PROCESSING":
+            if tile_status == RequestStatus.IN_PROGRESS:
                 update_expr += ", start_time = :start_time"
                 update_attr[":start_time"] = current_time
 
             # Add end_time and processing_duration if completing
-            if tile_status in ["COMPLETED", "FAILED"]:
+            if tile_status in [RequestStatus.SUCCESS, RequestStatus.FAILED]:
                 update_expr += ", end_time = :end_time"
                 update_attr[":end_time"] = current_time
 
@@ -247,13 +248,13 @@ class TileRequestTable(DDBHelper):
             raise UpdateRegionException("Failed to update tile_status!") from e
 
     def complete_tile_request(
-        self, tile_request_item: TileRequestItem, tile_status: str, error_message: Optional[str] = None
+        self, tile_request_item: TileRequestItem, tile_status: RequestStatus, error_message: Optional[str] = None
     ) -> TileRequestItem:
         """
         Complete a tile processing request with final tile_status.
 
         :param tile_request_item: TileRequestItem = the tile request item to complete
-        :param tile_status: str = final tile_status (COMPLETED, FAILED)
+        :param tile_status: RequestStatus = final tile_status (SUCCESS, FAILED)
         :param error_message: Optional[str] = error message if tile_status is FAILED
 
         :return: TileRequestItem = Updated tile request item
@@ -305,28 +306,13 @@ class TileRequestTable(DDBHelper):
             logger.warning(GetRegionRequestItemException(f"Failed to get TileRequestItem! {err}"))
             return None
 
-    def is_tile_item_done(self, tile_item: TileRequestItem):
-        if tile_item and tile_item.tile_status:
-            return tile_item.tile_status in ["COMPLETED", "FAILED"]
-        return False
-
-    def is_tile_done(self, tile_id: str, region_id: str) -> bool:
-        """
-        NOT USED
-        Check if a tile is done processing (COMPLETED or FAILED status).
-        Optimized for the primary access pattern "is tile with id done?".
-
-        :param tile_id: str = the unique identifier for the tile
-        :param region_id: str = the region identifier
-
-        :return: bool = True if tile is done (COMPLETED or FAILED), False otherwise
-        """
-        try:
-            tile_item = self.get_tile_request(tile_id, region_id)
-            return self.is_tile_item_done(tile_item)
-        except Exception as err:
-            logger.warning(f"Failed to check tile status for tile_id={tile_id}: {err}")
-            return False
+    def get_or_create_tile_request_item(self, tile_request: TileRequest) -> TileRequestItem:
+        tile_request_item = self.get_tile_request(tile_request.tile_id, tile_request.region_id)
+        if tile_request_item is None:
+            tile_request_item = TileRequestItem.from_tile_request(tile_request)
+            self.start_tile_request(tile_request_item)
+            logger.info(f"Starting tile item for: {tile_request.tile_id}")
+        return tile_request_item
 
     def get_tiles_for_region(self, region_id: str, status_filter: Optional[str] = None) -> List[TileRequestItem]:
         """
@@ -522,9 +508,9 @@ class TileRequestTable(DDBHelper):
             completed_count = 0
 
             for tile in tiles:
-                if tile.tile_status == "COMPLETED":
+                if tile.tile_status == RequestStatus.SUCCESS:
                     completed_count += 1
-                elif tile.tile_status == "FAILED":
+                elif tile.tile_status == RequestStatus.FAILED:
                     failed_tile_count += 1
 
             return failed_tile_count, completed_count
@@ -541,7 +527,7 @@ class TileRequestTable(DDBHelper):
         :param event_message: S3 event notification message from SQS
         :return: S3 URI of the output location, or empty string if parsing fails
 
-        sns message from sagemaker
+        SNS message from SageMaker
             Success:
                 {
                 "awsRegion":"us-east-1",
@@ -587,7 +573,7 @@ class TileRequestTable(DDBHelper):
                     's3': {
                         ...,
                         'bucket': { 'name': <BUCKET>, ... },
-                        'object': { 'key': 'batch-inference/output/EO/<...>.NITF.out', ... }
+                        'object': { 'key': 'output/EO/batch-inference/<...>.NITF.out', ... }
                     }
                 }]
             }
@@ -597,16 +583,19 @@ class TileRequestTable(DDBHelper):
         try:
             if "responseParameters" in event_message:
                 # SageMaker -> SNS -> SQS: Async inference notitifcations from SageMaker
-                if event_message.get("invocationStatus", "") == "Failed":
-                    logger.error(f"Invocation failed for {event_message}")
-                    raise InvocationFailure(event_message.get("failureReason"))
                 logger.debug(f"Processing event from SageMaker->SNS: {event_message}")
-                output_location = event_message["responseParameters"]["outputLocation"]
                 inference_id = event_message["inferenceId"]
-                return self.get_tile_request_by_inference_id(inference_id)
+                if event_message.get("invocationStatus", "") == "Failed":
+                    logger.info(f"Invocation failed for {event_message}")
+                    tile_request_item = self.get_tile_request_by_inference_id(inference_id)
+                    tile_request_item.tile_status = RequestStatus.FAILED
+                    tile_request_item.error_message = event_message.get("failureReason")
+                    return tile_request_item
+                # return None # only using this path to handle errors. Success path goes through S3.``
+                raise SkipException("Skipping success messages from SageMaker->SNS->SQS")
             elif "Records" in event_message:
-                # Direct S3 event: Batch inference notifications for Transform Jobs
-                logger.debug(f"Processing event from S3: {event_message}")
+                # Direct S3 event: Async and Batch inference notifications
+                logger.info(f"Processing event from S3: {event_message}")
                 records = event_message.get("Records", [])
                 
                 assert len(records) == 1, "Multiple messages received"
@@ -621,6 +610,34 @@ class TileRequestTable(DDBHelper):
                         output_location = unquote_plus(output_location) # parse for possible spaces in key
                         logger.debug(f"Extracted output location: {output_location}")
                         return self.get_tile_request_by_output_location(output_location)
+            elif "PollerInfo" in event_message:
+                # Polling mechanism in case notification message didn't arrive. 
+                # This is not a retry mechanism. Only complete or fail the request.
+                logger.info(f"Processing poller event for {event_message}")
+
+                poller_info = event_message["PollerInfo"]
+                tile_id = poller_info["tile_id"]
+                region_id = poller_info["region_id"]
+                tile_request_item = self.get_tile_request(tile_id, region_id)
+
+                if tile_request_item.tile_status in [RequestStatus.SUCCESS, RequestStatus.FAILED]:
+                    return tile_request_item
+                
+                # check the output locations
+                if S3_MANAGER.does_object_exist(tile_request_item.output_location):
+                    # output file found, mark complete
+                    logger.info(f"Tile marker success by poller: {json.dumps(poller_info)}")
+                    tile_request_item.tile_status = RequestStatus.SUCCESS
+                    return tile_request_item
+                if S3_MANAGER.does_object_exist(tile_request_item.failure_location):
+                    # failure file found, mark failure
+                    logger.info(f"Tile marker failed by poller: {json.dumps(poller_info)}")
+                    tile_request_item.tile_status = RequestStatus.FAILED
+                    return tile_request_item
+                
+                # Neither found. Mark for retry.
+                return None
+
             elif "Message" in event_message:
                 # SNS-wrapped S3 event. Not used. For S3 event triggers.
                 logger.warning("SNS-wrapped S3 events not currently supported")
@@ -641,7 +658,8 @@ class TileRequestTable(DDBHelper):
 
             logger.warning(f"No S3 records found in event: {event_message}")
             return ""
-
+        except SkipException as err:
+            raise
         except Exception as e:
             logger.error(f"Error parsing S3 event: {e}")
             logger.debug(f"S3 event content: {event_message}")

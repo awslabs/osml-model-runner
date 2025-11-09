@@ -46,14 +46,14 @@ ENV C_INCLUDE_PATH=/usr/include/gdal
 # Upgrade pip
 RUN ${PIP_BINARY} install \
     --no-cache-dir \
-    --index-url ${PIP_INDEX_URL} \
+    --index-url ${PIP_INDEX_URL} \ 
     --trusted-host ${PIP_TRUSTED_HOST} \
-    pip -U
+    pip -U 
 
 # install the model runner application from source
 RUN ${PYTHON_BINARY} -m pip install \
     --no-cache-dir \
-    --index-url ${PIP_INDEX_URL} \
+    --index-url ${PIP_INDEX_URL} \ 
     --trusted-host ${PIP_TRUSTED_HOST} \
     osml-model-runner/.
 
@@ -79,8 +79,6 @@ RUN echo '#!/bin/bash' > /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
 USER 1000
-
-ENV CODEGURU_PROFILING_GROUP=mr-profiler
 
 ENTRYPOINT ["/entrypoint.sh"]
 
@@ -112,7 +110,7 @@ ENV AWS_SESSION_TOKEN=testing
 
 RUN ${PYTHON_BINARY} -m pip install \
     --no-cache-dir \
-    --index-url ${PIP_INDEX_URL} \
+    --index-url ${PIP_INDEX_URL} \ 
     --trusted-host ${PIP_TRUSTED_HOST} \
     -r /home/osml-model-runner/test/requirements-test.txt
 

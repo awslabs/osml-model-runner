@@ -15,7 +15,6 @@ from .database import (
     EndpointStatisticsTable,
     JobItem,
     JobTable,
-    RegionRequestItem,
     RegionRequestTable,
     TileRequestItem,
     TileRequestTable,
@@ -25,6 +24,8 @@ from .exceptions import (
     RetryableJobException,
     SelfThrottledRegionException,
     SelfThrottledTileException,
+    InvocationFailure,
+    SkipException
 )
 from .image_request_handler import ImageRequestHandler
 from .queue import RequestQueue
@@ -144,7 +145,7 @@ class ModelRunner:
                         # Move along to the next image request if present
                         self._process_image_requests()
             except Exception as err:
-                logger.error(f"Unexpected error in monitor_work_queues: {err}")
+                logger.error(f"Unexpected error in monitor_work_queues: {err}", exc_info=True)
                 self.running = False
         logger.info("Stopped monitoring request queues")
 
@@ -159,101 +160,51 @@ class ModelRunner:
         if event_message:
             ThreadingLocalContextFilter.set_context(event_message)
             try:
-                # TODO: Handler polling reminder
-                # Polling mechanism in case SageMaker message didn't arrive. 
-                # This is not a retry mechanism. Only complete or fail the request.
-                # tile_request_item = self.tile_request_table.get from infrence _id() 
-                # inferece_id = get_inference_id_from_polling_message(event_message)
-                # tile_request_item = self.tile_request_table.get_tile_request_by_inference_id(inferece_id)
-                # if tile_request_item.tile_status == complete|failed:
-                #     finalize request
-                # if tile_status == "processing" # sagemaker sns message didn't arrive yet? 
-                #     check output location
-
                 # get tile item from event message
                 tile_request_item = self.tile_request_table.get_tile_request_by_event(event_message)
-                
+
                 if not tile_request_item:
-                    logger.warning(f"No tile request found for: {event_message}")
-                    self.tile_request_queue.finish_request(receipt_handle)
-                    return True
-                if self.tile_request_table.is_tile_item_done(tile_request_item):
+                    # logger.warning(f"No tile request found for: {event_message}")
+                    raise RetryableJobException(f"No tile request found for: {event_message}")
+
+                # Check if tile failed
+                if tile_request_item.tile_status == RequestStatus.FAILED:
+                    raise InvocationFailure(event_message.get("failureReason"))
+
+                # Check if tile already done
+                if tile_request_item.tile_status == RequestStatus.SUCCESS:
                     logger.info(
                         f"Tile {tile_request_item.tile_id} already completed with status: {tile_request_item.tile_status}"
                     )
-                    self.tile_request_queue.finish_request(receipt_handle)
-                    return True
+                else:
+                    # Create TileRequest from TileRequestItem for processing
+                    tile_request = TileRequest.from_tile_request_item(tile_request_item)
 
-                # Create TileRequest from TileRequestItem for processing
-                tile_request = TileRequest.from_tile_request_item(tile_request_item)
+                    # Process the completed tile request
+                    self.tile_request_handler.process_tile_request(tile_request, tile_request_item)
 
-                # Process the completed tile request
-                self.tile_request_handler.process_tile_request(tile_request, tile_request_item)
-
-                # Complete the tile request
-                completed_tile_request_item = self.tile_request_table.complete_tile_request(tile_request_item, "COMPLETED")
-
-                # Check if the region is done
-                completed_region_request_item, region_is_done = self.check_if_region_request_complete(tile_request_item)
-
-                if region_is_done:
-                    # Check if the whole image is done
-                    image_request_item = self.job_table.get_image_request(completed_tile_request_item.image_id)
-                    image_is_done, region_complete, region_failures = self.job_table.is_image_request_complete(
-                        self.region_request_table, image_request_item
-                    )
-                    logger.info(f"image complete check for {completed_tile_request_item.image_id} = {image_is_done}")
-                    if image_is_done:
-                        # update region counts
-                        image_request_item.region_error = region_failures
-                        image_request_item.region_success = region_complete
-                        image_request_item = self.job_table.update_image_request(image_request_item)
-
-                        if not region_complete:  # no success in any region
-                            image_request = ImageRequest()
-                            image_request.image_id = image_request_item.image_id
-                            image_request.job_id = image_request_item.job_id
-                            self._fail_image_request(image_request, ProcessImageException("All Regions Failed/Partial"))
-                        else:
-                            # close and get features
-                            image_path = get_image_path(
-                                completed_tile_request_item.image_url, completed_tile_request_item.image_read_role
-                            )
-                            raster_dataset, sensor_model = load_gdal_dataset(image_path)
-
-                            region_request = RegionRequest()
-                            region_request.image_id = completed_region_request_item.image_id
-                            region_request.region_id = completed_region_request_item.region_id
-                            region_request.tile_size = completed_region_request_item.tile_size
-                            region_request.tile_overlap = completed_region_request_item.tile_overlap
-
-                            logger.info(
-                                f"Calling image handler complete image request for {completed_tile_request_item.image_id}"
-                            )
-                            self.image_request_handler.complete_image_request(
-                                region_request,
-                                str(raster_dataset.GetDriver().ShortName).upper(),
-                                raster_dataset,
-                                sensor_model,
-                            )
-
-                # Finish the current request
+                    # Complete the tile request
+                    tile_request_item = self.tile_request_table.complete_tile_request(tile_request_item, RequestStatus.SUCCESS)
+                
+                # check if completed the region and image
+                self.complete_tile_request(tile_request_item)
                 self.tile_request_queue.finish_request(receipt_handle)
+
             except RetryableJobException as err:
                 logger.warning(f"Retrying tile request due to: {err}")
-                self.tile_request_queue.reset_request(receipt_handle, visibility_timeout=0)
+                self.tile_request_queue.reset_request(receipt_handle, visibility_timeout=60)
             except SelfThrottledTileException as err:
-                logger.warning(f"Retrying tile request due to: {err}")
-                self.tile_request_queue.reset_request(
-                    receipt_handle, visibility_timeout=int(ServiceConfig.throttling_retry_timeout)
-                )
+                logger.warning(f"Retrying tile request due to throttling error: {err}")
+                self.tile_request_queue.reset_request(receipt_handle, visibility_timeout=int(ServiceConfig.throttling_retry_timeout))
             except InvocationFailure as err:
-                # handle SageMake invocation errors
-                tile_request_item = self.tile_request_table.get_tile_request_by_inference_id(inference_id)
-                self.tile_request_handler.fail_tile_request(tile_request_item)
-            except Exception as err:
-                logger.exception(f"Error processing tile request: {err}")
+                logger.warning(f"Setting tile ({tile_request_item.region_id=}, {tile_request_item.tile_id=}) failure due to: {err}")
+                tile_request_item = self.tile_request_handler.fail_tile_request(tile_request_item)
+                self.complete_tile_request(tile_request_item)
                 self.tile_request_queue.finish_request(receipt_handle)
+            except SkipException as err:
+                self.tile_request_queue.finish_request(receipt_handle)
+            except Exception as err:
+                logger.exception(f"Error processing tile request: {err}", exc_info=True)
             finally:
                 return True
         else:
@@ -279,7 +230,7 @@ class ModelRunner:
                 region_request = RegionRequest(region_request_attributes)
                 image_path = get_image_path(region_request.image_url, region_request.image_read_role)
                 raster_dataset, sensor_model = load_gdal_dataset(image_path)
-                region_request_item = self._get_or_create_region_request_item(region_request)
+                region_request_item = self.region_request_table.get_or_create_region_request_item(region_request)
                 image_request_item = self.region_request_handler.process_region_request(
                     region_request, region_request_item, raster_dataset, sensor_model
                 )
@@ -365,35 +316,6 @@ class ModelRunner:
         minimal_job_item = JobItem(image_id=min_image_id, job_id=min_job_id, processing_duration=0)
         self.image_request_handler.fail_image_request(minimal_job_item, error)
 
-    def _get_or_create_region_request_item(self, region_request: RegionRequest) -> RegionRequestItem:
-        """
-        Retrieves or creates a `RegionRequestItem` in the region request table.
-
-        This method checks if a region request already exists in the `RegionRequestTable`.
-        If it does, it retrieves the existing request; otherwise, it creates a new
-        `RegionRequestItem` from the provided `RegionRequest` and starts the region
-        processing.
-
-        :param region_request: The region request to process.
-
-        :return: The retrieved or newly created `RegionRequestItem`.
-        """
-        region_request_item = self.region_request_table.get_region_request(region_request.region_id, region_request.image_id)
-        if region_request_item is None:
-            region_request_item = RegionRequestItem.from_region_request(region_request)
-            self.region_request_table.start_region_request(region_request_item)
-            logger.debug(
-                f"Added region request: image id {region_request_item.image_id}, region id {region_request_item.region_id}"
-            )
-        return region_request_item
-
-    def _get_or_create_tile_request_item(self, tile_request: TileRequest) -> TileRequestItem:
-        tile_request_item = self.tile_request_table.get_tile_request(tile_request.tile_id, tile_request.region_id)
-        if tile_request_item is None:
-            tile_request_item = TileRequestItem.from_tile_request(tile_request)
-            self.tile_request_table.start_tile_request(tile_request_item)
-        return tile_request_item
-
     def check_if_region_request_complete(self, tile_request_item: TileRequestItem):
 
         # Get region request and region request item
@@ -430,15 +352,61 @@ class ModelRunner:
         region_request_item.failed_tile_count = failed_count
 
         # Update region request table
-        region_status = self.region_status_monitor.get_status(region_request_item)
-        completed_region_request_item = self.region_request_table.complete_region_request(region_request_item, region_status)
+        region_status = self.region_status_monitor.get_status(region_request_item) # returns status based on counts
+        region_request_item = self.region_request_table.complete_region_request(region_request_item, region_status)
 
         # Update the image request to complete this region
         _ = self.job_table.complete_region_request(tile_request_item.image_id, bool(failed_count))
-        logger.info(f"{region_id=}: Marking region success in job table for : {tile_request_item.__dict__}")
+        logger.debug(f"{region_id=}: Marking region success in job table for : {tile_request_item.__dict__}")
 
-        # completed_region_request_item = self.region_request_table.update_region_request(completed_region_request_item)
+        # region_request_item = self.region_request_table.update_region_request(region_request_item)
 
-        self.region_status_monitor.process_event(completed_region_request_item, region_status, "Completed region processing")
+        self.region_status_monitor.process_event(region_request_item, region_status, "Completed region processing")
 
-        return completed_region_request_item, True
+        return region_request_item, True
+
+    def complete_tile_request(self, tile_request_item: TileRequestItem):
+
+        # Check if the region is done
+        completed_region_request_item, region_is_done = self.check_if_region_request_complete(tile_request_item)
+
+        if region_is_done:
+            # Check if the whole image is done
+            image_request_item = self.job_table.get_image_request(tile_request_item.image_id)
+            image_is_done, region_complete, region_failures = self.job_table.is_image_request_complete(
+                self.region_request_table, image_request_item
+            )
+            logger.debug(f"image complete check for {tile_request_item.image_id} = {image_is_done}")
+            if image_is_done:
+                # update region counts
+                image_request_item.region_error = region_failures
+                image_request_item.region_success = region_complete
+                image_request_item = self.job_table.update_image_request(image_request_item)
+
+                if not region_complete:  # no success in any region
+                    image_request = ImageRequest()
+                    image_request.image_id = image_request_item.image_id
+                    image_request.job_id = image_request_item.job_id
+                    self._fail_image_request(image_request, ProcessImageException("All Regions Failed/Partial"))
+                else:
+                    # close and get features
+                    image_path = get_image_path(
+                        tile_request_item.image_url, tile_request_item.image_read_role
+                    )
+                    raster_dataset, sensor_model = load_gdal_dataset(image_path)
+
+                    region_request = RegionRequest()
+                    region_request.image_id = completed_region_request_item.image_id
+                    region_request.region_id = completed_region_request_item.region_id
+                    region_request.tile_size = completed_region_request_item.tile_size
+                    region_request.tile_overlap = completed_region_request_item.tile_overlap
+
+                    logger.debug(
+                        f"Calling image handler complete image request for {tile_request_item.image_id}"
+                    )
+                    self.image_request_handler.complete_image_request(
+                        region_request,
+                        str(raster_dataset.GetDriver().ShortName).upper(),
+                        raster_dataset,
+                        sensor_model,
+                    )

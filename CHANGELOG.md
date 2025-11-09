@@ -57,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Pointed GDAL base image to gdal-base:v3-8-5-2
+- Pointed GDAL base image to gdal-base:v3-8-5-2 
 
 ## [2.5.3] - 2025-09-10
 
@@ -94,7 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v2.4.0] - 2025-07-07
 
 - Update base path location of GDAL image
-- Bump pytest, mock, moto, boto3, botocore, setuptools, and codeguru-profiler-agent packages
+- Bump pytest, mock, moto, boto3, botocore, setuptools, and codeguru-profiler-agent packages 
 
 ## [v2.3.1]
 
@@ -107,7 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## v2.2.0
 
-- Modify TTL from 24 hours to 7 days for longer historical storage of state
+- Modify TTL from 24 hours to 7 days for longer historical storage of state 
 
 ## v2.1.4
 
@@ -201,7 +201,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - osml-model-runner (`v1.1.0`)
 - bug: RSM camera model index array management
 - bug: OOM management for GDAL tiles
-- fix: version bumps
+- fix: version bumps  
 - feature: HTTP model invocation option
 - feature: Expanded polygon feature support outside of pure bbox returns
 - bug: patched and suppressed results of security scans as appropriate (IE-216)

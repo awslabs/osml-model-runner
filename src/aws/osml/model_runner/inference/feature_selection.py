@@ -1,8 +1,8 @@
 #  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
 
-import logging
 from collections import OrderedDict
 from typing import List, Tuple
+import logging
 
 from ensemble_boxes import nms, soft_nms
 from geojson import Feature
@@ -14,8 +14,8 @@ from aws.osml.model_runner.common import (
 )
 from aws.osml.model_runner.inference.exceptions import FeatureDistillationException
 
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
 
 class FeatureSelector:
     """
@@ -104,7 +104,7 @@ class FeatureSelector:
             category, score = self._get_category_and_score_from_feature(feature)
             bounds_imcoords_rounded = [int(round(coord)) for coord in bounds_imcoords]
             feature_hash_id = hash(str(bounds_imcoords_rounded) + category)
-
+            
             if feature_hash_id not in self.feature_id_map:
                 boxes.append(bounds_imcoords)
                 categories.append(category)
@@ -119,9 +119,7 @@ class FeatureSelector:
                     self.extents[3] = bounds_imcoords[3]
                 self.feature_id_map[feature_hash_id] = feature
             else:
-                logger.warning(
-                    f"Duplicate Feature hash_id for: {feature_hash_id}, {str(bounds_imcoords_rounded)}, {category}."
-                )
+                logger.warning(f"Duplicate Feature hash_id for: {feature_hash_id}, {str(bounds_imcoords_rounded)}, {category}.")
         unique_categories = list(set(categories))
         for idx, unique_category in enumerate(unique_categories):
             self.labels_map[str(idx)] = unique_category

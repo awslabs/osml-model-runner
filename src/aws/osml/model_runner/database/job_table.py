@@ -9,6 +9,7 @@ from typing import List, Optional
 from dacite import from_dict
 
 from aws.osml.model_runner.api import ImageRequest
+from aws.osml.model_runner.common import RequestStatus
 
 from .ddb_helper import DDBHelper, DDBItem, DDBKey
 from .exceptions import (
@@ -19,6 +20,7 @@ from .exceptions import (
     StartImageException,
 )
 from .region_request_table import RegionRequestItem
+
 
 logger = logging.getLogger(__name__)
 
@@ -334,9 +336,9 @@ def get_image_request_complete_counts(table, image_id: str):
         completed_count = 0
 
         for region in regions:
-            if region.region_status == "SUCCESS":
+            if region.region_status == RequestStatus.SUCCESS:
                 completed_count += 1
-            elif region.region_status == "FAILED":
+            elif region.region_status == RequestStatus.FAILED:
                 failed_region_count += 1
             else:
                 logger.debug(f"region found in incomplete status: {region.__dict__}")

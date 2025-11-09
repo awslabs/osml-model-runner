@@ -40,6 +40,7 @@ class RequestStatus(str, AutoStringEnum):
     Enumeration defining the image request status
     """
 
+    PENDING = auto()
     STARTED = auto()
     IN_PROGRESS = auto()
     PARTIAL = auto()

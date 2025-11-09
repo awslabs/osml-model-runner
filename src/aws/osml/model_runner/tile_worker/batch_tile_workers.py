@@ -9,6 +9,7 @@ from pathlib import Path
 from aws_embedded_metrics.metric_scope import metric_scope
 
 from aws.osml.model_runner.app_config import ServiceConfig
+from aws.osml.model_runner.common import RequestStatus
 from aws.osml.model_runner.database import TileRequestTable
 from aws.osml.model_runner.inference import BatchSMDetector
 from aws.osml.model_runner.utilities import S3Manager
@@ -87,7 +88,7 @@ class BatchUploadWorker(Thread):
 
                     # Mark task as done
                     self.in_queue.task_done()
-                    logger.info(f"Completing task on submission worker: {self.worker_id} for {tile_info.get('tile_id')}")
+                    logger.info(f"Completing task on upload worker: {self.worker_id} for {tile_info.get('tile_id')}")
 
                 except Empty:
                     # Timeout waiting for tile, continue loop
@@ -151,14 +152,12 @@ class BatchUploadWorker(Thread):
             if self.tile_request_table and tile_info.get("tile_id") and tile_info.get("region_id"):
                 try:
                     # Update status to PROCESSING
-                    self.tile_request_table.update_tile_status(tile_info["tile_id"], tile_info["region_id"], "PROCESSING")
+                    self.tile_request_table.update_tile_status(tile_info["tile_id"], tile_info["region_id"], RequestStatus.IN_PROGRESS)
 
                     # Update inference_id and output_location
                     self.tile_request_table.update_tile_inference_info(
                         tile_info["tile_id"], tile_info["region_id"], inference_id, output_location, failure_location
                     )
-
-                    # TODO: Send polling reminder message to tile queue
 
                 except Exception as e:
                     logger.warning(f"Failed to update tile status and inference info: {e}")
@@ -174,7 +173,7 @@ class BatchUploadWorker(Thread):
                 try:
                     logger.info(f"Updating status for {tile_info=}")
                     self.tile_request_table.update_tile_status(
-                        tile_info["tile_id"], tile_info["region_id"], "FAILED", f"Submission error: {str(e)}"
+                        tile_info["tile_id"], tile_info["region_id"], RequestStatus.FAILED, f"Submission error: {str(e)}"
                     )
                 except Exception as update_e:
                     logger.warning(f"Failed to update tile status to FAILED: {update_e}")
@@ -257,7 +256,7 @@ class BatchSubmissionWorker(Thread):
 
                     # Mark task as done
                     self.in_queue.task_done()
-                    logger.info(f"Completing task on submission worker: {self.worker_id} for {tile_info.get('tile_id')}")
+                    logger.info(f"Completing task on batch submission worker: {self.worker_id} for {tile_info.get('tile_id')}")
 
                 except Empty:
                     # Timeout waiting for tile, continue loop
@@ -301,8 +300,8 @@ class BatchSubmissionWorker(Thread):
             input_s3_uri = f"s3://{ServiceConfig.input_bucket}/{os.path.join(ServiceConfig.batch_input_prefix, job_id)}"
             output_s3_uri = f"s3://{ServiceConfig.input_bucket}/{os.path.join(ServiceConfig.batch_output_prefix, job_id)}"
             # Ex.
-            # input_s3_uri  = "s3://bucket/async-inference/input/08d733f7-d471-4a4b-bd59-761ab430add7"
-            # output_s3_uri = "s3://bucket/async-inference/output/08d733f7-d471-4a4b-bd59-761ab430add7"
+            # input_s3_uri  = "s3://bucket/input/<modality>/async-inference/08d733f7-d471-4a4b-bd59-761ab430add7"
+            # output_s3_uri = "s3://bucket/output/<modality>/async-inference/08d733f7-d471-4a4b-bd59-761ab430add7"
 
             transform_job_name = f"batch-{job_id}"
             self.feature_detector._submit_batch_job(
@@ -313,7 +312,7 @@ class BatchSubmissionWorker(Thread):
                 instance_count=int(job_info["instance_count"])
                 )
 
-            logger.info(f"Async inference job submitted with {transform_job_name=}, {output_s3_uri=}")
+            logger.info(f"Batch inference job submitted with {transform_job_name=}, {output_s3_uri=}")
             return True
 
         except Exception as e:

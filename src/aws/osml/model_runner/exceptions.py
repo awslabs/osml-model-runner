@@ -48,29 +48,21 @@ class InvocationFailure(RetryableJobException):
     pass
 
 
-class ExtensionError(Exception):
-    """Base exception for extension-related errors."""
-
-    pass
-
-
-class ExtensionRuntimeError(ExtensionError):
-    """Runtime extension errors that should trigger fallback."""
-
-    pass
-
-
-class ExtensionConfigurationError(ExtensionRuntimeError):
-    """Raised when there are configuration errors in OSML extensions."""
-
-    pass
-
-
 class ProcessTileException(Exception):
     pass
 
 
-class AsyncInferenceError(ExtensionRuntimeError):
+class AsyncInferenceError(Exception):
     """Base class for async inference-related errors."""
 
+    pass
+
+
+class S3OperationError(Exception):
+    """Raised when S3 upload/download operations fail."""
+
+    pass
+
+
+class SkipException(Exception):
     pass

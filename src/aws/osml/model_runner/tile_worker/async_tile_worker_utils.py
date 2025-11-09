@@ -40,11 +40,10 @@ def setup_result_tile_workers(
         tile_workers = []
 
         # Start polling workers
-        for i in range(ServiceConfig.polling_workers):
+        for i in range(ServiceConfig.async_endpoint_config.polling_workers):
 
             # Set up our feature table to work with the region quest
             feature_table = FeatureTable(
-                ServiceConfig.feature_table,
                 ServiceConfig.feature_table,
                 tile_request.tile_size,
                 tile_request.tile_overlap,
@@ -112,7 +111,7 @@ def setup_submission_tile_workers(
         tile_queue: Queue = Queue()
         tile_workers = []
 
-        for i in range(int(ServiceConfig.submission_workers)):
+        for i in range(int(ServiceConfig.async_endpoint_config.submission_workers)):
 
             # Ignoring mypy error - if model_name was None the call to validate the region
             # request at the start of this function would have failed

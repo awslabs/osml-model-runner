@@ -19,15 +19,9 @@ from geojson import FeatureCollection
 
 from aws.osml.model_runner.app_config import BotoConfig, ServiceConfig
 from aws.osml.model_runner.common import Timer
-from aws.osml.model_runner.exceptions import ExtensionRuntimeError
+from aws.osml.model_runner.exceptions import S3OperationError
 
 logger = logging.getLogger(__name__)
-
-
-class S3OperationError(ExtensionRuntimeError):
-    """Raised when S3 upload/download operations fail."""
-
-    pass
 
 
 class S3Manager:
@@ -286,3 +280,17 @@ class S3Manager:
         except (UnicodeDecodeError, JSONDecodeError) as e:
             logger.error(f"Failed to parse async inference results: {str(e)}")
             raise JSONDecodeError(f"Failed to parse async inference results: {str(e)}", "", 0)
+
+    def does_object_exist(self, s3_uri: str):
+        try:
+            # Parse S3 URI
+            parsed_uri = urlparse(s3_uri)
+            bucket = parsed_uri.netloc
+            key = parsed_uri.path.lstrip("/")
+
+            # head_object is the fastest approach to determine if it exists in S3
+            # also its less expensive to do the head_object approach
+            self.s3_client.head_object(Bucket=bucket, Key=key)
+            return True
+        except Exception as err: #"This image does not exist!
+            return False

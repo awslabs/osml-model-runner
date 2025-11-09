@@ -2,7 +2,7 @@
 exclude_findings:
   # The summarize imagery script is only run by adminstrators, who
   # are trusted users of the system. Other users cannot run or pass input into
-  # this script. Admins determine the file paths to be passed into this
+  # this script. Admins determine the file paths to be passed into this 
   # script when they execute it.
   - category: 'Path Manipulation'
     file: scripts/python/summarize_imagery.py

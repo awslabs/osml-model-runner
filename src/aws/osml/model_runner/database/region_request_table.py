@@ -32,7 +32,7 @@ class RegionRequestItem(DDBItem):
     image_read_role: Optional[str] = IAM role to read the image for processing
     processing_duration: Optional[int] = time in seconds to complete region processing
     message: Optional[str] = additional information about the region job
-    region_status: Optional[str] = region job status - PROCESSING, COMPLETED, FAILED
+    region_status: Optional[str] = region job status - PROCESSING, SUCCESS, FAILED
     total_tiles: Optional[int] = total number of tiles to be processed for the region
     failed_tiles: Optional[List] = list of tiles that failed processing
     failed_tile_count: Optional[int] = count of failed tiles that failed to process
@@ -236,3 +236,25 @@ class RegionRequestTable(DDBHelper):
         except Exception as err:
             logger.error(f"Failed to append {state.value} {tile} to item region_id={region_id}: {str(err)}")
             raise UpdateRegionException(f"Failed to append {state.value} {tile} to item region_id={region_id}.") from err
+
+    def get_or_create_region_request_item(self, region_request: RegionRequest) -> RegionRequestItem:
+        """
+        Retrieves or creates a `RegionRequestItem` in the region request table.
+
+        This method checks if a region request already exists in the `RegionRequestTable`.
+        If it does, it retrieves the existing request; otherwise, it creates a new
+        `RegionRequestItem` from the provided `RegionRequest` and starts the region
+        processing.
+
+        :param region_request: The region request to process.
+
+        :return: The retrieved or newly created `RegionRequestItem`.
+        """
+        region_request_item = self.get_region_request(region_request.region_id, region_request.image_id)
+        if region_request_item is None:
+            region_request_item = RegionRequestItem.from_region_request(region_request)
+            self.start_region_request(region_request_item)
+            logger.debug(
+                f"Added region request: image id {region_request_item.image_id}, region id {region_request_item.region_id}"
+            )
+        return region_request_item
