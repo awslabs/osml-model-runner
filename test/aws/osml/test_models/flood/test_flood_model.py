@@ -61,8 +61,8 @@ class FloodModelTest(unittest.TestCase):
         and verifies that the GeoJSON result contains the expected number of features
         (based on FLOOD_VOLUME=10) and has the correct structure.
         """
-        data_binary = open("test/data/test-model.tif", "rb")
-        response = self.client.post("/invocations", data=data_binary)
+        with open("test/data/test-model.tif", "rb") as data_binary:
+            response = self.client.post("/invocations", data=data_binary)
 
         assert response.status_code == 200
 

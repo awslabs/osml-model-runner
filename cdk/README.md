@@ -85,18 +85,31 @@ When using an existing VPC (`networkConfig.vpcId` provided), you can also specif
 
 **Example configurations:**
 
+Create new VPC with defaults:
+
 ```json
-// Create new VPC with defaults
 {
   "projectName": "my-project",
-  "account": { "id": "123456789012", "region": "us-west-2", "prodLike": false, "isAdc": false },
+  "account": {
+    "id": "123456789012",
+    "region": "us-west-2",
+    "prodLike": false
+  },
   "deployIntegrationTests": true
 }
+```
 
-// Use existing VPC with specific subnets and security group
+Import an existing VPC with specific subnets and security group:
+
+```json
 {
   "projectName": "my-project",
-  "account": { "id": "123456789012", "region": "us-west-2", "prodLike": false, "isAdc": false },
+  "account": {
+    "id": "123456789012",
+    "region": "us-west-2",
+    "prodLike": false,
+    "isAdc": false
+  },
   "networkConfig": {
     "vpcId": "vpc-abc123",
     "targetSubnets": ["subnet-12345", "subnet-67890"],

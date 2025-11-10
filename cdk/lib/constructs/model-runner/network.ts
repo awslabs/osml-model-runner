@@ -2,6 +2,7 @@
  * Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
  */
 
+import { RemovalPolicy } from "aws-cdk-lib";
 import {
   FlowLogDestination,
   FlowLogTrafficType,
@@ -196,7 +197,10 @@ export class Network extends Construct {
         logGroupName: `/aws/vpc/flowlogs/${this.config.VPC_NAME}`,
         retention: props.account.prodLike
           ? RetentionDays.ONE_YEAR
-          : RetentionDays.ONE_WEEK
+          : RetentionDays.ONE_WEEK,
+        removalPolicy: props.account.prodLike
+          ? RemovalPolicy.RETAIN
+          : RemovalPolicy.DESTROY
       });
 
       vpc.addFlowLog("VPCFlowLog", {

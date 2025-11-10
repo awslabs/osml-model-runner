@@ -2,6 +2,12 @@ name: docker build & publish
 
 on:
   workflow_call:
+    inputs:
+      push:
+        description: 'Whether to push the image to registry'
+        required: false
+        type: boolean
+        default: true
   workflow_dispatch:
   push:
     branches: ["main"]
@@ -22,7 +28,14 @@ jobs:
           lfs: 'true'
       - name: Set Docker Push Flag
         run: |
-          [[ "${{ github.event_name }}" =~ ^(push|release|workflow_dispatch|workflow_call)$ ]] && echo "push=true" >> $GITHUB_ENV || echo "push=false" >> $GITHUB_ENV
+          if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
+            # When called from another workflow, use the input parameter
+            echo "push=${{ inputs.push }}" >> $GITHUB_ENV
+          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.event_name }}" == "release" ]] || [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "push=true" >> $GITHUB_ENV
+          else
+            echo "push=false" >> $GITHUB_ENV
+          fi
       - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}

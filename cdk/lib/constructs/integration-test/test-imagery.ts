@@ -50,7 +50,7 @@ export class TestImageryConfig extends BaseConfig {
   constructor(config: ConfigType = {}) {
     super({
       S3_IMAGE_BUCKET_PREFIX: "mr-test-imagery",
-      S3_TEST_IMAGES_PATH: "../test/integration/test_suites/imagery/",
+      S3_TEST_IMAGES_PATH: "assets/imagery/",
       ...config
     });
   }
