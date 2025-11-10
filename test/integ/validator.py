@@ -65,7 +65,7 @@ class Validator:
             cache[stream] = kinesis_features
 
         if self.feature_collections_equal(expected_features, kinesis_features):
-            self.logger.info(f"  ✓ Kinesis: {len(kinesis_features)} features validated")
+            self.logger.info(f"  Kinesis: {len(kinesis_features)} features validated successfully")
             return True
         return False
 
@@ -251,7 +251,7 @@ class Validator:
             s3_features = geojson.loads(contents.decode("utf-8"))["features"]
 
             if self.feature_collections_equal(expected_features, s3_features):
-                self.logger.info(f"  ✓ S3: {len(s3_features)} features validated")
+                self.logger.info(f"  S3: {len(s3_features)} features validated successfully")
                 return True
 
         return False
@@ -369,7 +369,7 @@ class Validator:
         if feature_count not in expected_feature_counts:
             expected_str = " | ".join(map(str, expected_feature_counts))
             message = f"Feature count mismatch: found {feature_count}, expected {expected_str}"
-            self.logger.error(f"❌ {message}")
+            self.logger.error(f"[ERROR] {message}")
             return {
                 "success": False,
                 "feature_count": feature_count,
@@ -380,7 +380,7 @@ class Validator:
         # Validate region request count
         if region_request_count != expected_region_count:
             message = f"Region request count mismatch: found {region_request_count}, expected {expected_region_count}"
-            self.logger.error(f"❌ {message}")
+            self.logger.error(f"[ERROR] {message}")
             return {
                 "success": False,
                 "feature_count": feature_count,
@@ -388,8 +388,8 @@ class Validator:
                 "message": message,
             }
 
-        self.logger.info(f"  → Feature count: {feature_count} features")
-        self.logger.info(f"  → Region requests: {region_request_count} validated")
+        self.logger.info(f"  Feature count: {feature_count} features")
+        self.logger.info(f"  Region requests: {region_request_count} validated")
 
         return {
             "success": True,

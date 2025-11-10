@@ -100,7 +100,7 @@ class Config:
         ecs_client = boto3.client("ecs", region_name=region)
 
         # Find the latest matching task definition
-        logger.info(f"🔍 Searching for task definition with pattern: {task_def_pattern}")
+        logger.info(f"Searching for task definition: {task_def_pattern}")
         paginator = ecs_client.get_paginator("list_task_definitions")
         matching_arns = [
             arn
@@ -116,7 +116,8 @@ class Config:
             )
 
         task_def_arn = matching_arns[0]
-        logger.info(f"✅ Found task definition: {task_def_arn.split('/')[-1]}")
+        task_def_name = task_def_arn.split("/")[-1]
+        logger.info(f"Found task definition: {task_def_name}")
 
         # Extract environment variables from task definition
         response = ecs_client.describe_task_definition(taskDefinition=task_def_arn)
@@ -130,7 +131,7 @@ class Config:
             if env_var.get("name") and env_var.get("value")
         }
 
-        logger.info(f"📦 Imported {len(env_dict)} environment variables from task definition")
+        logger.info(f"Imported {len(env_dict)} environment variables")
 
         # Set defaults for test-specific variables
         env_dict.setdefault("KINESIS_RESULTS_STREAM_PREFIX", "mr-stream-sink")

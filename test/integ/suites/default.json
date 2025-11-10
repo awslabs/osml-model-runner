@@ -1,6 +1,6 @@
 [
   {
-    "name": "Centerpoint Basic Test",
+    "name": "Centerpoint - Tile",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/tile.tif",
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
@@ -8,7 +8,7 @@
     "timeout_minutes": 10
   },
   {
-    "name": "Centerpoint Small Test",
+    "name": "Centerpoint - Small",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
@@ -16,7 +16,7 @@
     "timeout_minutes": 10
   },
   {
-    "name": "Centerpoint Small HTTP Test",
+    "name": "Centerpoint - HTTP",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
     "model_name": "centerpoint",
     "endpoint_type": "HTTP_ENDPOINT",
@@ -24,7 +24,7 @@
     "timeout_minutes": 5
   },
   {
-    "name": "Centerpoint Wbid Test",
+    "name": "Centerpoint - WBID",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/wbid.ntf",
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
@@ -32,7 +32,7 @@
     "timeout_minutes": 5
   },
   {
-    "name": "Centerpoint Umbra Test",
+    "name": "Centerpoint - Umbra",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/sicd-umbra-chip.ntf",
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
@@ -40,7 +40,7 @@
     "timeout_minutes": 5
   },
   {
-    "name": "Centerpoint Capella Test",
+    "name": "Centerpoint - Capella",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/sicd-capella-chip.ntf",
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
@@ -48,7 +48,7 @@
     "timeout_minutes": 5
   },
   {
-    "name": "Centerpoint Interferometric Test",
+    "name": "Centerpoint - Interferometric",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/sicd-interferometric-hh.nitf",
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
@@ -56,7 +56,7 @@
     "timeout_minutes": 5
   },
   {
-    "name": "Centerpoint Meta Test",
+    "name": "Centerpoint - Metadata",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/meta.ntf",
     "model_name": "centerpoint",
     "endpoint_type": "SM_ENDPOINT",
@@ -64,7 +64,7 @@
     "timeout_minutes": 5
   },
   {
-    "name": "Flood Detection Test (flood-50 variant)",
+    "name": "Flood - 50",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/large.tif",
     "model_name": "flood",
     "endpoint_type": "SM_ENDPOINT",
@@ -72,7 +72,7 @@
     "timeout_minutes": 15
   },
   {
-    "name": "Flood Detection Test (flood-100 variant)",
+    "name": "Flood - 100",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/large.tif",
     "model_name": "flood",
     "endpoint_type": "SM_ENDPOINT",
@@ -80,7 +80,7 @@
     "timeout_minutes": 15
   },
   {
-    "name": "Centerpoint Multi-Container Test",
+    "name": "Multi-Container - Centerpoint",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
     "model_name": "multi-container",
     "endpoint_type": "SM_ENDPOINT",
@@ -89,7 +89,7 @@
     "timeout_minutes": 10
   },
   {
-    "name": "Flood Multi-Container Test",
+    "name": "Multi-Container - Flood",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/large.tif",
     "model_name": "multi-container",
     "endpoint_type": "SM_ENDPOINT",
