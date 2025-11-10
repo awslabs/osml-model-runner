@@ -7,6 +7,7 @@ application itself has been containerized and is designed to run on a distribute
 across instances to process images as quickly as possible.
 
 ### Table of Contents
+
 * [Getting Started](#getting-started)
   * [Key Design Concepts](#key-design-concepts)
     * [Load Balancing](#load-balancing)
@@ -23,7 +24,6 @@ across instances to process images as quickly as possible.
 * [Support & Feedback](#support--feedback)
 * [Security](#security)
 * [License](#license)
-
 
 ## Getting Started
 
@@ -60,6 +60,7 @@ source implementation of GIS data tools, has the ability to read images directly
 reads to only download the part of the overall image necessary to process the region.
 
 #### Inference
+
 OversightML Model Runner is optimized to utilize models hosted on
 [SageMaker Endpoints](https://docs.aws.amazon.com/sagemaker/latest/dg/realtime-endpoints-manage.html) and supports
 single-model endpoints, multi-container endpoints, and endpoints with multiple variants deployed.  Endpoint parameters
@@ -93,6 +94,7 @@ A detailed description of what information is tracked along with example dashboa
 CloudWatch Logs Insights can be leveraged to provide anything from an overview of processing activity to in depth
 diagnostics.  For example, querying the `/aws/OSML/MRService` log group using the following query will provide a
 "Timeline" view of a specific job.
+
 ```
 fields @timestamp, message, job_id, region_id, @logStream
 | filter job_id like /<job_id>/
@@ -115,9 +117,9 @@ Note: Timeline Event logs like the example above are written at an INFO level.
 
 First, ensure you have installed the following tools locally
 
-- [docker](https://nodejs.org/en)
-- [tox](https://tox.wiki/en/latest/installation.html)
-- [osml cdk](https://github.com/aws-solutions-library-samples/osml-cdk-constructs) deployed into your aws account
+* [docker](https://nodejs.org/en)
+* [tox](https://tox.wiki/en/latest/installation.html)
+* [osml cdk](https://github.com/aws-solutions-library-samples/osml-cdk-constructs) deployed into your aws account
 
 ### Development Environment
 
@@ -132,6 +134,7 @@ docker run -it -v `pwd`/:/home/ --entrypoint /bin/bash .
 To start a job, place an ImageRequest on the ImageRequestQueue.
 
 Sample ImageRequest:
+
 ```json
 {
     "jobName": "<job_name>",
@@ -149,6 +152,7 @@ Sample ImageRequest:
     "imageProcessorTileCompression": "< NONE | JPEG | J2K | LZW >"
 }
 ```
+
 Below are additional details about each key-value pair supported by the image request:
 
 | key                           | value                                                                                                                                                                 | type                 | details                                                                                                                                                                                                                                                                                      |
@@ -164,10 +168,10 @@ Below are additional details about each key-value pair supported by the image re
 | imageProcessorTileFormat      | `NTIF / JPEF / PNG / GTIFF`                                                                                                                                           | string               | Tile format to use for tiling. I comes with 4 formats, ex: `GTIFF`                                                                                                                                                                                                                           |
 | imageProcessorTileCompression | `NONE / JPEG / J2K / LZW`                                                                                                                                             | string               | The compression used for the target image. It comes with 4 formats, ex: `NONE`                                                                                                                                                                                                               |
 
-
 ### Infrastructure
 
 #### S3
+
 When configuring S3 buckets for images and results, be sure to follow [S3 Security Best Practices](https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html).
 
 ### Code Documentation

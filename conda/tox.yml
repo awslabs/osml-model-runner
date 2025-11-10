@@ -1,0 +1,25 @@
+# Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+
+name: tox-env
+channels:
+  - conda-forge
+dependencies:
+  - conda-forge::gdal=3.8.3
+  - conda-forge::proj=9.3.1
+  - conda-forge::pyproj=3.6.1
+  - pip:
+    - json-logging==1.5.1
+    - boto3==1.40.64
+    - setuptools==80.9.0
+    - argparse==1.4.0
+    - flask==3.1.2
+    - waitress==3.0.2
+    - shapely==2.0.7
+    - matplotlib==3.7.2
+    - pytest==8.4.2
+    - pytest-cov>=4.0.0
+    - pytest-xdist>=3.8.0
+    - pytest-asyncio>=1.2.0
+    - mock==5.2.0
+    - moto[all]==5.1.16
+    - defusedxml==0.7.1
