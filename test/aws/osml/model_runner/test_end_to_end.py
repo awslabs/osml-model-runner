@@ -10,11 +10,11 @@ from unittest.mock import Mock, patch
 import boto3
 import geojson
 from botocore.stub import ANY, Stubber
-from config import MOCK_MODEL_RESPONSE, TEST_CONFIG
 from moto import mock_aws
 from osgeo import gdal
 
 from aws.osml.model_runner.database import RequestedJobsTable
+from config import MOCK_MODEL_RESPONSE, TEST_CONFIG
 
 # Add the test directory to sys.path to allow importing config
 _test_dir = Path(__file__).parent
