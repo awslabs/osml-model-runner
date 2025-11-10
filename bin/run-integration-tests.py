@@ -196,10 +196,10 @@ def main() -> int:
 
     # Exit with appropriate code
     if results["failed"] > 0:
-        print(f"\n❌ {results['failed']} test(s) FAILED")
+        print(f"\n[FAILED] {results['failed']} test(s) FAILED")
         return 1
     else:
-        print(f"\n✅ All {results['passed']} test(s) PASSED")
+        print(f"\n[PASSED] All {results['passed']} test(s) PASSED")
         return 0
 
 

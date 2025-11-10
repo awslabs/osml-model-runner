@@ -73,7 +73,8 @@ class Runner:
                 if record.levelno == logging.INFO:
                     return record.getMessage()
                 else:
-                    return f"⚠️  {record.getMessage()}"
+                    level_name = logging.getLevelName(record.levelno)
+                    return f"[{level_name}] {record.getMessage()}"
 
         handler = logging.StreamHandler()
         handler.setFormatter(InfoFormatter())
@@ -113,16 +114,18 @@ class Runner:
         :param test_identifier: Optional test identifier to include in header (e.g., "[7/12] Test Name").
         :returns: Tuple of (success: bool, results: dict).
         """
-        self.logger.info(f"\n{'=' * 60}")
+        self.logger.info("")
+        self.logger.info("=" * 60)
         if test_identifier:
-            self.logger.info(f"🧪  {test_identifier}")
+            self.logger.info(test_identifier)
         else:
-            self.logger.info("🧪  OSML Model Runner Integration Test")
-        self.logger.info(f"{'=' * 60}")
+            self.logger.info("OSML Model Runner Integration Test")
+        self.logger.info("=" * 60)
         self.logger.info(f"Image: {image_request.image_url}")
         self.logger.info(f"Model: {image_request.model_name}")
         self.logger.info(f"Timeout: {timeout_minutes} minutes")
-        self.logger.info(f"{'=' * 60}\n")
+        self.logger.info("=" * 60)
+        self.logger.info("")
 
         try:
             # Prepare endpoint and result destinations
@@ -158,7 +161,7 @@ class Runner:
 
             # Submit the request
             message_id = self._queue_image_processing_job(image_processing_request)
-            self.logger.info(f"📤 Request submitted (message ID: {message_id[:16]}...)")
+            self.logger.info(f"Request submitted (ID: {message_id[:16]}...)")
 
             # Monitor the job
             job_id = image_processing_request["jobId"]
@@ -182,7 +185,7 @@ class Runner:
             )
             results.update(validation_result)
 
-            self.logger.info("✅ Integration test completed successfully!")
+            self.logger.info("Test completed successfully")
             return True, results
 
         except Exception as e:
@@ -338,7 +341,7 @@ class Runner:
             QueueName=self.config.IMAGE_STATUS_QUEUE_NAME, QueueOwnerAWSAccountId=self.config.ACCOUNT
         )
 
-        self.logger.info(f"⏳ Monitoring job progress (timeout: {timeout_minutes} minutes)...")
+        self.logger.info(f"Monitoring job progress (timeout: {timeout_minutes} min)...")
 
         start_time = time.time()
 
@@ -360,7 +363,7 @@ class Runner:
 
                         if message_image_status == "IN_PROGRESS" and message_image_id == image_id:
                             elapsed = int(time.time() - start_time)
-                            self.logger.info(f"📊 IN_PROGRESS - Image processing started (elapsed: {elapsed}s)")
+                            self.logger.info(f"Status: IN_PROGRESS (elapsed: {elapsed}s)")
 
                         elif message_image_status == "SUCCESS" and message_image_id == image_id:
                             processing_duration = message_attributes.get("processing_duration", {}).get("Value")
@@ -370,10 +373,11 @@ class Runner:
                             elapsed = int(time.time() - start_time)
                             if processing_duration is not None:
                                 self.logger.info(
-                                    f"\n✓ Processing completed in " f"{processing_duration}s (total wait: {elapsed}s)\n"
+                                    f"Status: SUCCESS (processing: {processing_duration}s, total wait: {elapsed}s)"
                                 )
                             else:
-                                self.logger.info(f"\n✓ Processing completed (total wait: {elapsed}s)\n")
+                                self.logger.info(f"Status: SUCCESS (total wait: {elapsed}s)")
+                            self.logger.info("")
 
                         elif (
                             message_image_status == "FAILED" or message_image_status == "PARTIAL"
@@ -385,15 +389,20 @@ class Runner:
                             except Exception as e:
                                 self.logger.warning(f"Failed to extract failure message from SNS message: {e}")
                             self.logger.error(
-                                f"❌ FAILED - Image processing failed with status: {message_image_status}. {failure_message}"
+                                f"FAILED - Image processing failed with status: {message_image_status}. {failure_message}"
                             )
                             raise AssertionError(f"Image processing failed with status: {message_image_status}")
 
                         else:
-                            # Only log every 30 seconds to reduce noise
+                            # Only log every 60 seconds to reduce noise
                             if max_retries % 12 == 0:  # 12 retries = 60 seconds
                                 elapsed = int(time.time() - start_time)
-                                self.logger.info(f"⏳ Still waiting... (elapsed: {elapsed // 60}m {elapsed % 60}s)")
+                                minutes = elapsed // 60
+                                seconds = elapsed % 60
+                                if minutes > 0:
+                                    self.logger.info(f"Waiting for completion... (elapsed: {minutes}m {seconds}s)")
+                                else:
+                                    self.logger.info(f"Waiting for completion... (elapsed: {seconds}s)")
 
                     except json.JSONDecodeError as e:
                         self.logger.warning(f"Failed to parse message body as JSON: {e}")
@@ -489,7 +498,7 @@ class Runner:
         is_flood_test = image_request.model_name == "flood" or target_container == "flood-container"
 
         if is_flood_test:
-            self.logger.info("\n🔍 Validating flood model results (count-based)...")
+            self.logger.info("Validating flood model results (count-based)...")
             variant = endpoint_params.get("TargetVariant")
             expected_counts, expected_region = self._get_flood_model_expectations(image_request.image_url, variant)
 
@@ -517,7 +526,7 @@ class Runner:
         elif expected_output_path:
             resolved_path = self._resolve_expected_output_path(expected_output_path)
             if resolved_path and os.path.exists(resolved_path):
-                self.logger.info("\n🔍 Validating results...")
+                self.logger.info("Validating results...")
                 kinesis_cache: Dict[str, List] = {}
                 self._validate_features_match(
                     image_processing_request=image_processing_request,
@@ -528,10 +537,10 @@ class Runner:
                 )
                 results["validation"] = "passed"
             else:
-                self.logger.warning(f"⚠️  Expected output file not found: {resolved_path or expected_output_path}")
+                self.logger.warning(f"Expected output file not found: {resolved_path or expected_output_path}")
                 results["validation"] = "skipped - file not found"
         else:
-            self.logger.info("⏭️  No expected output provided - skipping validation")
+            self.logger.info("No expected output provided - skipping validation")
             results["validation"] = "skipped"
 
         return results
@@ -744,7 +753,7 @@ class Runner:
 
         replaced = text.replace("${ACCOUNT}", account)
         if replaced != text and not self._account_placeholder_logged:
-            self.logger.info(f"🔄 Replaced ${{ACCOUNT}} placeholder with: {account}")
+            self.logger.info(f"Replaced ${{ACCOUNT}} placeholder with: {account}")
             self._account_placeholder_logged = True
         return replaced
 
@@ -766,8 +775,10 @@ class Runner:
             if "expected_output" in test_case:
                 test_case["expected_output"] = self._replace_placeholders(test_case.get("expected_output", ""))
 
-        self.logger.info(f"\n🧪 Starting test suite: {len(test_cases)} test(s)")
-        self.logger.info("=" * 60 + "\n")
+        self.logger.info("")
+        self.logger.info(f"Starting test suite: {len(test_cases)} test(s)")
+        self.logger.info("=" * 60)
+        self.logger.info("")
 
         results = {"total_tests": len(test_cases), "passed": 0, "failed": 0, "test_results": []}
 
@@ -794,7 +805,9 @@ class Runner:
             else:
                 results["failed"] += 1
 
-        self.logger.info("\n" + "=" * 60)
+        self.logger.info("")
+        self.logger.info("=" * 60)
         self.logger.info(f"Test suite completed: {results['passed']} passed, {results['failed']} failed")
-        self.logger.info("=" * 60 + "\n")
+        self.logger.info("=" * 60)
+        self.logger.info("")
         return results
