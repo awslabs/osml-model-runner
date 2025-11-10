@@ -6,6 +6,9 @@ on:
   push:
     branches: ["main"]
 
+permissions:
+  contents: read
+
 env:
   REGISTRY: awsosml
   IMAGE_NAME: ${{ github.event.repository.name }}
