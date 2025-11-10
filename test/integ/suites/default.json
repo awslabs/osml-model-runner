@@ -1,0 +1,99 @@
+[
+  {
+    "name": "Centerpoint - Tile",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/tile.tif",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "suites/results/centerpoint.geojson",
+    "timeout_minutes": 10
+  },
+  {
+    "name": "Centerpoint - Small",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "suites/results/centerpoint_small.geojson",
+    "timeout_minutes": 10
+  },
+  {
+    "name": "Centerpoint - HTTP",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
+    "model_name": "centerpoint",
+    "endpoint_type": "HTTP_ENDPOINT",
+    "expected_output": "suites/results/centerpoint_http_small.geojson",
+    "timeout_minutes": 5
+  },
+  {
+    "name": "Centerpoint - WBID",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/wbid.ntf",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "suites/results/centerpoint_wbid.ntf.geojson",
+    "timeout_minutes": 5
+  },
+  {
+    "name": "Centerpoint - Umbra",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/sicd-umbra-chip.ntf",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "suites/results/centerpoint.sicd-umbra-chip.ntf.geojson",
+    "timeout_minutes": 5
+  },
+  {
+    "name": "Centerpoint - Capella",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/sicd-capella-chip.ntf",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "suites/results/centerpoint.sicd-capella-chip.ntf.geojson",
+    "timeout_minutes": 5
+  },
+  {
+    "name": "Centerpoint - Interferometric",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/sicd-interferometric-hh.nitf",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "suites/results/centerpoint.sicd-interferometric-hh.nitf.geojson",
+    "timeout_minutes": 5
+  },
+  {
+    "name": "Centerpoint - Metadata",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/meta.ntf",
+    "model_name": "centerpoint",
+    "endpoint_type": "SM_ENDPOINT",
+    "expected_output": "suites/results/centerpoint.meta.ntf.geojson",
+    "timeout_minutes": 5
+  },
+  {
+    "name": "Flood - 50",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/large.tif",
+    "model_name": "flood",
+    "endpoint_type": "SM_ENDPOINT",
+    "model_variant": "flood-50",
+    "timeout_minutes": 15
+  },
+  {
+    "name": "Flood - 100",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/large.tif",
+    "model_name": "flood",
+    "endpoint_type": "SM_ENDPOINT",
+    "model_variant": "flood-100",
+    "timeout_minutes": 15
+  },
+  {
+    "name": "Multi-Container - Centerpoint",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
+    "model_name": "multi-container",
+    "endpoint_type": "SM_ENDPOINT",
+    "target_container": "centerpoint-container",
+    "expected_output": "suites/results/centerpoint_small.geojson",
+    "timeout_minutes": 10
+  },
+  {
+    "name": "Multi-Container - Flood",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/large.tif",
+    "model_name": "multi-container",
+    "endpoint_type": "SM_ENDPOINT",
+    "target_container": "flood-container",
+    "timeout_minutes": 15
+  }
+]

@@ -1,8 +1,9 @@
 #  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import os
+import sys
 from importlib import reload
-from test.configuration import MOCK_MODEL_RESPONSE, TEST_CONFIG
+from pathlib import Path
 from unittest import TestCase, main
 from unittest.mock import Mock, patch
 
@@ -13,6 +14,12 @@ from moto import mock_aws
 from osgeo import gdal
 
 from aws.osml.model_runner.database import RequestedJobsTable
+from config import MOCK_MODEL_RESPONSE, TEST_CONFIG
+
+# Add the test directory to sys.path to allow importing config
+_test_dir = Path(__file__).parent
+if str(_test_dir) not in sys.path:
+    sys.path.insert(0, str(_test_dir))
 
 
 @mock_aws
