@@ -51,6 +51,8 @@ repos:
             doc/.*|
             ^\..+|
             .+\.md|
+            .+\.geojson|
+            .+\.json|
             test/data/.*|
             LICENSE|
             tox.ini|
@@ -81,6 +83,8 @@ repos:
             doc/.*|
             ^\..+|
             .+\.md|
+            .+\.geojson|
+            .+\.json|
             test/data/.*|
             LICENSE|
             tox.ini|
