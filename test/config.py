@@ -1,10 +1,10 @@
 #  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 """
-Configuration management for integration tests.
+Shared configuration management for integration and load tests.
 
-This module provides centralized configuration management for integration tests,
-including environment variable handling imported from ECS task definitions.
+This module provides centralized configuration management for both integration
+and load tests, including environment variable handling imported from ECS task definitions.
 """
 
 import logging
@@ -19,17 +19,17 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class Config:
+class BaseConfig:
     """
-    Configuration class for OSML integration tests.
+    Base configuration class for OSML tests.
 
-    This class manages infrastructure configuration parameters for integration tests,
+    This class manages infrastructure configuration parameters for tests,
     with values imported directly from the ECS task definition.
 
     Configuration values are extracted from the task definition and stored
     directly in this class. Only infrastructure-level configuration (queues, tables,
-    default result destinations) are stored here. Test-specific parameters (image,
-    model, region of interest) should be specified per-test via ImageRequest.
+    default result destinations) are stored here. Test-specific parameters should
+    be specified per-test or via environment variables.
     """
 
     # Core AWS infrastructure (computed/derived)
@@ -112,7 +112,7 @@ class Config:
         if not matching_arns:
             raise RuntimeError(
                 f"No task definition found with pattern: {task_def_pattern} in region: {region}. "
-                f"Integration tests require a deployed Model Runner task definition."
+                f"Tests require a deployed Model Runner task definition."
             )
 
         task_def_arn = matching_arns[0]
@@ -208,7 +208,7 @@ class Config:
         return None
 
     @staticmethod
-    def from_task_definition(pattern: str = "ModelRunnerDataplane", region: Optional[str] = None) -> "Config":
+    def from_task_definition(pattern: str = "ModelRunnerDataplane", region: Optional[str] = None) -> "BaseConfig":
         """
         Build a Config instance from ECS task definition environment variables.
 
@@ -217,7 +217,7 @@ class Config:
         :returns: Config instance configured with values from the task definition.
         :raises RuntimeError: If task definition cannot be found or accessed.
         """
-        config = Config()
+        config = BaseConfig()
         try:
             config._load_from_task_definition(pattern=pattern, region=region)
         except ClientError as e:
@@ -245,5 +245,107 @@ class Config:
             raise ValueError(f"Missing required configuration parameters: {', '.join(missing_params)}")
 
 
-# Global configuration instance
+@dataclass
+class Config(BaseConfig):
+    """
+    Configuration class for OSML integration tests.
+
+    This class manages infrastructure configuration parameters for integration tests,
+    with values imported directly from the ECS task definition.
+
+    Configuration values are extracted from the task definition and stored
+    directly in this class. Only infrastructure-level configuration (queues, tables,
+    default result destinations) are stored here. Test-specific parameters (image,
+    model, region of interest) should be specified per-test via ImageRequest.
+    """
+
+    @staticmethod
+    def from_task_definition(pattern: str = "ModelRunnerDataplane", region: Optional[str] = None) -> "Config":
+        """
+        Build a Config instance from ECS task definition environment variables.
+
+        :param pattern: Pattern to match task definition names. Defaults to "ModelRunnerDataplane".
+        :param region: AWS region to search in. Defaults to auto-detected.
+        :returns: Config instance configured with values from the task definition.
+        :raises RuntimeError: If task definition cannot be found or accessed.
+        """
+        config = Config()
+        try:
+            config._load_from_task_definition(pattern=pattern, region=region)
+        except ClientError as e:
+            raise RuntimeError(
+                f"Failed to import environment variables from task definition: {e}. "
+                f"Ensure AWS credentials are configured and you have access to ECS."
+            ) from e
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Unexpected error importing environment variables from task definition: {e}") from e
+
+        return config
+
+
+@dataclass
+class LoadTestConfig(BaseConfig):
+    """
+    Configuration class for OSML load tests.
+
+    This class manages infrastructure configuration parameters for load tests,
+    with values imported directly from the ECS task definition.
+
+    Configuration values are extracted from the task definition and stored
+    directly in this class. Load test specific parameters (source bucket,
+    result bucket, model, timing) should be specified via environment variables
+    or command-line arguments.
+    """
+
+    # Load test specific configuration (from environment variables)
+    S3_LOAD_TEST_SOURCE_IMAGE_BUCKET: Optional[str] = os.getenv("S3_LOAD_TEST_SOURCE_IMAGE_BUCKET") or os.getenv(
+        "S3_SOURCE_IMAGE_BUCKET"
+    )
+    S3_LOAD_TEST_RESULT_BUCKET: Optional[str] = os.getenv("S3_LOAD_TEST_RESULT_BUCKET") or os.getenv("S3_RESULT_BUCKET")
+    SM_LOAD_TEST_MODEL: str = os.getenv("SM_LOAD_TEST_MODEL", "centerpoint")
+    PERIODIC_SLEEP_SECS: int = int(os.getenv("PERIODIC_SLEEP_SECS", "60"))
+    PROCESSING_WINDOW_MIN: int = int(os.getenv("PROCESSING_WINDOW_MIN", "1"))
+
+    @staticmethod
+    def from_task_definition(pattern: str = "ModelRunnerDataplane", region: Optional[str] = None) -> "LoadTestConfig":
+        """
+        Build a LoadTestConfig instance from ECS task definition environment variables.
+
+        :param pattern: Pattern to match task definition names. Defaults to "ModelRunnerDataplane".
+        :param region: AWS region to search in. Defaults to auto-detected.
+        :returns: LoadTestConfig instance configured with values from the task definition.
+        :raises RuntimeError: If task definition cannot be found or accessed.
+        """
+        config = LoadTestConfig()
+        try:
+            config._load_from_task_definition(pattern=pattern, region=region)
+        except ClientError as e:
+            raise RuntimeError(
+                f"Failed to import environment variables from task definition: {e}. "
+                f"Ensure AWS credentials are configured and you have access to ECS."
+            ) from e
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Unexpected error importing environment variables from task definition: {e}") from e
+
+        return config
+
+    def validate(self) -> None:
+        """
+        Validate that required configuration parameters are set.
+
+        :raises ValueError: If required parameters are missing.
+        """
+        required_params = ["ACCOUNT", "REGION", "IMAGE_QUEUE_NAME", "S3_LOAD_TEST_SOURCE_IMAGE_BUCKET"]
+        missing_params = [param for param in required_params if not getattr(self, param)]
+
+        if missing_params:
+            raise ValueError(f"Missing required configuration parameters: {', '.join(missing_params)}")
+
+
+# Global configuration instances for backward compatibility
 config = Config()
+load_test_config = LoadTestConfig()

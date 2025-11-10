@@ -18,7 +18,7 @@ from boto3 import dynamodb
 from geojson import Feature
 
 if TYPE_CHECKING:
-    from test.integ.config import Config
+    from test.config import Config
 
 # Type aliases for boto3 clients/resources (using object as base since boto3 types vary)
 # These represent boto3.client() and boto3.resource() return types

@@ -6,7 +6,7 @@ Unified integration test runner for OSML Model Runner.
 This module provides a clean, simple interface for running integration tests
 without external dependencies on scripts/integration/test.py.
 
-The Runner class can be used programmatically or via the CLI entry point
+The IntegRunner class can be used programmatically or via the CLI entry point
 in bin/run-integration-tests.py.
 """
 
@@ -20,7 +20,7 @@ from secrets import token_hex
 from typing import Any, Dict, List, Optional, Tuple
 
 # Add the project root to Python path before importing other modules
-# This allows imports like 'test.integ.config' to work when running the script directly
+# This allows imports like 'test.config' to work when running the script directly
 _project_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../..")
 sys.path.insert(0, _project_root)
 
@@ -28,9 +28,9 @@ sys.path.insert(0, _project_root)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Import Config to build configuration from task definition
-from test.integ.config import Config  # noqa: E402
-from test.integ.types import ImageRequest, ModelInvokeMode  # noqa: E402
+from test.config import Config  # noqa: E402
 from test.integ.validator import Validator  # noqa: E402
+from test.types import ImageRequest, ModelInvokeMode  # noqa: E402
 
 import boto3  # noqa: E402
 import geojson  # noqa: E402
@@ -38,7 +38,7 @@ from botocore.exceptions import ClientError, ParamValidationError  # noqa: E402
 from geojson import Feature  # noqa: E402
 
 
-class Runner:
+class IntegRunner:
     """
     Unified integration test runner for OSML Model Runner.
 
@@ -344,11 +344,14 @@ class Runner:
         self.logger.info(f"Monitoring job progress (timeout: {timeout_minutes} min)...")
 
         start_time = time.time()
+        last_log_time = start_time
 
         while not done and max_retries > 0:
             try:
                 # Use WaitTimeSeconds for long polling to reduce API calls
                 messages = queue.receive_messages(MaxNumberOfMessages=10, WaitTimeSeconds=5, VisibilityTimeout=30)
+
+                found_relevant_message = False
 
                 # Process all messages in the batch
                 for message in messages:
@@ -362,10 +365,12 @@ class Runner:
                         message_image_status = message_attributes.get("status", {}).get("Value")
 
                         if message_image_status == "IN_PROGRESS" and message_image_id == image_id:
+                            found_relevant_message = True
                             elapsed = int(time.time() - start_time)
                             self.logger.info(f"Status: IN_PROGRESS (elapsed: {elapsed}s)")
 
                         elif message_image_status == "SUCCESS" and message_image_id == image_id:
+                            found_relevant_message = True
                             processing_duration = message_attributes.get("processing_duration", {}).get("Value")
                             if processing_duration is not None:
                                 assert float(processing_duration) > 0
@@ -382,6 +387,7 @@ class Runner:
                         elif (
                             message_image_status == "FAILED" or message_image_status == "PARTIAL"
                         ) and message_image_id == image_id:
+                            found_relevant_message = True
                             failure_message = ""
                             try:
                                 message_body = json.loads(message.body).get("Message", "")
@@ -392,17 +398,6 @@ class Runner:
                                 f"FAILED - Image processing failed with status: {message_image_status}. {failure_message}"
                             )
                             raise AssertionError(f"Image processing failed with status: {message_image_status}")
-
-                        else:
-                            # Only log every 60 seconds to reduce noise
-                            if max_retries % 12 == 0:  # 12 retries = 60 seconds
-                                elapsed = int(time.time() - start_time)
-                                minutes = elapsed // 60
-                                seconds = elapsed % 60
-                                if minutes > 0:
-                                    self.logger.info(f"Waiting for completion... (elapsed: {minutes}m {seconds}s)")
-                                else:
-                                    self.logger.info(f"Waiting for completion... (elapsed: {seconds}s)")
 
                     except json.JSONDecodeError as e:
                         self.logger.warning(f"Failed to parse message body as JSON: {e}")
@@ -419,6 +414,19 @@ class Runner:
                 # If we found success, break out of the main retry loop
                 if done:
                     break
+
+                # Only log periodic status if we didn't find a relevant message and it's been 60 seconds since last log
+                if not found_relevant_message:
+                    current_time = time.time()
+                    if current_time - last_log_time >= 60:
+                        elapsed = int(current_time - start_time)
+                        minutes = elapsed // 60
+                        seconds = elapsed % 60
+                        if minutes > 0:
+                            self.logger.info(f"Waiting for completion... (elapsed: {minutes}m {seconds}s)")
+                        else:
+                            self.logger.info(f"Waiting for completion... (elapsed: {seconds}s)")
+                        last_log_time = current_time
 
             except ClientError as err:
                 self.logger.warning(f"ClientError in monitor_job_status: {err}")

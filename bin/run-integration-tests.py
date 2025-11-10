@@ -6,7 +6,7 @@
 CLI entry point for OSML Model Runner integration tests.
 
 This script provides a command-line interface for running integration tests.
-The test logic is implemented in the Runner class in test.integ.runner.
+The test logic is implemented in the IntegRunner class in test.integ.integ_runner.
 """
 
 import argparse
@@ -18,8 +18,8 @@ import sys
 _project_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, _project_root)
 
-from test.integ.runner import Runner  # noqa: E402
-from test.integ.types import ModelInvokeMode  # noqa: E402
+from test.integ.integ_runner import IntegRunner  # noqa: E402
+from test.types import ModelInvokeMode  # noqa: E402
 
 
 def resolve_suite_path(suite_path: str) -> str:
@@ -150,7 +150,7 @@ def main() -> int:
     validate_args(args, parser)
 
     # Initialize test runner
-    runner = Runner(verbose=args.verbose)
+    runner = IntegRunner(verbose=args.verbose)
 
     # Run tests
     if args.suite:

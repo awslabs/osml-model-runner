@@ -33,29 +33,26 @@ This directory contains a unified integration test suite for OSML Model Runner w
 The simplest way to run an integration test:
 
 ```bash
-# Move into the integration test folder
-cd test/integ/
-
 # Test with your image and model
-python runner.py s3://mr-test-imagery-${ACCOUNT}/small.tif centerpoint
+python bin/run-integration-tests.py s3://mr-test-imagery-${ACCOUNT}/small.tif centerpoint
 
 # Test with expected output validation
-python runner.py s3://mr-test-imagery-${ACCOUNT}/small.tif centerpoint expected.json
+python bin/run-integration-tests.py s3://mr-test-imagery-${ACCOUNT}/small.tif centerpoint expected.json
 
 # Test HTTP endpoint
-python runner.py s3://my-bucket/image.tif my-model expected.json --http
+python bin/run-integration-tests.py s3://my-bucket/image.tif my-model expected.json --http
 
 # Test with SageMaker model variant
-python runner.py s3://my-bucket/image.tif flood expected.json --model-variant flood-50
+python bin/run-integration-tests.py s3://my-bucket/image.tif flood expected.json --model-variant flood-50
 
 # Test with multi-container endpoint
-python runner.py s3://my-bucket/image.tif multi-container expected.json --target-container centerpoint-container
+python bin/run-integration-tests.py s3://my-bucket/image.tif multi-container expected.json --target-container centerpoint-container
 
 # Run with verbose logging
-python runner.py s3://my-bucket/image.tif centerpoint --verbose
+python bin/run-integration-tests.py s3://my-bucket/image.tif centerpoint --verbose
 
 # Save results to JSON file
-python test/integ/runner.py s3://my-bucket/image.tif centerpoint --output results.json
+python bin/run-integration-tests.py s3://my-bucket/image.tif centerpoint --output results.json
 ```
 
 **Note**: For test suites, you can use the `${ACCOUNT}` placeholder in JSON configuration files to automatically use your current AWS account ID.
@@ -66,20 +63,23 @@ Run multiple tests from a JSON configuration:
 
 ```bash
 # Run full test suite
-python runner.py --suite suites/model_runner_full
+python bin/run-integration-tests.py --suite suites/default.json
 
 # Run with custom timeout and delay
-python runner.py --suite suites/model_runner_full --timeout 45 --delay 10
+python bin/run-integration-tests.py --suite suites/default.json --timeout 45 --delay 10
 
 # Run with verbose logging and save results
-python runner.py --suite suites/model_runner_full --verbose --output test_results.json
+python bin/run-integration-tests.py --suite suites/default.json --verbose --output test_results.json
 ```
 
 ## File Structure
 
 ```text
+bin/
+└── run-integration-tests.py  # CLI entry point for running integration tests
+
 test/integ/
-├── runner.py              # Unified test runner (supports single tests and test suites)
+├── integ_runner.py        # Test runner implementation (IntegRunner class)
 ├── types.py               # Local type definitions (no dependency on model runner)
 ├── config.py              # Configuration management
 ├── validator.py           # GeoJSON feature validation utilities
