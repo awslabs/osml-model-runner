@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+permissions:
+  contents: read
+
 jobs:
   tox:
     uses: ./.github/workflows/tox.yml
