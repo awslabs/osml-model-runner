@@ -89,7 +89,7 @@ class RequestQueue:
         except ClientError as err:
             logger.error(f"Unable to reset message visibility: {err}")
 
-    def send_request(self, request: Dict, delay_seconds: Optional[int]=None) -> None:
+    def send_request(self, request: Dict, delay_seconds: Optional[int]=0) -> None:
         """
         Send the message via SQS
 

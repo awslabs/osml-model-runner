@@ -89,7 +89,7 @@ class HTTPDetector(Detector):
     issues.
     """
 
-    def __init__(self, endpoint: str, name: Optional[str] = None, retry: Optional[urllib3.Retry] = None) -> None:
+    def __init__(self, endpoint: str, name: Optional[str] = None, retry: Optional[urllib3.Retry] = None, **kwargs) -> None:
         """
         Initializes the HTTPDetector with the model endpoint URL, optional name, and retry policy.
 
@@ -196,7 +196,7 @@ class HTTPDetectorBuilder(FeatureEndpointBuilder):
     detection.
     """
 
-    def __init__(self, endpoint: str):
+    def __init__(self, endpoint: str, **kwargs):
         """
         Initializes the HTTPDetectorBuilder with the model endpoint URL.
 

@@ -80,12 +80,24 @@ class TestJobTable(unittest.TestCase):
         """
         Validate that we can successfully determine when an image has been completed.
         """
+        from aws.osml.model_runner.database.region_request_table import RegionRequestTable
+
+        # Create a mock region table
+        mock_region_table = Mock(spec=RegionRequestTable)
+
         self.job_table.start_image_request(self.job_item)
         self.job_item.region_count = Decimal(1)
         self.job_item.region_success = Decimal(1)
         self.job_item.region_error = Decimal(0)
         self.job_table.update_ddb_item(self.job_item)
-        assert self.job_table.is_image_request_complete(self.job_item)
+
+        # Mock the get_image_request_complete_counts function to return completed status
+        with patch("aws.osml.model_runner.database.job_table.get_image_request_complete_counts") as mock_counts:
+            mock_counts.return_value = (0, 1)  # (failed_count, completed_count)
+            done, completed, failed = self.job_table.is_image_request_complete(mock_region_table, self.job_item)
+            assert done is True
+            assert completed == 1
+            assert failed == 0
 
     def test_region_ended_success(self):
         """
@@ -141,9 +153,32 @@ class TestJobTable(unittest.TestCase):
         with self.assertRaises(GetImageRequestItemException):
             self.job_table.get_image_request("DOES-NOT-EXIST-IMAGE-ID")
 
-    def test_is_image_request_complete_failure(self):
+    def test_is_image_request_complete_with_failures(self):
         """
-        Validate that we throw the correct IsImageCompleteException when checking if an image is complete fails.
+        Validate that is_image_request_complete correctly handles failed regions.
+        """
+        from aws.osml.model_runner.database.region_request_table import RegionRequestTable
+
+        # Create a mock region table
+        mock_region_table = Mock(spec=RegionRequestTable)
+
+        self.job_table.start_image_request(self.job_item)
+        self.job_item.region_count = Decimal(3)
+        self.job_item.region_success = Decimal(2)
+        self.job_item.region_error = Decimal(1)
+        self.job_table.update_ddb_item(self.job_item)
+
+        # Mock the get_image_request_complete_counts function to return mixed status
+        with patch("aws.osml.model_runner.database.job_table.get_image_request_complete_counts") as mock_counts:
+            mock_counts.return_value = (1, 2)  # (failed_count, completed_count)
+            done, completed, failed = self.job_table.is_image_request_complete(mock_region_table, self.job_item)
+            assert done is True
+            assert completed == 2
+            assert failed == 1
+
+    def test_is_image_request_complete_v1_failure(self):
+        """
+        Validate that we throw the correct IsImageCompleteException when checking if an image is complete fails using v1.
         """
         from aws.osml.model_runner.database.exceptions import IsImageCompleteException
 
@@ -153,7 +188,7 @@ class TestJobTable(unittest.TestCase):
         self.job_item.region_error = None
 
         with self.assertRaises(IsImageCompleteException):
-            self.job_table.is_image_request_complete(self.job_item)
+            self.job_table.is_image_request_complete_v1(self.job_item)
 
     def test_get_processing_duration(self):
         """

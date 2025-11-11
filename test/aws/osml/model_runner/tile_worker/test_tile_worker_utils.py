@@ -82,7 +82,8 @@ class TestTileWorkerUtils(TestCase):
         from aws.osml.model_runner.api import RegionRequest
         from aws.osml.model_runner.database import RegionRequestItem
         from aws.osml.model_runner.tile_worker import VariableTileTilingStrategy
-        from aws.osml.model_runner.tile_worker.tile_worker_utils import process_tiles, setup_tile_workers
+        from aws.osml.model_runner.tile_worker.tile_worker_utils import setup_tile_workers
+        from aws.osml.model_runner.tile_worker.tile_processors import TileProcessor
 
         # Mock the RegionRequest and RegionRequestItem
         mock_region_request = RegionRequest(
@@ -107,8 +108,9 @@ class TestTileWorkerUtils(TestCase):
         work_queue, tile_worker_list = setup_tile_workers(mock_region_request, sensor_model, None)
 
         # Execute process_tiles
-        total_tile_count, tile_error_count = process_tiles(
+        total_tile_count, tile_error_count = TileProcessor().process_tiles(
             tiling_strategy=VariableTileTilingStrategy(),
+            region_request=mock_region_request,
             region_request_item=region_request_item,
             tile_queue=work_queue,
             tile_workers=tile_worker_list,

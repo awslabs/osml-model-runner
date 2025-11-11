@@ -336,7 +336,7 @@ class ModelRunner:
         logger.debug(
             f"{region_id=}: Found counts:  {done=} = ({completed=} + {failed_count=}) == {total_expected_tile_count=}"
         )
-        logger.info(f"{region_id=}: {region_status=} in [{RequestStatus.SUCCESS.name}, {RequestStatus.FAILED.name}]")
+        logger.debug(f"{region_id=}: {region_status=} in [{RequestStatus.SUCCESS.name}, {RequestStatus.FAILED.name}]")
         if not done:
             return region_request_item, False
 

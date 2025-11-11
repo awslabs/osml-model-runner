@@ -30,8 +30,6 @@ def configure_logging(verbose: bool) -> None:
     """
 
     logging_level = os.getenv("LOG_LEVEL") or (logging.DEBUG if verbose else logging.INFO)
-    logging_level = "DEBUG"  # TODO: Get from env vars
-    logging_level = "INFO"  # TODO: Get from env vars
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging_level)

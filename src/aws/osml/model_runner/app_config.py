@@ -108,6 +108,10 @@ class ServiceConfig:
     # async endpoint config
     async_endpoint_config: AsyncEndpointConfig = field(default=AsyncEndpointConfig)
 
+    # optional parameters for tile polling
+    use_tile_poller: Optional[str] = os.getenv("USE_TILE_POLLER", "true").lower() == "true"
+    tile_poller_delay: Optional[int] = int(os.getenv("TILE_POLLER_DELAY", 60))
+
     def __post_init__(self):
         """
         Post-initialization method to set up the elevation model.

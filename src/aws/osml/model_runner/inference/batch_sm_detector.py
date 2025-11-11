@@ -114,9 +114,6 @@ class BatchSMDetectorBuilder:
         try:
             detector = BatchSMDetector(endpoint=self.endpoint, assumed_credentials=self.assumed_credentials)
             return detector
-        except ExtensionConfigurationError:
-            # Re-raise configuration errors
-            raise
         except Exception as e:
             logger.error(f"Failed to create BatchSMDetector: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")

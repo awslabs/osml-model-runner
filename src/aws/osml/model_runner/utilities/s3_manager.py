@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from io import BufferedReader
 from json import JSONDecodeError
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 import boto3
@@ -144,9 +144,7 @@ class S3Manager:
         logger.debug(f"Downloading results from S3: {s3_uri}")
 
         # Parse S3 URI
-        parsed_uri = urlparse(s3_uri)
-        bucket = parsed_uri.netloc
-        key = parsed_uri.path.lstrip("/")
+        bucket, key = self.parse_s3_uri(s3_uri)
 
         if isinstance(metrics, MetricsLogger):
             metrics.put_dimensions({"Operation": "S3Download", "Bucket": bucket})
@@ -216,9 +214,7 @@ class S3Manager:
 
         try:
             # Parse S3 URI
-            parsed_uri = urlparse(s3_uri)
-            bucket = parsed_uri.netloc
-            key = parsed_uri.path.lstrip("/")
+            bucket, key = self.parse_s3_uri(s3_uri)
 
             self.s3_client.delete_object(Bucket=bucket, Key=key)
             logger.debug(f"Successfully deleted {s3_uri}")
@@ -255,7 +251,6 @@ class S3Manager:
             logger.error(error_msg)
             raise S3OperationError(error_msg) from e
 
-
     def _download_from_s3(self, output_s3_uri: str) -> FeatureCollection:
         """
         Download and parse results from S3 output location.
@@ -284,9 +279,7 @@ class S3Manager:
     def does_object_exist(self, s3_uri: str):
         try:
             # Parse S3 URI
-            parsed_uri = urlparse(s3_uri)
-            bucket = parsed_uri.netloc
-            key = parsed_uri.path.lstrip("/")
+            bucket, key = self.parse_s3_uri(s3_uri)
 
             # head_object is the fastest approach to determine if it exists in S3
             # also its less expensive to do the head_object approach
@@ -294,3 +287,19 @@ class S3Manager:
             return True
         except Exception as err: #"This image does not exist!
             return False
+
+    def parse_s3_uri(self, s3_uri: str) -> Tuple[str, str]:
+        """Parse S3 URI into bucket and key components.
+
+        :param s3_uri: S3 URI to parse
+        :returns: Tuple of (bucket, key)
+        """
+
+        parsed = urlparse(s3_uri, allow_fragments=False)
+        bucket = parsed.netloc
+        if parsed.query:
+            key = parsed.path.lstrip("/") + "?" + parsed.query
+        else:
+            key = parsed.path.lstrip("/")
+
+        return bucket, key

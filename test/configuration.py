@@ -67,8 +67,8 @@ TEST_CONFIG = {
         {"AttributeName": "image_id", "AttributeType": "S"},
     ],
     "REGION_REQUEST_TABLE_KEY_SCHEMA": [
-        {"AttributeName": "region_id", "KeyType": "HASH"},
-        {"AttributeName": "image_id", "KeyType": "RANGE"},
+        {"AttributeName": "image_id", "KeyType": "HASH"},
+        {"AttributeName": "region_id", "KeyType": "RANGE"},
     ],
     "RESULTS_BUCKET": "test-results-bucket",
     "RESULTS_STREAM": "test-results-stream",
