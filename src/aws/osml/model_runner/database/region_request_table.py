@@ -12,6 +12,7 @@ from aws.osml.model_runner.app_config import ServiceConfig
 from aws.osml.model_runner.common import ImageRegion, RequestStatus, TileState
 
 from .ddb_helper import DDBHelper, DDBItem, DDBKey
+from .image_request_table import ImageRequestItem
 from .exceptions import CompleteRegionException, GetRegionRequestItemException, StartRegionException, UpdateRegionException
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ class RegionRequestItem(DDBItem):
     image_read_role: Optional[str] = IAM role to read the image for processing
     processing_duration: Optional[int] = time in seconds to complete region processing
     message: Optional[str] = additional information about the region job
-    region_status: Optional[str] = region job status - PROCESSING, SUCCESS, FAILED
+    region_status: Optional[str] = region job status - PROCESSING, COMPLETED, FAILED
     total_tiles: Optional[int] = total number of tiles to be processed for the region
     failed_tiles: Optional[List] = list of tiles that failed processing
     failed_tile_count: Optional[int] = count of failed tiles that failed to process
@@ -241,7 +242,6 @@ class RegionRequestTable(DDBHelper):
             logger.error(f"Failed to append {state.value} {tile} to item region_id={region_id}: {str(err)}")
             raise UpdateRegionException(f"Failed to append {state.value} {tile} to item region_id={region_id}.") from err
 
-
     def get_or_create_region_request_item(self, region_request: RegionRequest) -> RegionRequestItem:
         """
         Retrieves or creates a `RegionRequestItem` in the region request table.
@@ -263,3 +263,85 @@ class RegionRequestTable(DDBHelper):
                 f"Added region request: image id {region_request_item.image_id}, region id {region_request_item.region_id}"
             )
         return region_request_item
+
+
+    def get_regions_for_image(self, image_id: str, status_filter: Optional[str] = None) -> List[RegionRequestItem]:
+        """
+        Get all regions for a specific image using the image_id as partition key.
+
+        :param image_id: str = the image identifier
+        :param status_filter: Optional[str] = filter by specific status
+
+        :return: List[RegionRequestItem] = list of region request items for the image
+        """
+        try:
+            # Query the table using image_id as partition key
+            query_kwargs = {
+                "KeyConditionExpression": "image_id = :image_id",
+                "ExpressionAttributeValues": {":image_id": image_id},
+            }
+
+            # Add status filter if provided
+            if status_filter:
+                query_kwargs["FilterExpression"] = "#region_status = :region_status"
+                query_kwargs["ExpressionAttributeNames"] = {"#region_status": "region_status"}
+                query_kwargs["ExpressionAttributeValues"][":region_status"] = status_filter
+
+            response = self.table.query(**query_kwargs)
+
+            regions = []
+            for item in response.get("Items", []):
+                converted_item = self.convert_decimal(item)
+                regions.append(from_dict(RegionRequestItem, converted_item))
+
+            return regions
+        except Exception as err:
+            logger.error(f"Failed to get regions for image_id={image_id}: {err}")
+            return []
+
+    def get_image_request_complete_counts(self, image_id: str):
+        """
+        Check completion status for all regions of an image and return counts.
+
+        :param image_id: image to check
+        :return: Tuple of (failed_region_count, complete_region_count)
+        """
+        try:
+            # Get all regions for this image
+            regions = self.get_regions_for_image(image_id)
+
+            failed_region_count = 0
+            completed_count = 0
+
+            for region in regions:
+                if region.region_status == RequestStatus.SUCCESS:
+                    completed_count += 1
+                elif region.region_status == RequestStatus.FAILED:
+                    failed_region_count += 1
+                else:
+                    logger.debug(f"region found in incomplete status: {region.__dict__}")
+
+            return failed_region_count, completed_count
+
+        except Exception as e:
+            logger.error(f"Error checking image completion status: {e}")
+            # Return safe defaults
+            return 0, 0
+
+    def is_image_request_complete(self, image_request_item: ImageRequestItem) -> bool:
+        """
+        Read the table for a ddb item and determine if the image_id associated with the job has completed processing all
+        regions associated with that image.
+
+        :param image_request_item: ImageRequestItem = the unique identifier for the image we want to check if the image is completed
+
+        :return: bool
+
+        Alternative version of ImageRequestTable.is_image_request_complete which doesn't use the region_success field.
+        """
+        image_id = image_request_item.image_id
+        total_expected_region_count = image_request_item.region_count
+        failed_count, completed = self.get_image_request_complete_counts(image_id)
+        done = (completed + failed_count) == total_expected_region_count
+
+        return done, completed, failed_count

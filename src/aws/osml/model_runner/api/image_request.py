@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from json import dumps, loads
 from typing import Any, Dict, List, Optional
 
-import shapely.geometry
 import shapely.wkt
 from dacite import from_dict
 from shapely.geometry.base import BaseGeometry
@@ -273,4 +272,3 @@ class ImageRequest:
         :return: List of FeatureDistillationAlgorithm instances.
         """
         return [op.algorithm for op in self.post_processing if op.step == MRPostprocessingStep.FEATURE_DISTILLATION]
-

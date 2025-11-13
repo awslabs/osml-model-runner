@@ -17,12 +17,10 @@ from osgeo import gdal
 from osgeo.gdal import Dataset
 
 from aws.osml.gdal import GDALConfigEnv, get_image_extension, load_gdal_dataset
-from aws.osml.model_runner.api import ModelInvokeMode, get_image_path
-from aws.osml.model_runner.app_config import BotoConfig
 from aws.osml.photogrammetry import SensorModel
 
-from .api import VALID_MODEL_HOSTING_OPTIONS, ImageRequest, RegionRequest, ModelInvokeMode
-from .app_config import MetricLabels, ServiceConfig
+from .api import get_image_path, VALID_MODEL_HOSTING_OPTIONS, ImageRequest, RegionRequest, ModelInvokeMode
+from .app_config import BotoConfig, MetricLabels, ServiceConfig
 from .common import (
     EndpointUtils,
     ImageDimensions,
@@ -42,7 +40,6 @@ from .database import (
     RegionRequestTable,
     TileRequestTable,
 )
-
 from .exceptions import (
     AggregateFeaturesException,
     AggregateOutputFeaturesException,
@@ -51,7 +48,7 @@ from .exceptions import (
     UnsupportedModelException,
 )
 from .inference import calculate_processing_bounds, get_source_property
-from .inference.feature_utils import add_properties_to_features, get_extents
+from .inference.feature_utils import add_properties_to_features
 from .queue import RequestQueue
 from .region_request_handler import RegionRequestHandler
 from .sink import SinkFactory
@@ -186,7 +183,6 @@ class ImageRequestHandler:
                 else:
                     self.queue_region_request(regions, image_request, ds, sensor_model, extension)
 
-
         except Exception as err:
             # We failed try and gracefully update our image request
             if image_request_item:
@@ -268,9 +264,7 @@ class ImageRequestHandler:
         )
 
         # If the image is finished then complete it
-        image_is_done, region_complete, region_failures = self.image_request_table.is_image_request_complete(
-            self.region_request_table, image_request_item
-        )
+        image_is_done, _, _ = self.region_request_table.is_image_request_complete(image_request_item)
         if image_is_done:
             image_format = str(raster_dataset.GetDriver().ShortName).upper()
             self.complete_image_request(first_region_request, image_format, raster_dataset, sensor_model)
@@ -595,6 +589,11 @@ class ImageRequestHandler:
         sensor_model: Optional[SensorModel],
         image_extension: Optional[str],
     ) -> None:
+        """
+            For batch processing, we don't want to create separate threads for regions/tiles, instead
+            get all tiles ready in the main process and submmit the request for batch processing. 
+        """
+
 
         # Set up our threaded tile worker pool
         tile_queue, tile_workers = setup_upload_tile_workers(
@@ -633,7 +632,6 @@ class ImageRequestHandler:
             # update the expected number of tiles
             region_request_item.total_tiles = total_tile_count
             region_request_item = self.region_request_table.update_region_request(region_request_item)
-            # image_request_item = self.job_table.get_image_request(region_request.image_id)
 
         # shutdown workers
         batch_tile_processor.shutdown_workers = True # turn ON shutdown of workers

@@ -44,7 +44,6 @@ class SelfThrottledTileException(Exception):
 
 class InvocationFailure(RetryableJobException):
     """Model failure"""
-
     pass
 
 
@@ -54,13 +53,11 @@ class ProcessTileException(Exception):
 
 class AsyncInferenceError(Exception):
     """Base class for async inference-related errors."""
-
     pass
 
 
 class S3OperationError(Exception):
     """Raised when S3 upload/download operations fail."""
-
     pass
 
 

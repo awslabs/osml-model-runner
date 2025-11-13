@@ -1,8 +1,0 @@
----
-# Publish
-#
-# Jobs that will publish the built container artifact to Nexus for consumption.
-#
-
-publish:
-  extends: .nexus_publish_template

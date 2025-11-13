@@ -62,10 +62,10 @@ class TestAsyncResultsWorker(TestCase):
         mock_region_request_table = Mock()
 
         with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.TileRequestTable"):
-            with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.JobTable"):
+            with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.ImageRequestTable"):
                 with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.ServiceConfig") as mock_config:
                     mock_config.tile_request_table = "test-tile-table"
-                    mock_config.job_table = "test-job-table"
+                    mock_config.image_request_table = "test-job-table"
 
                     worker = AsyncResultsWorker(
                         worker_id=1,
@@ -97,11 +97,11 @@ class TestAsyncResultsWorker(TestCase):
         }
 
         with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.TileRequestTable"):
-            with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.JobTable"):
+            with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.ImageRequestTable"):
                 with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.boto3") as mock_boto3:
                     with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.ServiceConfig") as mock_config:
                         mock_config.tile_request_table = "test-tile-table"
-                        mock_config.job_table = "test-job-table"
+                        mock_config.image_request_table = "test-job-table"
                         mock_config.async_endpoint_config = Mock()
 
                         worker = AsyncResultsWorker(
@@ -130,11 +130,11 @@ class TestAsyncResultsWorker(TestCase):
         mock_elevation_model = Mock()
 
         with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.TileRequestTable"):
-            with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.JobTable"):
+            with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.ImageRequestTable"):
                 with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.Geolocator") as mock_geolocator_class:
                     with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.ServiceConfig") as mock_config:
                         mock_config.tile_request_table = "test-tile-table"
-                        mock_config.job_table = "test-job-table"
+                        mock_config.image_request_table = "test-job-table"
 
                         worker = AsyncResultsWorker(
                             worker_id=1,
@@ -168,10 +168,10 @@ class TestAsyncResultsWorker(TestCase):
         mock_region_request_table = Mock()
 
         with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.TileRequestTable"):
-            with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.JobTable"):
+            with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.ImageRequestTable"):
                 with patch("aws.osml.model_runner.tile_worker.async_tile_results_worker.ServiceConfig") as mock_config:
                     mock_config.tile_request_table = "test-tile-table"
-                    mock_config.job_table = "test-job-table"
+                    mock_config.image_request_table = "test-job-table"
 
                     worker = AsyncResultsWorker(
                         worker_id=1,

@@ -1,6 +1,0 @@
----
-# Run pre-commit checks using enhanced common template
-#
-
-pre-commit:
-  extends: .pre_commit_enhanced_template

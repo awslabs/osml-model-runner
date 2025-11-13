@@ -58,7 +58,6 @@ class SMDetector(Detector):
         super().__init__(endpoint=endpoint)
         self.set_endpoint_parameters(endpoint_parameters)
 
-
     @property
     def mode(self) -> ModelInvokeMode:
         """
@@ -164,6 +163,7 @@ class SMDetector(Detector):
             self.endpoint_parameters = self.endpoint_parameters | filtered_parameters
             if invalid_parameters:
                 logger.warning(f"Ignoring invalid sagemaker endpoint parameters: {invalid_parameters}")
+
 
 class SMDetectorBuilder(FeatureEndpointBuilder):
     """

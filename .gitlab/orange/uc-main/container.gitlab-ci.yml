@@ -1,8 +1,0 @@
----
-# Orange Container Wormhole Workflow
-#
-# Jobs that will trigger the re-tagging of UC CTM images in SC and TC
-#
-
-check_update_registry:
-  extends: .container_wormhole_template

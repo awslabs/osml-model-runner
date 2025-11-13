@@ -205,6 +205,7 @@ class HTTPDetector(Detector):
         """
         self.endpoint_parameters = parameters
 
+
 class HTTPDetectorBuilder(FeatureEndpointBuilder):
     """
     HTTPDetectorBuilder is responsible for building an HTTPDetector configured with an HTTP model endpoint.

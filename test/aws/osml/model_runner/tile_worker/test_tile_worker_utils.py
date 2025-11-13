@@ -146,7 +146,6 @@ class TestTileWorkerUtils(TestCase):
         from aws.osml.model_runner.tile_worker.tile_worker_utils import setup_tile_workers
         from aws.osml.model_runner.tile_worker.tile_processors import TileProcessor
 
-
         mock_feature_detector = Mock()
         mock_feature_detector.endpoint = "test-model-endpoint"
         mock_feature_detector.find_features.return_value = {"features": []}
@@ -155,7 +154,6 @@ class TestTileWorkerUtils(TestCase):
         # Mock the database tables
         mock_feature_table.return_value = Mock()
         mock_region_request_table.return_value = Mock()
-
 
         # Mock the RegionRequest and RegionRequestItem
         mock_region_request = RegionRequest(

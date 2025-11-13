@@ -151,7 +151,8 @@ class RegionRequestHandler:
         raster_dataset: gdal.Dataset,
         sensor_model: Optional[SensorModel] = None,
         metrics: MetricsLogger = None,
-    ) -> JobItem:
+    ) -> ImageRequestItem:
+        """Process request through realtime endpoint"""
         if isinstance(metrics, MetricsLogger):
             metrics.set_dimensions()
 
@@ -260,20 +261,8 @@ class RegionRequestHandler:
         raster_dataset: gdal.Dataset,
         sensor_model: Optional[SensorModel] = None,
         metrics: MetricsLogger = None,
-    ) -> JobItem:
-        """
-        Enhanced region request processing with preprocessing hooks and enhanced monitoring.
-
-        This method extends the base implementation while maintaining full compatibility.
-
-        :param region_request: RegionRequest = the region request
-        :param region_request_item: RegionRequestItem = the region request to update
-        :param raster_dataset: gdal.Dataset = the raster dataset containing the region
-        :param sensor_model: Optional[SensorModel] = the sensor model for this raster dataset
-        :param metrics: MetricsLogger = the metrics logger to use to report metrics.
-
-        :return: JobItem
-        """
+    ) -> ImageRequestItem:
+        """Process request through asynchronous endpoint"""
         logger.info(f"Async processing region: {region_request.region_id}")
 
         try:
@@ -334,7 +323,7 @@ class RegionRequestHandler:
                 # update the expected number of tiles
                 region_request_item.total_tiles = total_tile_count
                 region_request_item = self.region_request_table.update_region_request(region_request_item)
-                image_request_item = self.job_table.get_image_request(region_request.image_id)
+                image_request_item = self.image_request_table.get_image_request(region_request.image_id)
 
                 return image_request_item
 

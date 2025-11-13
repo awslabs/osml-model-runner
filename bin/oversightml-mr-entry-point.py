@@ -9,7 +9,6 @@ from types import FrameType
 from typing import Optional
 
 from codeguru_profiler_agent import Profiler
-
 from pythonjsonlogger import jsonlogger
 
 from aws.osml.model_runner import ModelRunner
@@ -45,6 +44,7 @@ def configure_logging(verbose: bool) -> None:
 
     root_logger.addHandler(ch)
 
+
 def map_signals(model_runner: ModelRunner) -> None:
     signal.signal(signal.SIGINT, lambda signum, frame: handler_stop_signals(signum, frame, model_runner))
     signal.signal(signal.SIGTERM, lambda signum, frame: handler_stop_signals(signum, frame, model_runner))
@@ -63,29 +63,20 @@ def setup_code_profiling() -> None:
 
 
 def main() -> int:
-    try:
-        # Parse command line arguments
-        args = parse_args()
-        
-        # Configure logging first
-        configure_logging(args.verbose)
+    # Parse command line arguments
+    args = parse_args()
+    
+    # Configure logging first
+    configure_logging(args.verbose)
 
-        # Create and configure model runner
-        model_runner = ModelRunner()
+    # Create and configure model runner
+    model_runner = ModelRunner()
 
-        map_signals(model_runner)
-        setup_code_profiling()
+    map_signals(model_runner)
+    setup_code_profiling()
 
-        model_runner.run()
-        
-        return 0
-        
-    except KeyboardInterrupt:
-        logger.info("Model runner interrupted by user")
-        return 130  # Standard exit code for SIGINT
-    except Exception as e:
-        logger.error(f"Model runner failed with error: {e}", exc_info=True)
-        return 1
+    model_runner.run()
+    return 1
 
 
 if __name__ == "__main__":

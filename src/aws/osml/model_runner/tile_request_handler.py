@@ -13,7 +13,7 @@ from aws.osml.gdal import load_gdal_dataset
 from aws.osml.model_runner.api import TileRequest, get_image_path
 from aws.osml.model_runner.app_config import MetricLabels, ServiceConfig
 from aws.osml.model_runner.common import RequestStatus
-from aws.osml.model_runner.database import JobTable, TileRequestItem, TileRequestTable
+from aws.osml.model_runner.database import ImageRequestTable, TileRequestItem, TileRequestTable
 from aws.osml.model_runner.exceptions import ProcessTileException
 from aws.osml.model_runner.status import TileStatusMonitor
 from aws.osml.model_runner.tile_worker import setup_result_tile_workers
@@ -26,11 +26,11 @@ class TileRequestHandler:
     def __init__(
         self,
         tile_request_table: TileRequestTable,
-        job_table: JobTable,
+        image_request_table: ImageRequestTable,
         tile_status_monitor: TileStatusMonitor,
     ):
         self.tile_request_table = tile_request_table
-        self.job_table = job_table
+        self.image_request_table = image_request_table
         self.tile_status_monitor = tile_status_monitor
 
         # Add persistent worker pool components

@@ -4,8 +4,7 @@
 # __init__.py file.
 # flake8: noqa
 
-
-from .tile_worker import TileWorker  # isort:skip
+from .tile_worker import TileWorker
 from .async_tile_results_worker import AsyncResultsWorker
 from .async_tile_submission_worker import AsyncSubmissionWorker
 from .async_tile_worker_utils import setup_result_tile_workers, setup_submission_tile_workers

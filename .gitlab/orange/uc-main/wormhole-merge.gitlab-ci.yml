@@ -1,8 +1,0 @@
----
-# Orange Wormhole Merge
-#
-# Jobs that will trigger the merge of uc-main branch to main on SC and TC
-#
-
-wormhole_merge:
-  extends: .wormhole_merge_template

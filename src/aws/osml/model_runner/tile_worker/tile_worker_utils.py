@@ -18,7 +18,6 @@ from osgeo import gdal
 from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
 from aws.osml.gdal import GDALConfigEnv
 from aws.osml.image_processing.gdal_tile_factory import GDALTileFactory
-
 from aws.osml.model_runner.api import RegionRequest
 from aws.osml.model_runner.app_config import MetricLabels, ServiceConfig
 from aws.osml.model_runner.common import (

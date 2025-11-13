@@ -4,6 +4,7 @@ import logging
 
 from aws.osml.model_runner.common import RequestStatus
 from aws.osml.model_runner.database.image_request_table import ImageRequestItem
+
 from .base_status_monitor import BaseStatusMonitor
 from .exceptions import StatusMonitorException
 from .status_message import StatusMessage

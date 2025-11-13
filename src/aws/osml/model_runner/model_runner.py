@@ -7,7 +7,7 @@ from osgeo import gdal
 from aws.osml.gdal import load_gdal_dataset, set_gdal_default_configuration
 from aws.osml.model_runner.api import get_image_path
 
-from .api import ImageRequest, InvalidImageRequestException, RegionRequest, TileRequest
+from .api import ImageRequest, RegionRequest, TileRequest
 from .app_config import ServiceConfig
 from .common import EndpointUtils, RequestStatus, ThreadingLocalContextFilter
 from .database import (
@@ -122,6 +122,7 @@ class ModelRunner:
         self.image_request_handler.on_image_update.subscribe(
             lambda image_request: self.requested_jobs_table.update_request_details(image_request, image_request.region_count)
         )
+
         self.running = False
 
     def run(self) -> None:
@@ -152,7 +153,7 @@ class ModelRunner:
         logger.info("Beginning monitoring request queues")
         while self.running:
             try:
-                # If there are no tiles to process
+                # If there are tiles to process
                 if not self._process_tile_requests():
                     # If there are regions to process
                     if not self._process_region_requests():
@@ -244,14 +245,11 @@ class ModelRunner:
                 region_request = RegionRequest(region_request_attributes)
                 image_path = get_image_path(region_request.image_url, region_request.image_read_role)
                 raster_dataset, sensor_model = load_gdal_dataset(image_path)
-                # region_request_item = self._get_or_create_region_request_item(region_request) # TODO: CHECK THIS
                 region_request_item = self.region_request_table.get_or_create_region_request_item(region_request)
                 image_request_item = self.region_request_handler.process_region_request(
                     region_request, region_request_item, raster_dataset, sensor_model
                 )
-                image_is_done, region_complete, region_failures = self.image_request_table.is_image_request_complete(
-                    self.region_request_table, image_request_item
-                )
+                image_is_done, _, _ = self.region_request_table.is_image_request_complete(image_request_item)
                 if image_is_done:
                     self.image_request_handler.complete_image_request(
                         region_request, str(raster_dataset.GetDriver().ShortName).upper(), raster_dataset, sensor_model
@@ -316,30 +314,10 @@ class ModelRunner:
         minimal_image_request_item = ImageRequestItem(image_id=min_image_id, job_id=min_job_id, processing_duration=0)
         self.image_request_handler.fail_image_request(minimal_image_request_item, error)
 
-    def _get_or_create_region_request_item(self, region_request: RegionRequest) -> RegionRequestItem:
-        """
-        Retrieves or creates a `RegionRequestItem` in the region request table.
-
-        This method checks if a region request already exists in the `RegionRequestTable`.
-        If it does, it retrieves the existing request; otherwise, it creates a new
-        `RegionRequestItem` from the provided `RegionRequest` and starts the region
-        processing.
-
-        :param region_request: The region request to process.
-
-        :return: The retrieved or newly created `RegionRequestItem`.
-        """
-        region_request_item = self.region_request_table.get_region_request(region_request.region_id, region_request.image_id)
-        if region_request_item is None:
-            region_request_item = RegionRequestItem.from_region_request(region_request)
-            self.region_request_table.start_region_request(region_request_item)
-            logger.debug(
-                f"Added region request: image id {region_request_item.image_id}, region id {region_request_item.region_id}"
-            )
-        return region_request_item
-
     def check_if_region_request_complete(self, tile_request_item: TileRequestItem):
-
+        """
+            Check if the region is complete by checking the tables for completed tiles for the given region.
+        """
         # Get region request and region request item
         region_request_item = self.region_request_table.get_region_request(
             tile_request_item.region_id, tile_request_item.image_id
@@ -378,7 +356,7 @@ class ModelRunner:
         region_request_item = self.region_request_table.complete_region_request(region_request_item, region_status)
 
         # Update the image request to complete this region
-        _ = self.job_table.complete_region_request(tile_request_item.image_id, bool(failed_count))
+        _ = self.image_request_table.complete_region_request(tile_request_item.image_id, bool(failed_count))
         logger.debug(f"{region_id=}: Marking region success in job table for : {tile_request_item.__dict__}")
 
         # region_request_item = self.region_request_table.update_region_request(region_request_item)
@@ -394,16 +372,16 @@ class ModelRunner:
 
         if region_is_done:
             # Check if the whole image is done
-            image_request_item = self.job_table.get_image_request(tile_request_item.image_id)
-            image_is_done, region_complete, region_failures = self.job_table.is_image_request_complete(
-                self.region_request_table, image_request_item
+            image_request_item = self.image_request_table.get_image_request(tile_request_item.image_id)
+            image_is_done, region_complete, region_failures = self.region_request_table.is_image_request_complete(
+                image_request_item
             )
             logger.debug(f"image complete check for {tile_request_item.image_id} = {image_is_done}")
             if image_is_done:
                 # update region counts
                 image_request_item.region_error = region_failures
                 image_request_item.region_success = region_complete
-                image_request_item = self.job_table.update_image_request(image_request_item)
+                image_request_item = self.image_request_table.update_image_request(image_request_item)
 
                 if not region_complete:  # no success in any region
                     image_request = ImageRequest()

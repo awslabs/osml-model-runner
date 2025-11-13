@@ -15,18 +15,18 @@ class TestTileRequestHandler(TestCase):
         from aws.osml.model_runner.tile_request_handler import TileRequestHandler
 
         mock_tile_table = Mock()
-        mock_job_table = Mock()
+        mock_image_request_table = Mock()
         mock_status_monitor = Mock()
 
         handler = TileRequestHandler(
             tile_request_table=mock_tile_table,
-            job_table=mock_job_table,
+            image_request_table=mock_image_request_table,
             tile_status_monitor=mock_status_monitor,
         )
 
         assert handler is not None
         assert handler.tile_request_table == mock_tile_table
-        assert handler.job_table == mock_job_table
+        assert handler.image_request_table == mock_image_request_table
         assert handler.tile_status_monitor == mock_status_monitor
 
     def test_process_tile_request_success(self):
@@ -36,12 +36,12 @@ class TestTileRequestHandler(TestCase):
         from aws.osml.model_runner.database import TileRequestItem
 
         mock_tile_table = Mock()
-        mock_job_table = Mock()
+        mock_image_request_table = Mock()
         mock_status_monitor = Mock()
 
         handler = TileRequestHandler(
             tile_request_table=mock_tile_table,
-            job_table=mock_job_table,
+            image_request_table=mock_image_request_table,
             tile_status_monitor=mock_status_monitor,
         )
 
@@ -97,12 +97,12 @@ class TestTileRequestHandler(TestCase):
         from aws.osml.model_runner.common import RequestStatus
 
         mock_tile_table = Mock()
-        mock_job_table = Mock()
+        mock_image_request_table = Mock()
         mock_status_monitor = Mock()
 
         handler = TileRequestHandler(
             tile_request_table=mock_tile_table,
-            job_table=mock_job_table,
+            image_request_table=mock_image_request_table,
             tile_status_monitor=mock_status_monitor,
         )
 
@@ -141,12 +141,12 @@ class TestTileRequestHandler(TestCase):
         from aws.osml.model_runner.common import RequestStatus
 
         mock_tile_table = Mock()
-        mock_job_table = Mock()
+        mock_image_request_table = Mock()
         mock_status_monitor = Mock()
 
         handler = TileRequestHandler(
             tile_request_table=mock_tile_table,
-            job_table=mock_job_table,
+            image_request_table=mock_image_request_table,
             tile_status_monitor=mock_status_monitor,
         )
 
@@ -170,12 +170,12 @@ class TestTileRequestHandler(TestCase):
         from aws.osml.model_runner.tile_request_handler import TileRequestHandler
 
         mock_tile_table = Mock()
-        mock_job_table = Mock()
+        mock_image_request_table = Mock()
         mock_status_monitor = Mock()
 
         handler = TileRequestHandler(
             tile_request_table=mock_tile_table,
-            job_table=mock_job_table,
+            image_request_table=mock_image_request_table,
             tile_status_monitor=mock_status_monitor,
         )
 
@@ -198,12 +198,12 @@ class TestTileRequestHandler(TestCase):
         from aws.osml.model_runner.tile_request_handler import TileRequestHandler
 
         mock_tile_table = Mock()
-        mock_job_table = Mock()
+        mock_image_request_table = Mock()
         mock_status_monitor = Mock()
 
         handler = TileRequestHandler(
             tile_request_table=mock_tile_table,
-            job_table=mock_job_table,
+            image_request_table=mock_image_request_table,
             tile_status_monitor=mock_status_monitor,
         )
 

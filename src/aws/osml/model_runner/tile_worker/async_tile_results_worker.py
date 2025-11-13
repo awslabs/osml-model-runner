@@ -13,7 +13,7 @@ from aws_embedded_metrics.unit import Unit
 from aws.osml.features import Geolocator, ImagedFeaturePropertyAccessor
 from aws.osml.model_runner.app_config import BotoConfig, MetricLabels, ServiceConfig
 from aws.osml.model_runner.common import TileState, RequestStatus
-from aws.osml.model_runner.database import FeatureTable, JobTable, RegionRequestTable, TileRequestTable
+from aws.osml.model_runner.database import FeatureTable, ImageRequestTable, RegionRequestTable, TileRequestTable
 from aws.osml.model_runner.inference.async_sm_detector import AsyncSMDetector
 from aws.osml.model_runner.utilities import S3Manager
 from aws.osml.photogrammetry import ElevationModel, SensorModel
@@ -69,7 +69,7 @@ class AsyncResultsWorker(TileWorker):
         self._cached_image_id = None
 
         self.tile_request_table = TileRequestTable(ServiceConfig.tile_request_table)
-        self.job_table = JobTable(ServiceConfig.job_table)
+        self.image_request_table = ImageRequestTable(self.config.image_request_table)
 
         # Initialize async configuration
         if assumed_credentials is not None:

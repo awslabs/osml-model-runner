@@ -4,11 +4,13 @@ import time
 from dataclasses import dataclass
 from json import dumps
 from typing import Optional
+import logging
 
 from dacite import from_dict
 
 from aws.osml.model_runner.api import ImageRequest
 from aws.osml.model_runner.app_config import ServiceConfig
+from aws.osml.model_runner.common import RequestStatus
 
 from .ddb_helper import DDBHelper, DDBItem, DDBKey
 from .exceptions import (
@@ -254,3 +256,4 @@ class ImageRequestTable(DDBHelper):
     @staticmethod
     def get_processing_duration(start_time: int) -> int:
         return int(time.time() - (start_time / 1000))
+
