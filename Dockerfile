@@ -1,13 +1,11 @@
 # Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 # Stage 1: Build environment
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal as build
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal AS build
 
 # Set up build arguments and environment variables
 ARG BUILD_CERT=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
 ARG PIP_INSTALL_LOCATION=https://pypi.org/simple/
-ARG MINICONDA_VERSION=Miniconda3-latest-Linux-x86_64
-ARG MINICONDA_URL=https://repo.anaconda.com/miniconda/${MINICONDA_VERSION}.sh
 ENV PATH=/opt/conda/bin:$PATH
 ENV CONDA_TARGET_ENV=osml_model_runner
 
@@ -16,17 +14,25 @@ WORKDIR /home
 
 # Install necessary packages
 USER root
-RUN dnf update -y && dnf install -y wget shadow-utils gcc && dnf clean all
+RUN dnf update -y && dnf install -y wget shadow-utils gcc gcc-c++ make && dnf clean all
 
-# Install Miniconda
-RUN wget -c ${MINICONDA_URL} && \
+# Install Miniconda - dynamically detect architecture at build time
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then \
+        MINICONDA_VERSION="Miniconda3-latest-Linux-aarch64"; \
+    else \
+        MINICONDA_VERSION="Miniconda3-latest-Linux-x86_64"; \
+    fi && \
+    MINICONDA_URL="https://repo.anaconda.com/miniconda/${MINICONDA_VERSION}.sh" && \
+    echo "Auto-detected architecture: $ARCH, installing: $MINICONDA_VERSION" && \
+    wget -c ${MINICONDA_URL} && \
     chmod +x ${MINICONDA_VERSION}.sh && \
     ./${MINICONDA_VERSION}.sh -b -f -p /opt/conda && \
     rm ${MINICONDA_VERSION}.sh && \
     ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 
 # Copy the conda environment file
-COPY environment-py311.yml environment.yml
+COPY environment-py313.yml environment.yml
 
 # Accept Conda TOS before creating the environment
 RUN conda config --set always_yes true && \
@@ -44,12 +50,10 @@ RUN conda env create -f environment.yml \
 COPY . osml-model-runner
 
 # Install the model runner application
-RUN . /opt/conda/etc/profile.d/conda.sh && \
-    conda activate ${CONDA_TARGET_ENV} && \
-    python3 -m pip install osml-model-runner/.
+RUN conda run -n ${CONDA_TARGET_ENV} python3 -m pip install osml-model-runner/.
 
 # Stage 2: Runtime environment
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal as model_runner
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal AS model_runner
 
 # Set up runtime environment variables
 ENV CONDA_TARGET_ENV=osml_model_runner
