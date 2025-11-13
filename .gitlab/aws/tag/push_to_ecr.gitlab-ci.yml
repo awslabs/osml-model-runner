@@ -1,0 +1,28 @@
+### GitLab Push to ECR Job
+#
+
+push_to_ecr_tst:
+  stage: push
+  extends: .aws_ecr_push_template
+  needs:
+    - job: identify_tag_version
+      artifacts: true
+    - job: build
+    - job: tag_stable
+  variables:
+    # System to publish containers:
+    AWS_CREDS_TARGET_ROLE: ${IE_TST_ROLE}
+    AWS_DEFAULT_REGION: ${IE_TST_REGION}
+
+push_to_ecr_ops:
+  stage: push
+  extends: .aws_ecr_push_template
+  needs:
+    - job: identify_tag_version
+      artifacts: true
+    - job: build
+    - job: tag_stable
+  variables:
+    # System to publish containers:
+    AWS_CREDS_TARGET_ROLE: ${IE_OPS_ROLE}
+    AWS_DEFAULT_REGION: ${IE_OPS_REGION}

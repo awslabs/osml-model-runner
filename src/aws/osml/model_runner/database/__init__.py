@@ -21,4 +21,5 @@ from .exceptions import (
 from .feature_table import FeatureTable
 from .image_request_table import ImageRequestItem, ImageRequestTable
 from .region_request_table import RegionRequestItem, RegionRequestTable
+from .tile_request_table import TileRequestItem, TileRequestTable
 from .requested_jobs_table import ImageRequestStatusRecord, RequestedJobsTable

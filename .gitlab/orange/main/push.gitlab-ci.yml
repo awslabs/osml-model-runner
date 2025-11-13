@@ -1,0 +1,23 @@
+---
+push_to_ecr_tst:
+  extends:
+    - .customer_push_template_skopeo
+  variables:
+    TARGET: "tst"
+    ROLE_ARN: $ROLE_ARN_TST
+  needs:
+    - job: identify_tag_version
+      artifacts: true
+    - job: rebake:mr
+
+push_to_ecr_ops:
+  extends:
+    - .customer_push_template_skopeo
+  variables:
+    TARGET: "ops"
+    ROLE_ARN: $ROLE_ARN_OPS
+  needs:
+    - job: identify_tag_version
+      artifacts: true
+    - job: rebake:mr
+  when: manual

@@ -1,0 +1,47 @@
+---
+# Green GitLab Pipeline Entrypoint
+#
+
+stages:
+  - identify_tag_version
+  - build
+  - unit
+  - test
+  - security
+  - docs
+  - push
+  - trigger
+  - publish
+  - release
+
+variables:
+  BUILD_CERT: /certs/tls-ca-bundle.pem
+  PIP_INDEX_URL: https://mirrors.gs.mil/repository/pypi.org-proxy/simple
+  PIP_TRUSTED_HOST: mirrors.gs.mil  # For customer environment PyPI mirror
+  NEXUS_URL: ${NEXUS_URL}  # GitLab group CI variable
+  NEXUS3_USER: ${maven_daas_nexus_3_credential_username}
+  NEXUS3_PASSWORD: ${maven_daas_nexus_3_credential_password}
+  GDAL_BASE_IMG: ${CI_REGISTRY}/${PROJECT_ROOT}/common/gdal-base:v3-8-5-1-python313
+  MICROSERVICE: "ie-model-runner"
+  MICROSERVICE_IMAGE: ${CI_REGISTRY_IMAGE}/${MICROSERVICE}:${CI_COMMIT_REF_SLUG}
+  DOCKERFILE: docker/Dockerfile
+
+include:
+  # Always included jobs
+  - local: .gitlab/green/always/*.gitlab-ci.yml
+
+  # Main branch specific jobs
+  - local: .gitlab/green/main/*.gitlab-ci.yml
+    rules:
+      - if: $CI_COMMIT_BRANCH == "main"
+
+  # tag/release
+  - local: .gitlab/green/tag/*.gitlab-ci.yml
+    rules:
+      - if: $CI_COMMIT_TAG
+
+identify_tag_version:
+  extends: .identify_tag_version_template
+
+release:
+  extends: .release_template

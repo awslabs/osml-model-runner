@@ -1,0 +1,19 @@
+---
+# Rebake
+#
+# Rebuild containers with highside artifacts injected
+#
+
+# This rebake:mr job runs in the orange pipeline main branch
+# and handles rebakes for all deployments
+rebake:mr:
+  extends: .customer_rebake_template
+  needs:
+    - job: identify_tag_version
+      artifacts: true
+    # Wait for the build job to complete (green pipeline)
+    - job: build
+      optional: true
+    # Wait for the container-registry job to complete (red/yellow pipelines)
+    - job: check_update_registry
+      optional: true

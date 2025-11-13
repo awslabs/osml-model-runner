@@ -1,0 +1,21 @@
+---
+# Security
+# Uses DSO security scanning templates for customer compliance
+# Note: templates-customer.gitlab-ci.yml is already included at orange root level
+#
+
+# Extend the DSO security includes to actually include the external projects
+include:
+  # Centralized DSO security templates
+  - project: '${PROJECT_ROOT}/common/cicd-templates'
+    file: 'dso-security.gitlab-ci.yml'
+
+# Auth service specific Fortify configuration
+fortify_scanning:
+  extends: .dso_fortify_python_template
+
+# Auth service specific dependency scanning configuration
+gemnasium-python-dependency_scanning:
+  variables:
+    SECURE_LOG_LEVEL: "debug"
+    PIPENV_PYPI_MIRROR: https://mirrors.gs.mil/repository/pypi.org-proxy/simple

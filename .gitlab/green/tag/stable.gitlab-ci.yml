@@ -1,0 +1,5 @@
+---
+tag_stable:
+  extends: .docker_stable_tag_template_skopeo
+  variables:
+    ROLE_ARN: $ROLE_ARN_TST

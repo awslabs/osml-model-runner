@@ -1,0 +1,24 @@
+---
+# Unit Tests for Model Runner Service
+#
+
+unit-tests:
+  extends: .pytest_template
+  stage: unit
+  image:
+    name: "${MICROSERVICE_IMAGE}-unit-test"
+    entrypoint: [""]
+  needs: [build-unit-test]
+  variables:
+    # ModelRunner-specific test configuration
+    PYTEST_PATH: "test"  # ModelRunner uses test/ directory in root
+    TEST_REQUIREMENTS_FILE: "test/requirements-test.txt"  # ModelRunner has test requirements in test/
+    COVERAGE_PACKAGE: "aws.osml.model_runner"  # Cover the model runner package
+    PYTEST_ARGS: "--durations=10"  # Let the template handle coverage args
+    PYTHON_BINARY: "python3.13"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG

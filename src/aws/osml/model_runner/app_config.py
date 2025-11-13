@@ -13,6 +13,23 @@ from aws.osml.photogrammetry import DigitalElevationModel, ElevationModel, SRTMT
 
 
 @dataclass
+class AsyncEndpointConfig:
+    """
+    Configuration class for async SageMaker endpoint settings.
+
+    This class provides comprehensive configuration options for async endpoint operations
+    including S3 bucket settings, polling parameters, and worker pool optimization.
+    """
+
+    # Load other environment variables with current values as defaults
+    max_wait_time = int(os.getenv("ASYNC_SM_MAX_WAIT_TIME", 3600))  # Maximum wait time in seconds
+    max_retries = int(os.getenv("ASYNC_SM_MAX_RETRIES", 3))  # For S3 operations
+
+    submission_workers = int(os.getenv("ASYNC_SM_SUBMISSION_WORKERS", 4))  # Number of workers for submitting async requests
+    polling_workers = int(os.getenv("ASYNC_SM_POLLING_WORKERS", 2))  # Number of workers for polling results
+
+
+@dataclass
 class ServiceConfig:
     """
     ServiceConfig is a dataclass meant to house the high-level configuration settings required for Model Runner to
@@ -22,17 +39,35 @@ class ServiceConfig:
     """
 
     # Required env configuration
+    # region
     aws_region: str = os.environ["AWS_DEFAULT_REGION"]
+
+    # image/region/tile tables
     image_request_table: str = os.environ["IMAGE_REQUEST_TABLE"]
-    outstanding_jobs_table: str = os.environ["OUTSTANDING_IMAGE_REQUEST_TABLE"]
     region_request_table: str = os.environ["REGION_REQUEST_TABLE"]
+    tile_request_table: str = os.environ["TILE_REQUEST_TABLE"]
+    outstanding_jobs_table: str = os.environ["OUTSTANDING_IMAGE_REQUEST_TABLE"]
     endpoint_statistics_table = os.environ["ENDPOINT_TABLE"]
+    
+    # feature table
     feature_table: str = os.environ["FEATURE_TABLE"]
+    
+    # image/region/tile queues
     image_queue: str = os.environ["IMAGE_QUEUE"]
     image_dlq: str = os.environ["IMAGE_DLQ"]
     region_queue: str = os.environ["REGION_QUEUE"]
+    tile_queue: str = os.environ.get("TILE_QUEUE")
+
+    # workers
     workers_per_cpu: str = os.environ["WORKERS_PER_CPU"]
     workers: str = os.environ["WORKERS"]
+
+    # input/output locations for async and batch data
+    input_bucket = os.getenv("ARTIFACT_BUCKET")
+    async_input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX")
+    # async_output_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX")
+    batch_input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX")
+    batch_output_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX")
 
     # Optional elevation data
     elevation_data_location: Optional[str] = os.getenv("ELEVATION_DATA_LOCATION")
@@ -40,9 +75,12 @@ class ServiceConfig:
     elevation_data_version: str = os.getenv("ELEVATION_DATA_VERSION", "1arc_v3")
     elevation_model: Optional[ElevationModel] = field(init=False, default=None)
 
-    # Optional env configuration
+    # Optional status topics
     image_status_topic: Optional[str] = os.getenv("IMAGE_STATUS_TOPIC")
     region_status_topic: Optional[str] = os.getenv("REGION_STATUS_TOPIC")
+    tile_status_topic: Optional[str] = os.getenv("TILE_STATUS_TOPIC")
+
+    # Optional env configuration
     cp_api_endpoint: Optional[str] = os.getenv("API_ENDPOINT")
     self_throttling: bool = (
         os.getenv("SM_SELF_THROTTLING", "False") == "True" or os.getenv("SM_SELF_THROTTLING", "False") == "true"
@@ -62,6 +100,13 @@ class ServiceConfig:
 
     # Metrics configuration
     metrics_config: Configuration = field(init=False, default=None)
+
+    # async endpoint config
+    async_endpoint_config: AsyncEndpointConfig = field(default=AsyncEndpointConfig)
+
+    # optional parameters for tile polling
+    use_tile_poller: Optional[str] = os.getenv("USE_TILE_POLLER", "true").lower() == "true"
+    tile_poller_delay: Optional[int] = int(os.getenv("TILE_POLLER_DELAY", 60))
 
     def __post_init__(self):
         """

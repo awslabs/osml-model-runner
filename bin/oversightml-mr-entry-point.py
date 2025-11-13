@@ -9,10 +9,13 @@ from types import FrameType
 from typing import Optional
 
 from codeguru_profiler_agent import Profiler
+
 from pythonjsonlogger import jsonlogger
 
 from aws.osml.model_runner import ModelRunner
 from aws.osml.model_runner.common import ThreadingLocalContextFilter
+
+logger = logging.getLogger(__name__)
 
 
 def handler_stop_signals(signal_num: int, frame: Optional[FrameType], model_runner: ModelRunner) -> None:
@@ -26,9 +29,8 @@ def configure_logging(verbose: bool) -> None:
 
     :param verbose: if true the logging level will be set to DEBUG, otherwise it will be set to INFO.
     """
-    logging_level = logging.INFO
-    if verbose:
-        logging_level = logging.DEBUG
+
+    logging_level = os.getenv("LOG_LEVEL") or (logging.DEBUG if verbose else logging.INFO)
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging_level)
@@ -42,7 +44,6 @@ def configure_logging(verbose: bool) -> None:
     ch.setFormatter(formatter)
 
     root_logger.addHandler(ch)
-
 
 def map_signals(model_runner: ModelRunner) -> None:
     signal.signal(signal.SIGINT, lambda signum, frame: handler_stop_signals(signum, frame, model_runner))
@@ -62,15 +63,29 @@ def setup_code_profiling() -> None:
 
 
 def main() -> int:
-    model_runner = ModelRunner()
+    try:
+        # Parse command line arguments
+        args = parse_args()
+        
+        # Configure logging first
+        configure_logging(args.verbose)
 
-    map_signals(model_runner)
-    args = parse_args()
-    configure_logging(args.verbose)
-    setup_code_profiling()
+        # Create and configure model runner
+        model_runner = ModelRunner()
 
-    model_runner.run()
-    return 1
+        map_signals(model_runner)
+        setup_code_profiling()
+
+        model_runner.run()
+        
+        return 0
+        
+    except KeyboardInterrupt:
+        logger.info("Model runner interrupted by user")
+        return 130  # Standard exit code for SIGINT
+    except Exception as e:
+        logger.error(f"Model runner failed with error: {e}", exc_info=True)
+        return 1
 
 
 if __name__ == "__main__":

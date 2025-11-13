@@ -36,3 +36,33 @@ class SelfThrottledRegionException(Exception):
 
 class AggregateOutputFeaturesException(Exception):
     pass
+
+
+class SelfThrottledTileException(Exception):
+    pass
+
+
+class InvocationFailure(RetryableJobException):
+    """Model failure"""
+
+    pass
+
+
+class ProcessTileException(Exception):
+    pass
+
+
+class AsyncInferenceError(Exception):
+    """Base class for async inference-related errors."""
+
+    pass
+
+
+class S3OperationError(Exception):
+    """Raised when S3 upload/download operations fail."""
+
+    pass
+
+
+class SkipException(Exception):
+    pass

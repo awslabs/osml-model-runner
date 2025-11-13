@@ -1,0 +1,5 @@
+### GitLab Tag Version Stable Job
+#
+
+tag_stable:
+  extends: .stable_tag_template

@@ -1,9 +1,11 @@
 #  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
+import functools
 import json
 import logging
+import math
 from datetime import datetime
-from math import radians
+from math import degrees, radians
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import shapely
@@ -12,7 +14,7 @@ from osgeo import gdal
 from shapely.geometry.base import BaseGeometry
 
 from aws.osml.model_runner.common import GeojsonDetectionField, ImageDimensions
-from aws.osml.photogrammetry import GeodeticWorldCoordinate, SensorModel
+from aws.osml.photogrammetry import GeodeticWorldCoordinate, ImageCoordinate, SensorModel
 
 from .exceptions import InvalidFeaturePropertiesException
 
@@ -177,7 +179,18 @@ def get_source_property(image_location: str, image_extension: str, dataset: gdal
 
     :return: the source dictionary property to attach to features
     """
-    # Currently we only support deriving source metadata from NITF images
+
+    # Build a source property for features 
+    # NOTE: Add in to enable a minimum sourceMetadata file.
+    source_property = {
+        "sourceMetadata": [
+            {
+                "location": image_location,
+            }
+        ]
+    }
+
+    # Currently we only support deriving additional source metadata from NITF images
     if image_extension == "NITF":
         try:
             metadata = dataset.GetMetadata()
@@ -204,13 +217,42 @@ def get_source_property(image_location: str, image_extension: str, dataset: gdal
                 ]
             }
 
-            return source_property
         except Exception as err:
             logger.warning(f"Source metadata not available for {image_extension} image extension! {err}")
-            return None
     else:
         logger.warning(f"Source metadata not available for {image_extension} image extension!")
-        return None
+
+    return source_property
+
+def get_extents(ds: gdal.Dataset, sm: SensorModel) -> Dict[str, Any]:
+    """
+    Returns the geographic extents of the given GDAL dataset.
+
+    :param ds: GDAL dataset.
+    :param sm: OSML Sensor Model imputed for dataset
+    :return: Dictionary with keys 'north', 'south', 'east', 'west' representing the extents.
+    """
+    # Compute WGS-84 world coordinates for each image corners to impute the extents for visualizations
+    image_corners = [[0, 0], [ds.RasterXSize, 0], [ds.RasterXSize, ds.RasterYSize], [0, ds.RasterYSize]]
+    geo_image_corners = [sm.image_to_world(ImageCoordinate(corner)) for corner in image_corners]
+    locations = [(degrees(p.latitude), degrees(p.longitude)) for p in geo_image_corners]
+    feature_bounds = functools.reduce(
+        lambda prev, f: [
+            min(f[0], prev[0]),
+            min(f[1], prev[1]),
+            max(f[0], prev[2]),
+            max(f[1], prev[3]),
+        ],
+        locations,
+        [math.inf, math.inf, -math.inf, -math.inf],
+    )
+
+    return {
+        "north": feature_bounds[2],
+        "south": feature_bounds[0],
+        "east": feature_bounds[3],
+        "west": feature_bounds[1],
+    }
 
 
 def add_properties_to_features(job_id: str, feature_properties: str, features: List[Feature]) -> List[Feature]:

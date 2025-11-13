@@ -21,7 +21,7 @@ from aws.osml.model_runner.api import ModelInvokeMode, get_image_path
 from aws.osml.model_runner.app_config import BotoConfig
 from aws.osml.photogrammetry import SensorModel
 
-from .api import VALID_MODEL_HOSTING_OPTIONS, ImageRequest, RegionRequest
+from .api import VALID_MODEL_HOSTING_OPTIONS, ImageRequest, RegionRequest, ModelInvokeMode
 from .app_config import MetricLabels, ServiceConfig
 from .common import (
     EndpointUtils,
@@ -40,7 +40,9 @@ from .database import (
     ImageRequestTable,
     RegionRequestItem,
     RegionRequestTable,
+    TileRequestTable,
 )
+
 from .exceptions import (
     AggregateFeaturesException,
     AggregateOutputFeaturesException,
@@ -49,12 +51,12 @@ from .exceptions import (
     UnsupportedModelException,
 )
 from .inference import calculate_processing_bounds, get_source_property
-from .inference.feature_utils import add_properties_to_features
+from .inference.feature_utils import add_properties_to_features, get_extents
 from .queue import RequestQueue
 from .region_request_handler import RegionRequestHandler
 from .sink import SinkFactory
 from .status import ImageStatusMonitor
-from .tile_worker import TilingStrategy, select_features
+from .tile_worker import select_features, TilingStrategy, BatchTileProcessor, setup_upload_tile_workers, setup_batch_submission_worker
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
@@ -80,6 +82,7 @@ class ImageRequestHandler:
         endpoint_utils: EndpointUtils,
         config: ServiceConfig,
         region_request_handler: RegionRequestHandler,
+        tile_request_table: Optional[TileRequestTable] = None,
     ) -> None:
         """
         Initialize the ImageRequestHandler with the necessary dependencies.
@@ -105,6 +108,7 @@ class ImageRequestHandler:
         self.config = config
         self.region_request_handler = region_request_handler
         self.on_image_update = ObservableEvent()
+        self.tile_request_table = tile_request_table
 
     def process_image_request(self, image_request: ImageRequest) -> None:
         """
@@ -176,7 +180,12 @@ class ImageRequestHandler:
                 self.image_status_monitor.process_event(image_request_item, RequestStatus.IN_PROGRESS, "Processing regions")
 
                 # Place the resulting region requests on the appropriate work queue
-                self.queue_region_request(regions, image_request, ds, sensor_model, extension)
+                if image_request.model_invoke_mode == ModelInvokeMode.SM_BATCH:
+                    # handle batch inference at the image level
+                    self.queue_batch_request(regions, image_request, ds, sensor_model, extension)
+                else:
+                    self.queue_region_request(regions, image_request, ds, sensor_model, extension)
+
 
         except Exception as err:
             # We failed try and gracefully update our image request
@@ -259,7 +268,10 @@ class ImageRequestHandler:
         )
 
         # If the image is finished then complete it
-        if self.image_request_table.is_image_request_complete(image_request_item):
+        image_is_done, region_complete, region_failures = self.image_request_table.is_image_request_complete(
+            self.region_request_table, image_request_item
+        )
+        if image_is_done:
             image_format = str(raster_dataset.GetDriver().ShortName).upper()
             self.complete_image_request(first_region_request, image_format, raster_dataset, sensor_model)
 
@@ -574,3 +586,68 @@ class ImageRequestHandler:
                     "TargetVariant": selected_variant
                 }
         return image_request
+
+    def queue_batch_request(
+        self,
+        all_regions: List[ImageRegion],
+        image_request: ImageRequest,
+        raster_dataset: Dataset,
+        sensor_model: Optional[SensorModel],
+        image_extension: Optional[str],
+    ) -> None:
+
+        # Set up our threaded tile worker pool
+        tile_queue, tile_workers = setup_upload_tile_workers(
+            image_request, sensor_model, ServiceConfig.elevation_model
+        )
+        
+        batch_tile_processor = BatchTileProcessor(self.tile_request_table)
+
+        # process all regions
+        for region in all_regions:
+            region_request = RegionRequest(
+                image_request.get_shared_values(),
+                region_bounds=region,
+                region_id=f"{region[0]}{region[1]}-{image_request.job_id}",
+                image_extension=image_extension,
+            )
+
+            # Create a new entry to the region request being started
+            region_request_item = RegionRequestItem.from_region_request(region_request)
+
+            # Start region request processing
+            self.region_request_table.start_region_request(region_request_item)
+            logger.debug(f"Enhanced handler starting region request: region id: {region_request_item.region_id}")
+
+            # Upload tiles to S3
+            total_tile_count, failed_tile_count = batch_tile_processor.process_tiles(
+                self.tiling_strategy,
+                region_request,
+                region_request_item,
+                tile_queue,
+                tile_workers,
+                raster_dataset,
+                sensor_model,
+            )
+
+            # update the expected number of tiles
+            region_request_item.total_tiles = total_tile_count
+            region_request_item = self.region_request_table.update_region_request(region_request_item)
+            # image_request_item = self.job_table.get_image_request(region_request.image_id)
+
+        # shutdown workers
+        batch_tile_processor.shutdown_workers = True # turn ON shutdown of workers
+        tile_error_count = batch_tile_processor.shut_down_workers(tile_workers, tile_queue)
+
+        # submit to Batch processing
+        in_queue, worker = setup_batch_submission_worker(image_request)
+
+        # Place the image info onto our processing queue
+        image_info = dict(
+            job_id=image_request.job_id,
+            instance_type=image_request.instance_type,
+            instance_count=int(image_request.instance_count)
+        )
+        in_queue.put(image_info)
+        in_queue.put(None)
+        worker.join()

@@ -13,6 +13,8 @@ class ModelInvokeMode(str, AutoStringEnum):
     NONE = auto()
     SM_ENDPOINT = auto()
     HTTP_ENDPOINT = auto()
+    SM_ENDPOINT_ASYNC = auto()
+    SM_BATCH = auto()
 
 
 VALID_MODEL_HOSTING_OPTIONS = [item.value for item in ModelInvokeMode]

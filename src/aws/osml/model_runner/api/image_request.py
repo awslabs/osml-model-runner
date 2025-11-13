@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from json import dumps, loads
 from typing import Any, Dict, List, Optional
 
+import shapely.geometry
 import shapely.wkt
 from dacite import from_dict
 from shapely.geometry.base import BaseGeometry
@@ -73,6 +74,8 @@ class ImageRequest:
             MRPostProcessing(step=MRPostprocessingStep.FEATURE_DISTILLATION, algorithm=FeatureDistillationNMS())
         ]
     )
+    instance_type: Optional[str] = None
+    instance_count: Optional[int] = None
 
     @staticmethod
     def from_external_message(image_request: Dict[str, Any]) -> "ImageRequest":
@@ -101,6 +104,8 @@ class ImageRequest:
             "outputs": ImageRequest._parse_outputs(image_request),
             "feature_properties": image_request.get("featureProperties", []),
             "post_processing": ImageRequest._parse_post_processing(image_request.get("postProcessing")),
+            "instance_type": image_request.get("batchResources", {}).get("instanceType"), # only used in batch processing
+            "instance_count": image_request.get("batchResources", {}).get("instanceCount") # only used in batch processing
         }
         return from_dict(ImageRequest, properties)
 
@@ -268,3 +273,4 @@ class ImageRequest:
         :return: List of FeatureDistillationAlgorithm instances.
         """
         return [op.algorithm for op in self.post_processing if op.step == MRPostprocessingStep.FEATURE_DISTILLATION]
+

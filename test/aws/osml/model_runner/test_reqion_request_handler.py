@@ -83,6 +83,7 @@ class TestRegionRequestHandler(TestCase):
     @patch("aws.osml.model_runner.region_request_handler.setup_tile_workers")
     @patch("aws.osml.model_runner.region_request_handler.process_tiles")
     def test_process_region_request_success(self, mock_process_tiles, mock_setup_workers):
+
         """
         Test successful region processing.
         """
@@ -179,6 +180,7 @@ class TestRegionRequestHandler(TestCase):
         Test fail_region_request method behavior.
         """
         self.mock_image_request_table.complete_region_request.return_value = MagicMock(spec=ImageRequestItem)
+
         result = self.handler.fail_region_request(self.mock_region_request_item)
 
         # Assert that the region request was updated with FAILED status
