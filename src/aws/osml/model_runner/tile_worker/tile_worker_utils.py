@@ -272,6 +272,15 @@ def _create_tile(gdal_tile_factory, tile_bounds, tmp_image_path, metrics: Metric
             [tile_bounds[0][1], tile_bounds[0][0], tile_bounds[1][0], tile_bounds[1][1]]
         )
 
+        if encoded_tile_data is None:
+            logger.error(
+                "GDAL unable to create encoded tile data for %s",
+                absolute_tile_path,
+            )
+            if isinstance(metrics, MetricsLogger):
+                metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+            return None
+
         with open(absolute_tile_path, "wb") as binary_file:
             binary_file.write(encoded_tile_data)
 
