@@ -24,13 +24,12 @@ extensions = [
 ]
 autoapi_type = "python"
 autoapi_dirs = ["../src"]
-autoapi_add_toctree_entry = True
+autoapi_add_toctree_entry = False
 autoapi_keep_files = True
 autoapi_root = "autoapi"
 autoapi_include_summaries = True
 autoapi_python_use_implicit_namespaces = True
 autoapi_python_class_content = "class"
-autoapi_python_extra_arguments = {"members": True, "undoc-members": True, "show-inheritance": True}
 autoapi_ignore = ["*/test*", "*/tests/*", "*/__pycache__/*"]
 autoapi_member_order = "bysource"
 autoapi_options = [

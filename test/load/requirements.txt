@@ -1,0 +1,16 @@
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#
+# Requirements for OSML Model Runner Load Tests
+#
+# These are the minimal dependencies needed to run the load test framework.
+# The load tests run independently of the main model runner package.
+
+# AWS SDK
+boto3==1.34.28
+botocore==1.34.28
+
+# GDAL for image metadata
+GDAL>=3.0.0
+
+# Locust for load testing
+locust>=2.32.0

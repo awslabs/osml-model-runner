@@ -18,6 +18,7 @@ class TestTileWorkerUtils(TestCase):
 
         mock_feature_detector = Mock()
         mock_feature_detector.endpoint = "test-model-endpoint"
+        mock_feature_detector.find_features.return_value = {"features": []}
         mock_feature_detector_factory.return_value.build.return_value = mock_feature_detector
         mock_tile_worker.start = Mock()
         mock_num_tile_workers = 4
@@ -99,6 +100,7 @@ class TestTileWorkerUtils(TestCase):
         # Create a mock feature detector
         mock_feature_detector = Mock()
         mock_feature_detector.endpoint = "test-model-endpoint"
+        mock_feature_detector.find_features.return_value = {"features": []}
         mock_feature_detector_factory.return_value.build.return_value = mock_feature_detector
 
         mock_region_request = RegionRequest(
@@ -145,6 +147,7 @@ class TestTileWorkerUtils(TestCase):
 
         mock_feature_detector = Mock()
         mock_feature_detector.endpoint = "test-model-endpoint"
+        mock_feature_detector.find_features.return_value = {"features": []}
         mock_feature_detector_factory.return_value.build.return_value = mock_feature_detector
 
         # Mock the database tables

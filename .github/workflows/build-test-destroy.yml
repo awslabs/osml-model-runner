@@ -57,6 +57,8 @@ jobs:
           else
             sed -i 's/"BUILD_FROM_SOURCE_PLACEHOLDER"/false/g' cdk/bin/deployment/deployment.json;
           fi
+          # Remove networkConfig section so CDK creates a new VPC (example file has placeholder values)
+          python3 -c "import json; data = json.load(open('cdk/bin/deployment/deployment.json')); data.pop('networkConfig', None); json.dump(data, open('cdk/bin/deployment/deployment.json', 'w'), indent=2)"
           cat cdk/bin/deployment/deployment.json
       - name: Build CDK
         run: |
@@ -138,6 +140,8 @@ jobs:
           else
             sed -i 's/"BUILD_FROM_SOURCE_PLACEHOLDER"/false/g' cdk/bin/deployment/deployment.json;
           fi
+          # Remove networkConfig section so CDK creates a new VPC (example file has placeholder values)
+          python3 -c "import json; data = json.load(open('cdk/bin/deployment/deployment.json')); data.pop('networkConfig', None); json.dump(data, open('cdk/bin/deployment/deployment.json', 'w'), indent=2)"
           cat cdk/bin/deployment/deployment.json
       - name: Build CDK
         run: |
