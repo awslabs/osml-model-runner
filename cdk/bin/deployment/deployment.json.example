@@ -7,9 +7,9 @@
     "isAdc": false
   },
   "networkConfig": {
-    "vpcId": "vpc-abc123def",
-    "targetSubnets": ["subnet-12345", "subnet-67890"],
-    "securityGroupId": "sg-1234567890abcdef0"
+    "vpcId": "vpc-0123456789abcdef0",
+    "targetSubnets": ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"],
+    "securityGroupId": "sg-0123456789abcdef0"
   },
   "dataplaneConfig": {
     "BUILD_FROM_SOURCE": true
