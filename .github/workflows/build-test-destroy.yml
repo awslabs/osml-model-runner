@@ -64,6 +64,7 @@ jobs:
         run: |
           cd cdk
           npm run build
+          cdk synth
           cd ..
       - name: Bootstrap CDK
         run: |
