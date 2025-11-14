@@ -66,10 +66,8 @@ jobs:
       - name: Bootstrap CDK
         run: |
           cd cdk
-          # Bootstrap CDK with trust for GitHub Action role
-          # Using --force to ensure trust relationship is updated if bootstrap already exists
-          echo "Bootstrapping CDK environment with trust for GitHub Action role..."
-          cdk bootstrap --force --trust arn:aws:iam::${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}:role/GithubAction-AssumeRoleWithAction
+          echo "Bootstrapping CDK environment..."
+          cdk bootstrap --force
           cd ..
       - name: Deploy CDK infrastructure
         run: |
