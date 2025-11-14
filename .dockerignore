@@ -1,19 +1,64 @@
-*~
-*#
+# Exclude CDK directory from Docker build context to prevent unnecessary rebuilds
+# when CDK code changes but container source code doesn't
+cdk/
+
+# Exclude test directory - not needed in production containers
+test/
+
+# Exclude other development files and directories
+.git/
+.gitignore
+README.md
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+LICENSE
+py.typed
+tox.ini
+doc/
+images/
+scripts/
+test/
+dist/
+*.egg-info/
+
+# Exclude IDE and editor files
+.vscode/
+.idea/
 *.swp
-**/*Dockerfile
-**/*.DS_Store
-**/*.tox
-**/*.idea
-**/*venv
-**/__pycache__/
-**/*$py.class
-**/*.egg-info/
-**/.coverage
-**/.coverage.*
-**/.cache
-**/.pytest_cache
-**/.mypy_cache
-**/doc/_apidoc/
-**/build
-**/htmlcov
+*.swo
+*~
+
+# Exclude OS files
+.DS_Store
+Thumbs.db
+
+# Exclude Python cache and build files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Exclude virtual environments
+venv/
+env/
+ENV/
+
+# Exclude development and CI/CD directories
+.tox/
+.github/
+.idea/

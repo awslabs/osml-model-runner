@@ -1,0 +1,16 @@
+{
+  "projectName": "OSML",
+  "account": {
+    "id": "ACCOUNT_PLACEHOLDER",
+    "region": "us-west-2",
+    "prodLike": false,
+    "isAdc": false
+  },
+  "dataplaneConfig": {
+    "BUILD_FROM_SOURCE": "BUILD_FROM_SOURCE_PLACEHOLDER"
+  },
+  "deployIntegrationTests": true,
+  "testModelsConfig": {
+    "BUILD_FROM_SOURCE": "BUILD_FROM_SOURCE_PLACEHOLDER"
+  }
+}

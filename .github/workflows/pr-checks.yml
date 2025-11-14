@@ -1,8 +1,10 @@
-name: build
+name: PR Checks
 
 on:
   pull_request:
-    branches: ["main"]
+    branches:
+      - dev
+      - main
 
 permissions:
   contents: read
@@ -14,3 +16,5 @@ jobs:
   docker:
     uses: ./.github/workflows/docker.yml
     secrets: inherit
+    with:
+      push: false
