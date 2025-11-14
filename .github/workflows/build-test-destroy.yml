@@ -66,13 +66,10 @@ jobs:
       - name: Bootstrap CDK
         run: |
           cd cdk
-          # Check if bootstrap is needed - if CDKToolkit stack exists, skip bootstrap
-          if aws cloudformation describe-stacks --stack-name CDKToolkit --region ${{ env.AWS_REGION }} 2>/dev/null; then
-            echo "CDK environment already bootstrapped, skipping..."
-          else
-            echo "Bootstrapping CDK environment..."
-            cdk bootstrap --force
-          fi
+          # Bootstrap CDK with trust for GitHub Action role
+          # Using --force to ensure trust relationship is updated if bootstrap already exists
+          echo "Bootstrapping CDK environment with trust for GitHub Action role..."
+          cdk bootstrap --force --trust arn:aws:iam::${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}:role/GithubAction-AssumeRoleWithAction
           cd ..
       - name: Deploy CDK infrastructure
         run: |
