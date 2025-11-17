@@ -142,6 +142,8 @@ class LoadTestResults:
         total_image_failed: Number of images that failed.
         total_gb_processed: Total gigabytes of image data processed.
         total_pixels_processed: Total number of pixels processed.
+        start_time: Start time of the load test as ISO format string (optional).
+        stop_time: Stop time of the load test as ISO format string (optional).
     """
 
     total_image_sent: int = 0
@@ -151,6 +153,8 @@ class LoadTestResults:
     total_image_failed: int = 0
     total_gb_processed: float = 0.0
     total_pixels_processed: int = 0
+    start_time: Optional[str] = None
+    stop_time: Optional[str] = None
 
     def to_dict(self) -> Dict:
         """
@@ -158,7 +162,7 @@ class LoadTestResults:
 
         :returns: Dictionary representation of the results.
         """
-        return {
+        result = {
             "total_image_sent": self.total_image_sent,
             "total_image_in_progress": self.total_image_in_progress,
             "total_image_processed": self.total_image_processed,
@@ -167,3 +171,8 @@ class LoadTestResults:
             "total_gb_processed": self.total_gb_processed,
             "total_pixels_processed": self.total_pixels_processed,
         }
+        if self.start_time is not None:
+            result["start_time"] = self.start_time
+        if self.stop_time is not None:
+            result["stop_time"] = self.stop_time
+        return result

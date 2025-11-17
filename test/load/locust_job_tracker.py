@@ -200,16 +200,29 @@ def write_job_status_file(job_tracker: JobTracker, output_dir: str = "logs") -> 
     return file_path
 
 
-def write_job_summary_file(results: LoadTestResults, output_dir: str = "logs") -> str:
+def write_job_summary_file(
+    results: LoadTestResults,
+    output_dir: str = "logs",
+    start_time: Optional[datetime] = None,
+    stop_time: Optional[datetime] = None,
+) -> str:
     """
     Write job summary statistics to JSON file.
 
     :param results: LoadTestResults object
     :param output_dir: Directory to write files to
+    :param start_time: Start time of the load test (optional)
+    :param stop_time: Stop time of the load test (optional)
     :return: Path to the written file
     """
     os.makedirs(output_dir, exist_ok=True)
     file_path = os.path.join(output_dir, "job_summary.json")
+
+    # Set start_time and stop_time if provided
+    if start_time is not None:
+        results.start_time = start_time.isoformat()
+    if stop_time is not None:
+        results.stop_time = stop_time.isoformat()
 
     with open(file_path, "w") as f:
         json.dump(results.to_dict(), f, indent=4)
