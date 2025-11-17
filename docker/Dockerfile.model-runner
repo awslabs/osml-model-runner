@@ -6,6 +6,7 @@ FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal AS build
 # Set up build arguments and environment variables
 ARG BUILD_CERT=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
 ARG PIP_INSTALL_LOCATION=https://pypi.org/simple/
+ARG PYTHON_VERSION=3.13.1
 ENV PATH=/opt/conda/bin:$PATH
 ENV CONDA_TARGET_ENV=osml_model_runner
 
@@ -32,7 +33,7 @@ RUN ARCH=$(uname -m) && \
     ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 
 # Copy the conda environment file
-COPY environment-py313.yml environment.yml
+COPY conda/model-runner.yml environment.yml
 
 # Accept Conda TOS before creating the environment
 RUN conda config --set always_yes true && \
@@ -40,7 +41,9 @@ RUN conda config --set always_yes true && \
     conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
 # Create the conda environment and remove additional unnecessary files
-RUN conda env create -f environment.yml \
+# Add Python first for Docker containers to ensure upstream dependencies depend on it.
+RUN conda create -n ${CONDA_TARGET_ENV} -c conda-forge python=${PYTHON_VERSION} -y \
+     && conda env update -n ${CONDA_TARGET_ENV} -f environment.yml \
      && conda clean -afy \
      && find /opt/conda/ -follow -type f -name '*.a' -delete \
      && find /opt/conda/ -follow -type f -name '*.pyc' -delete \
@@ -69,17 +72,22 @@ RUN ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 # Copy the application from the build stage
 COPY --from=build /home/osml-model-runner /home/osml-model-runner
 
+# Install bash and configure user and permissions
+RUN dnf install -y shadow-utils bash
+
 # Create entrypoint script
 RUN     (echo '#!/bin/bash' \
     &&   echo '__conda_setup="$(/opt/conda/bin/conda shell.bash hook 2> /dev/null)"' \
     &&   echo 'eval "$__conda_setup"' \
-    &&   echo 'conda activate "${CONDA_TARGET_ENV:-base}"' \
-    &&   echo '>&2 echo "ENTRYPOINT: CONDA_DEFAULT_ENV=${CONDA_DEFAULT_ENV}"' \
+    &&   echo 'conda activate "${CONDA_TARGET_ENV:-osml_model_runner}"' \
+    &&   echo 'CONDA_ENV_PATH="/opt/conda/envs/${CONDA_DEFAULT_ENV:-osml_model_runner}"' \
+    &&   echo '# For conda-forge GDAL, drivers are typically built-in, but set GDAL_DRIVER_PATH if plugins exist' \
+    &&   echo 'if [ -d "${CONDA_ENV_PATH}/lib/gdalplugins" ] && [ "$(ls -A ${CONDA_ENV_PATH}/lib/gdalplugins/*.so 2>/dev/null)" ]; then' \
+    &&   echo '  export GDAL_DRIVER_PATH="${CONDA_ENV_PATH}/lib/gdalplugins"' \
+    &&   echo 'fi' \
     &&   echo 'exec "$@"'\
-        ) >> /entry.sh && chmod +x /entry.sh
+        ) > /entry.sh && chmod +x /entry.sh
 
-# Configure user and permissions
-RUN dnf install -y shadow-utils
 RUN adduser modelrunner && \
     chown -R modelrunner:modelrunner ./
 

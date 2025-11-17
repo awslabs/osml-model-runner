@@ -319,13 +319,16 @@ def on_test_stop(environment, **kwargs):
     results = job_tracker.calculate_statistics()
     display_statistics(results)
 
+    # Calculate stop time
+    stop_time = datetime.now()
+
     # Write final log files
     write_job_status_file(job_tracker, log_dir)
-    write_job_summary_file(results, log_dir)
+    write_job_summary_file(results, log_dir, start_time=_start_time, stop_time=stop_time)
 
     # Log timing information
     if _start_time:
-        actual_end_time = datetime.now()
+        actual_end_time = stop_time
         processing_window_min = getattr(environment.parsed_options, "processing_window_min", 1)
         expected_end_time = _start_time + timedelta(minutes=processing_window_min)
         total_elapsed_time = actual_end_time - _start_time

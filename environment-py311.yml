@@ -1,9 +1,0 @@
-# Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
-
-name: osml_model_runner
-channels:
-  - conda-forge
-dependencies:
-  - conda-forge::python=3.11.6
-  - conda-forge::gdal=3.8.3
-  - conda-forge::proj=9.3.1

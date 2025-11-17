@@ -19,7 +19,7 @@
 
 # Inputs
 DESIRED_COUNT="${1:-0}"
-CLUSTER_NAME="${2:-"MRCluster"}"
+CLUSTER_NAME="${2:-"ModelRunnerCluster"}"
 SERVICE_PATTERN="${3:-"ModelRunner"}"
 AWS_REGION="${4:-"us-west-2"}"
 
