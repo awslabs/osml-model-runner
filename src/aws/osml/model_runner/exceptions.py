@@ -62,4 +62,8 @@ class S3OperationError(Exception):
 
 
 class SkipException(Exception):
+    """
+    Exceptions to raise for messages that can be safely skipped
+        Ex. SageMaker success messages
+    """
     pass

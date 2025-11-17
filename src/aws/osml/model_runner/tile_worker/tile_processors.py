@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import logging
 import tempfile
@@ -25,6 +25,7 @@ from aws.osml.photogrammetry import SensorModel
 from .exceptions import ProcessTilesException
 from .tile_worker import TileWorker
 from .tiling_strategy import TilingStrategy
+from .tile_worker_utils import _create_tile
 
 logger = logging.getLogger(__name__)
 

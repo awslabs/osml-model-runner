@@ -1,3 +1,5 @@
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+
 import asyncio
 import logging
 import time
@@ -69,7 +71,7 @@ class AsyncResultsWorker(TileWorker):
         self._cached_image_id = None
 
         self.tile_request_table = TileRequestTable(ServiceConfig.tile_request_table)
-        self.image_request_table = ImageRequestTable(self.config.image_request_table)
+        self.image_request_table = ImageRequestTable(ServiceConfig.image_request_table)
 
         # Initialize async configuration
         if assumed_credentials is not None:
@@ -312,5 +314,3 @@ class AsyncResultsWorker(TileWorker):
                 self.tile_request_table.update_tile_status(image_info["tile_id"], image_info["region_id"], RequestStatus.FAILED, reason)
             except Exception as e:
                 logger.warning(f"Failed to update tile status to FAILED: {e}")
-
-        assert isinstance(self.feature_detector, AsyncSMDetector)

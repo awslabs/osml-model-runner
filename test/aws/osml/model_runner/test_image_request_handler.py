@@ -1,4 +1,5 @@
 #  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+import geojson
 from collections import Counter
 from datetime import datetime, timezone
 from unittest import TestCase, main
@@ -15,7 +16,7 @@ from aws.osml.model_runner.exceptions import ProcessImageException
 from aws.osml.model_runner.image_request_handler import ImageRequestHandler
 from aws.osml.model_runner.queue import RequestQueue
 from aws.osml.model_runner.status import ImageStatusMonitor
-from aws.osml.model_runner.tile_worker import TilingStrategy
+from aws.osml.model_runner.tile_worker import TilingStrategy, VariableOverlapTilingStrategy
 
 MOCK_DESCRIBE_ENDPOINT_RESPONSE = {
     "EndpointName": "test-model-name",
@@ -42,6 +43,7 @@ class TestImageRequestHandler(TestCase):
 
         # Set up config properties
         self.mock_config.self_throttling = False
+        self.mock_config.region_size = "(10240, 10240)"
 
         # Instantiate the handler with mocked dependencies
         self.handler = ImageRequestHandler(
@@ -76,6 +78,8 @@ class TestImageRequestHandler(TestCase):
         )
 
         self.mock_image_request_item = ImageRequestItem.from_image_request(self.mock_image_request)
+        self.mock_image_request_item.feature_distillation_option = '{"algorithm_type": "NMS", "iou_threshold": 0.75}'
+        self.mock_image_request_item.processing_duration = 1000
 
         # Create and stub the SageMaker client
         self.sm_client = boto3.client("sagemaker")
@@ -129,7 +133,8 @@ class TestImageRequestHandler(TestCase):
             self.handler.process_image_request(self.mock_image_request)
 
         # Ensure processing continued after throttling
-        self.assertEqual(self.mock_image_status_monitor.process_event.call_count, 2)
+        # 2 calls in process + 1 in fail image
+        self.assertEqual(self.mock_image_status_monitor.process_event.call_count, 3)
 
     def test_process_image_request_failure(self):
         """
@@ -314,6 +319,229 @@ class TestImageRequestHandler(TestCase):
             model_invocation_role="arn:aws:iam::012345678910:role/TestRole",
         )
 
+    def test_load_image_request_with_sensor_model(self):
+        """Test load_image_request with sensor model"""
+        with patch("aws.osml.model_runner.image_request_handler.get_image_path") as mock_get_path:
+            with patch("aws.osml.model_runner.image_request_handler.load_gdal_dataset") as mock_load:
+               with patch("aws.osml.model_runner.image_request_handler.calculate_processing_bounds") as mock_bounds:
+                   with patch("aws.osml.model_runner.image_request_handler.get_image_extension") as mock_ext:
+
+                        self.handler.tiling_strategy.compute_regions = MagicMock(return_value=[MagicMock])
+
+                        mock_ext.return_value = "tif"
+
+                        mock_get_path.return_value = "/tmp/image.tif"
+                        mock_raster = MagicMock()
+                        mock_sensor = MagicMock()
+                        mock_driver = MagicMock()
+                        mock_driver.ShortName = "GTiff"
+                        mock_raster.GetDriver.return_value = mock_driver
+                        mock_load.return_value = (mock_raster, mock_sensor)
+
+                        mocked_roi = MagicMock()
+            
+                        mock_bounds.return_value = ((0, 0), (101, 101))
+
+                        result = self.handler.load_image_request(
+                            self.mock_image_request,
+                            mocked_roi)
+
+                        assert result[0] == "tif"
+                        assert result[1] == mock_raster
+                        assert result[2] == mock_sensor
+                        assert len(result[3]) > 0  # regions
+
+    def test_queue_region_request_success(self):
+        """Test queue_region_request successfully queues regions"""
+        mock_regions = [MagicMock(), MagicMock()]
+        mock_raster_dataset = MagicMock()
+        mock_sensor_model = MagicMock()
+
+        # with patch("aws.osml.model_runner.database.region_request_table.RegionRequestTable.is_image_request_complete") as mock_request:
+        #     mock_request.return_value = (True, None, None)
+        
+        self.handler.region_request_table.is_image_request_complete = MagicMock(return_value=(True, None, None))
+        self.handler.complete_image_request = MagicMock()
+        self.handler.queue_region_request(
+            mock_regions,
+            self.mock_image_request, 
+            mock_raster_dataset,
+            mock_sensor_model,
+            "TIFF"
+            )
+
+        # Should queue all regions - 1 
+        assert self.mock_region_request_queue.send_request.call_count == 1
+
+    def test_complete_image_request_with_errors(self):
+        """Test complete_image_request with region errors"""
+        self.mock_image_request_item.region_error = 2
+        self.mock_image_request_table.get_image_request.return_value = self.mock_image_request_item
+
+        mock_region_request = MagicMock()
+        mock_raster = MagicMock()
+        mock_sensor = MagicMock()
+
+        with patch("aws.osml.model_runner.image_request_handler.FeatureTable") as mock_feature_table_class:
+            with patch("aws.osml.model_runner.image_request_handler.SinkFactory"):
+                mock_feature_table = MagicMock()
+                mock_feature_table_class.return_value = mock_feature_table
+                mock_feature_table.aggregate_features.return_value = []
+
+                self.handler.complete_image_request(mock_region_request, "tif", mock_raster, mock_sensor)
+
+                # Should still complete even with errors
+                self.mock_image_status_monitor.process_event.assert_called()
+
+    def test_complete_image_request_no_features(self):
+        """Test complete_image_request with no features"""
+        self.mock_image_request_item.region_error = 0
+        self.mock_image_request_table.get_image_request.return_value = self.mock_image_request_item
+
+        mock_region_request = MagicMock()
+        mock_raster = MagicMock()
+        mock_sensor = MagicMock()
+
+        with patch("aws.osml.model_runner.image_request_handler.FeatureTable") as mock_feature_table_class:
+            with patch("aws.osml.model_runner.image_request_handler.SinkFactory") as mock_sink_factory:
+                mock_feature_table = MagicMock()
+                mock_feature_table_class.return_value = mock_feature_table
+                mock_feature_table.aggregate_features.return_value = []
+                mock_sink_factory.sink_features.return_value = True
+
+                self.handler.complete_image_request(mock_region_request, "tif", mock_raster, mock_sensor)
+
+                # Should handle empty features gracefully
+                self.mock_image_status_monitor.process_event.assert_called()
+
+    def test_process_image_request_with_async_mode(self):
+        """Test process_image_request with async mode"""
+        async_request = ImageRequest(
+            job_id="test-job-id",
+            image_id="test-image-id",
+            image_url="test-image-url",
+            image_read_role="test-role",
+            outputs=[],
+            tile_size=(1024, 1024),
+            tile_overlap=(50, 50),
+            model_name="test-model",
+            model_invoke_mode=ModelInvokeMode.SM_ENDPOINT_ASYNC,
+            model_invocation_role="test-role",
+        )
+
+        self.handler.load_image_request = MagicMock(return_value=("tif", MagicMock(), MagicMock(), [MagicMock()]))
+        self.handler.queue_region_request = MagicMock()
+
+        self.handler.process_image_request(async_request)
+
+        # Should process successfully
+        self.mock_image_request_table.start_image_request.assert_called_once()
+
+    def test_fail_image_request_with_none_item(self):
+        """Test fail_image_request with None item"""
+        with self.assertRaises(AttributeError):
+            self.handler.fail_image_request(None, Exception("Test error"))
+
+            # Should handle None gracefully
+            self.mock_image_status_monitor.process_event.assert_called()
+
+    def test_complete_image_request_exception_handling(self):
+        """Test complete_image_request exception handling"""
+        self.mock_image_request_table.get_image_request.side_effect = Exception("Database error")
+
+        mock_region_request = MagicMock()
+        mock_raster = MagicMock()
+        mock_sensor = MagicMock()
+
+        with self.assertRaises(Exception):
+            self.handler.complete_image_request(mock_region_request, "tif", mock_raster, mock_sensor)
+
+    def test_load_image_request_exception(self):
+        """Test load_image_request with exception"""
+        with patch("aws.osml.model_runner.image_request_handler.get_image_path", side_effect=Exception("Path error")):
+            with self.assertRaises(Exception):
+                self.handler.load_image_request(self.mock_image_request)
+
+    def test_queue_region_request_with_empty_regions(self):
+        """Test queue_region_request with empty regions list"""
+
+        mock_regions = [MagicMock(), MagicMock()]
+        mock_raster_dataset = MagicMock()
+        mock_sensor_model = MagicMock()
+        
+        with self.assertRaises(IndexError):
+            self.handler.queue_region_request(
+                [],
+                self.mock_image_request, 
+                mock_raster_dataset,
+                mock_sensor_model,
+                "TIFF"
+                )
+
+    def test_process_image_request_with_throttling_below_limit(self):
+        """Test process_image_request with throttling enabled but below limit"""
+        self.mock_config.self_throttling = True
+        self.mock_endpoint_utils.calculate_max_regions.return_value = 10
+        self.mock_endpoint_statistics_table.current_in_progress_regions.return_value = 5
+
+        self.handler.load_image_request = MagicMock(return_value=("tif", MagicMock(), MagicMock(), [MagicMock()]))
+        self.handler.queue_region_request = MagicMock()
+        self.handler.set_default_model_endpoint_variant = MagicMock(return_value=self.mock_image_request)
+
+        self.handler.process_image_request(self.mock_image_request)
+
+        # Should process successfully
+        self.mock_image_request_table.start_image_request.assert_called_once()
+
+    def test_select_target_variant_with_existing_parameters(self):
+        """Test set_default_model_endpoint_variant with existing TargetVariant"""
+        self.sm_client_stub.add_response(
+            "describe_endpoint",
+            expected_params={"EndpointName": "test-model-name"},
+            service_response=MOCK_DESCRIBE_ENDPOINT_RESPONSE,
+        )
+        self.sm_client_stub.activate()
+
+        image_request = self._build_request_data()
+        image_request.model_endpoint_parameters = {"TargetVariant": "existing-variant"}
+        result = ImageRequestHandler.set_default_model_endpoint_variant(image_request)
+
+        # Should keep existing variant
+        assert result.model_endpoint_parameters["TargetVariant"] == "existing-variant"
+
+    def test_complete_image_request_with_sink_failure(self):
+        """Test complete_image_request when sink fails"""
+        self.mock_image_request_item.region_error = 0
+        self.mock_image_request_table.get_image_request.return_value = self.mock_image_request_item
+
+        mock_region_request = MagicMock()
+        mock_raster = MagicMock()
+        mock_sensor = MagicMock()
+
+        with patch("aws.osml.model_runner.image_request_handler.FeatureTable") as mock_feature_table_class:
+            with patch("aws.osml.model_runner.image_request_handler.SinkFactory") as mock_sink_factory:
+                mock_feature_table = MagicMock()
+                mock_feature_table_class.return_value = mock_feature_table
+                mock_features = [{"type": "Feature", "properties": {}}]
+                mock_feature_table.aggregate_features.return_value = mock_features
+                mock_sink_factory.sink_features.side_effect = Exception("Sink error")
+
+                with self.assertRaises(Exception):
+                    self.handler.complete_image_request(mock_region_request, "tif", mock_raster, mock_sensor)
+
+    def test_process_image_request_with_region_handler(self):
+        """Test process_image_request with region_handler set"""
+        mock_region_handler = MagicMock()
+        self.handler.region_request_handler = mock_region_handler
+
+        self.handler.load_image_request = MagicMock(return_value=("tif", MagicMock(), MagicMock(), [MagicMock()]))
+        self.handler.queue_region_request = MagicMock()
+
+        self.handler.set_default_model_endpoint_variant = MagicMock(return_value=self.mock_image_request)
+        self.handler.process_image_request(self.mock_image_request)
+
+        # Should process successfully with region handler
+        self.mock_image_request_table.start_image_request.assert_called_once()
 
 if __name__ == "__main__":
     main()

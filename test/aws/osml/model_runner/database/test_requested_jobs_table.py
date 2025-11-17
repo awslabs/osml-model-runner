@@ -203,6 +203,5 @@ class TestRequestedJobsTable(unittest.TestCase):
         with self.assertRaises(ClientError):
             self.table.update_request_details(image_request, region_count)
 
-
 if __name__ == "__main__":
     unittest.main()

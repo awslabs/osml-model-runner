@@ -117,7 +117,8 @@ class TileWorker(Thread):
                 metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
         finally:
             # cleanup
-            os.remove(image_info["image_path"])
+            if os.path.exists(image_info["image_path"]):
+                os.remove(image_info["image_path"])
 
     @metric_scope
     def _refine_features(self, feature_collection, image_info: Dict, metrics: MetricsLogger = None) -> List[geojson.Feature]:

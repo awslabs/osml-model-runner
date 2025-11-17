@@ -1,3 +1,5 @@
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+
 import os
 import asyncio
 import logging
@@ -166,7 +168,7 @@ class BatchUploadWorker(Thread):
             return True
 
         except Exception as e:
-            logger.error(f"BatchUploadWorker-{self.worker_id} failed to submit tile: {e}")
+            logger.error(f"BatchUploadWorker-{self.worker_id} failed to submit tile: {e}", exc_info=True)
 
             # Update tile status to FAILED due to submission error
             if self.tile_request_table and tile_info.get("tile_id") and tile_info.get("region_id"):
@@ -181,7 +183,8 @@ class BatchUploadWorker(Thread):
             return False
         finally:
             # cleanup
-            os.remove(tile_info["image_path"])
+            if os.path.exists(tile_info["image_path"]):
+                os.remove(tile_info["image_path"])
 
     def stop(self) -> None:
         """Signal the worker to stop processing."""

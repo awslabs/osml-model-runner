@@ -44,9 +44,9 @@ class ServiceConfig:
 
     # image/region/tile tables
     image_request_table: str = os.environ["IMAGE_REQUEST_TABLE"]
+    outstanding_jobs_table: str = os.environ["OUTSTANDING_IMAGE_REQUEST_TABLE"]
     region_request_table: str = os.environ["REGION_REQUEST_TABLE"]
     tile_request_table: str = os.environ["TILE_REQUEST_TABLE"]
-    outstanding_jobs_table: str = os.environ["OUTSTANDING_IMAGE_REQUEST_TABLE"]
     endpoint_statistics_table = os.environ["ENDPOINT_TABLE"]
     
     # feature table
@@ -65,9 +65,9 @@ class ServiceConfig:
     # input/output locations for async and batch data
     input_bucket = os.getenv("ARTIFACT_BUCKET")
     async_input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX")
-    # async_output_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX")
-    batch_input_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX")
-    batch_output_prefix = os.getenv("ASYNC_SM_INPUT_PREFIX")
+    # async_output_prefix = os.getenv("ASYNC_SM_OUTPUT_PREFIX")
+    batch_input_prefix = os.getenv("BATCH_SM_INPUT_PREFIX")
+    batch_output_prefix = os.getenv("BATCH_SM_OUTPUT_PREFIX")
 
     # Optional elevation data
     elevation_data_location: Optional[str] = os.getenv("ELEVATION_DATA_LOCATION")

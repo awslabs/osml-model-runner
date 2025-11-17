@@ -117,33 +117,6 @@ class RegionRequestHandler:
                 metrics=metrics,
             )
 
-    @metric_scope
-    def fail_region_request(
-        self,
-        region_request_item: RegionRequestItem,
-        metrics: MetricsLogger = None,
-    ) -> ImageRequestItem:
-        """
-        Fails a region if it failed to process successfully and updates the table accordingly before
-        raising an exception
-
-        :param region_request_item: RegionRequestItem = the region request to update
-        :param metrics: MetricsLogger = the metrics logger to use to report metrics.
-
-        :return: None
-        """
-        if isinstance(metrics, MetricsLogger):
-            metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
-        try:
-            region_status = RequestStatus.FAILED
-            region_request_item = self.region_request_table.complete_region_request(region_request_item, region_status)
-            self.region_status_monitor.process_event(region_request_item, region_status, "Completed region processing")
-            return self.image_request_table.complete_region_request(region_request_item.image_id, error=True)
-        except Exception as status_error:
-            logger.error("Unable to update region status in job table")
-            logger.exception(status_error)
-            raise ProcessRegionException("Failed to process image region!")
-
     def process_region_request_realtime(
         self,
         region_request: RegionRequest,
@@ -351,3 +324,31 @@ class RegionRequestHandler:
 
             region_request_item.message = failed_msg
             return self.fail_region_request(region_request_item)
+
+
+    @metric_scope
+    def fail_region_request(
+        self,
+        region_request_item: RegionRequestItem,
+        metrics: MetricsLogger = None,
+    ) -> ImageRequestItem:
+        """
+        Fails a region if it failed to process successfully and updates the table accordingly before
+        raising an exception
+
+        :param region_request_item: RegionRequestItem = the region request to update
+        :param metrics: MetricsLogger = the metrics logger to use to report metrics.
+
+        :return: None
+        """
+        if isinstance(metrics, MetricsLogger):
+            metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+        try:
+            region_status = RequestStatus.FAILED
+            region_request_item = self.region_request_table.complete_region_request(region_request_item, region_status)
+            self.region_status_monitor.process_event(region_request_item, region_status, "Completed region processing")
+            return self.image_request_table.complete_region_request(region_request_item.image_id, error=True)
+        except Exception as status_error:
+            logger.error("Unable to update region status in job table")
+            logger.exception(status_error)
+            raise ProcessRegionException("Failed to process image region!")

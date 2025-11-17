@@ -314,11 +314,11 @@ class ImageRequestHandler:
                 # Region size chosen to break large images into pieces that can be handled by a
                 # single tile worker
                 region_size: ImageDimensions = ast.literal_eval(self.config.region_size)
-                tile_size: ImageDimensions = ast.literal_eval(image_request_item.tile_size)
+                tile_size: ImageDimensions = ast.literal_eval(image_request_item.tile_size) if isinstance(image_request_item.tile_size, str) else image_request_item.tile_size
                 if not image_request_item.tile_overlap:
                     minimum_overlap = (0, 0)
                 else:
-                    minimum_overlap = ast.literal_eval(image_request_item.tile_overlap)
+                    minimum_overlap = ast.literal_eval(image_request_item.tile_overlap) if isinstance(image_request_item.tile_overlap, str) else image_request_item.tile_overlap
 
                 all_regions = self.tiling_strategy.compute_regions(
                     processing_bounds, region_size, tile_size, minimum_overlap

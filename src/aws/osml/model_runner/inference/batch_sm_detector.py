@@ -1,3 +1,4 @@
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import traceback
 import logging
@@ -6,9 +7,11 @@ import time
 import boto3
 
 from aws.osml.model_runner.app_config import BotoConfig, ServiceConfig
-from aws.osml.model_runner.inference.detector import Detector
-from aws.osml.model_runner.inference.sm_detector import SMDetector
 from aws.osml.model_runner.utilities import S3Manager, S3OperationError
+
+from .detector import Detector
+from .sm_detector import SMDetector
+from .endpoint_builder import FeatureEndpointBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -19,16 +22,18 @@ class BatchSMDetector(SMDetector):
     def __init__(
         self,
         endpoint: str,
+        endpoint_parameters: Optional[Dict[str, str]] = None,
         assumed_credentials: Optional[Dict[str, str]] = None,
     ) -> None:
         """
         Initializes the AsyncSMDetector with async endpoint capabilities.
 
         :param endpoint: str = The name of the SageMaker async endpoint to invoke.
+        :param endpoint_parameters: Optional[Dict[str, str]] = Additional parameters to pass to the model endpoint.
         :param assumed_credentials: Optional[Dict[str, str]] = Optional credentials for invoking the SageMaker model.
         """
 
-        super().__init__(endpoint, assumed_credentials)  # type: ignore
+        super().__init__(endpoint, endpoint_parameters, assumed_credentials)  # type: ignore
 
         if assumed_credentials is not None:
             # Use the provided credentials to invoke SageMaker endpoints in another AWS account.
@@ -105,14 +110,26 @@ class BatchSMDetector(SMDetector):
         response = self.sagemaker_client.create_transform_job(**create_inputs)
         logger.info(f"Transform Job created: {transform_job_name}")
 
-class BatchSMDetectorBuilder:
-    def __init__(self, endpoint: str, assumed_credentials: Optional[Dict[str, str]] = None): 
+class BatchSMDetectorBuilder(FeatureEndpointBuilder):
+    def __init__(self, endpoint: str, endpoint_parameters: Optional[Dict[str, str]] = None, assumed_credentials: Optional[Dict[str, str]] = None, **kwargs): 
+        """
+        Initializes the SMDetectorBuilder with the SageMaker endpoint and optional credentials.
+
+        :param endpoint: str = The name of the SageMaker endpoint to be used.
+        :param endpoint_parameters: Optional[Dict[str, str]] = Additional parameters to pass to the model endpoint.
+        :param assumed_credentials: Dict[str, str] = Optional credentials to use with the SageMaker endpoint.
+        """
+
         self.endpoint = endpoint
+        self.endpoint_parameters = endpoint_parameters
         self.assumed_credentials = assumed_credentials or {}
 
     def build(self) -> Optional[Detector]:
         try:
-            detector = BatchSMDetector(endpoint=self.endpoint, assumed_credentials=self.assumed_credentials)
+            detector = BatchSMDetector(
+                endpoint=self.endpoint, 
+                endpoint_parameters=self.endpoint_parameters,
+                assumed_credentials=self.assumed_credentials)
             return detector
         except Exception as e:
             logger.error(f"Failed to create BatchSMDetector: {e}")

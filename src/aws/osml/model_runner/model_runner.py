@@ -205,17 +205,17 @@ class ModelRunner:
                 self.complete_tile_request(tile_request_item)
                 self.tile_request_queue.finish_request(receipt_handle)
 
+            except InvocationFailure as err:
+                logger.warning(f"Setting tile ({tile_request_item.region_id=}, {tile_request_item.tile_id=}) failure due to: {err}")
+                tile_request_item = self.tile_request_handler.fail_tile_request(tile_request_item)
+                self.complete_tile_request(tile_request_item)
+                self.tile_request_queue.finish_request(receipt_handle)
             except RetryableJobException as err:
                 logger.warning(f"Retrying tile request due to: {err}")
                 self.tile_request_queue.reset_request(receipt_handle, visibility_timeout=60)
             except SelfThrottledTileException as err:
                 logger.warning(f"Retrying tile request due to throttling error: {err}")
                 self.tile_request_queue.reset_request(receipt_handle, visibility_timeout=int(ServiceConfig.throttling_retry_timeout))
-            except InvocationFailure as err:
-                logger.warning(f"Setting tile ({tile_request_item.region_id=}, {tile_request_item.tile_id=}) failure due to: {err}")
-                tile_request_item = self.tile_request_handler.fail_tile_request(tile_request_item)
-                self.complete_tile_request(tile_request_item)
-                self.tile_request_queue.finish_request(receipt_handle)
             except SkipException as err:
                 self.tile_request_queue.finish_request(receipt_handle)
             except Exception as err:

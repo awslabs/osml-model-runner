@@ -1,3 +1,5 @@
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+
 import logging
 import traceback
 from queue import Queue
@@ -71,7 +73,7 @@ def setup_upload_tile_workers(
     try:
         model_invocation_credentials = None
         if image_request.model_invocation_role:
-            model_invocation_credentials = get_credentials_for_assumed_role(region_request.model_invocation_role)
+            model_invocation_credentials = get_credentials_for_assumed_role(image_request.model_invocation_role)
 
         # Set up a Queue to manage our tile workers
         in_queue: Queue = Queue()

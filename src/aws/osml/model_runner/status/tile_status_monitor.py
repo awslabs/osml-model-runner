@@ -1,3 +1,5 @@
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+
 import logging
 
 from aws.osml.model_runner.common import RequestStatus

@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import datetime
 import io
@@ -17,6 +17,18 @@ from aws.osml.model_runner.exceptions import ProcessTileException
 
 class TestAsyncSMDetector(TestCase):
     """Unit tests for AsyncSMDetector class"""
+    def setUp(self):
+        """
+        Create the client that will be used across tests
+        """
+        self.sm_runtime_client = boto3.client("sagemaker-runtime")
+        self.sm_runtime_stub = Stubber(self.sm_runtime_client)
+
+    def tearDown(self):
+        """
+        Deactivate stub after each test
+        """
+        self.sm_runtime_stub.deactivate()
 
     def test_construct_with_credentials(self):
         """Test AsyncSMDetector construction with AWS credentials"""
@@ -34,7 +46,7 @@ class TestAsyncSMDetector(TestCase):
                 mock_client = Mock()
                 mock_boto3.client.return_value = mock_client
 
-                detector = AsyncSMDetector("test-async-endpoint", aws_credentials)
+                detector = AsyncSMDetector("test-async-endpoint", assumed_credentials=aws_credentials)
 
                 assert detector.endpoint == "test-async-endpoint"
                 mock_boto3.client.assert_called_once_with(
@@ -58,7 +70,7 @@ class TestAsyncSMDetector(TestCase):
                 "OutputLocation": "s3://bucket/output/test-inference-123.out",
                 "FailureLocation": "s3://bucket/failures/test-inference-123.err",
             }
-            detector.sm_client.invoke_endpoint_async = Mock(return_value=mock_response)
+            detector.sm_runtime_client.invoke_endpoint_async = Mock(return_value=mock_response)
 
             inference_id, output_loc, failure_loc = detector._invoke_async_endpoint(
                 "s3://bucket/input/test.json", None
@@ -68,7 +80,7 @@ class TestAsyncSMDetector(TestCase):
             assert output_loc == "s3://bucket/output/test-inference-123.out"
             assert failure_loc == "s3://bucket/failures/test-inference-123.err"
 
-            detector.sm_client.invoke_endpoint_async.assert_called_once()
+            detector.sm_runtime_client.invoke_endpoint_async.assert_called_once()
 
     def test_invoke_async_endpoint_no_inference_id(self):
         """Test async endpoint invocation when no inference ID is returned"""
@@ -79,7 +91,7 @@ class TestAsyncSMDetector(TestCase):
 
             # Mock response without InferenceId
             mock_response = {"OutputLocation": "s3://bucket/output/test.out"}
-            detector.sm_client.invoke_endpoint_async = Mock(return_value=mock_response)
+            detector.sm_runtime_client.invoke_endpoint_async = Mock(return_value=mock_response)
 
             with pytest.raises(ProcessTileException, match="No inference ID returned"):
                 detector._invoke_async_endpoint("s3://bucket/input/test.json", None)
@@ -93,7 +105,7 @@ class TestAsyncSMDetector(TestCase):
 
             # Mock ClientError
             error_response = {"Error": {"Code": "ValidationException", "Message": "Invalid input"}}
-            detector.sm_client.invoke_endpoint_async = Mock(
+            detector.sm_runtime_client.invoke_endpoint_async = Mock(
                 side_effect=ClientError(error_response, "invoke_endpoint_async")
             )
 

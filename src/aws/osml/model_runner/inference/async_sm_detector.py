@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import json
 import logging
@@ -36,16 +36,18 @@ class AsyncSMDetector(SMDetector):
     def __init__(
         self,
         endpoint: str,
+        endpoint_parameters: Optional[Dict[str, str]] = None,
         assumed_credentials: Optional[Dict[str, str]] = None,
     ) -> None:
         """
         Initializes the AsyncSMDetector with async endpoint capabilities.
 
         :param endpoint: str = The name of the SageMaker async endpoint to invoke.
+        :param endpoint_parameters: Optional[Dict[str, str]] = Additional parameters to pass to the model endpoint.
         :param assumed_credentials: Optional[Dict[str, str]] = Optional credentials for invoking the SageMaker model.
         """
 
-        super().__init__(endpoint, assumed_credentials)  # type: ignore
+        super().__init__(endpoint, endpoint_parameters, assumed_credentials)  # type: ignore
 
         # Initialize async configuration
         self.async_config = ServiceConfig.async_endpoint_config
@@ -102,7 +104,7 @@ class AsyncSMDetector(SMDetector):
                 metrics_logger=metrics,
             ):
                 # Invoke async endpoint
-                response = self.sm_client.invoke_endpoint_async(
+                response = self.sm_runtime_client.invoke_endpoint_async(
                     EndpointName=self.endpoint,
                     ContentType="application/json",
                     Accept="application/json",
@@ -138,15 +140,18 @@ class AsyncSMDetectorBuilder:
     def __init__(
         self,
         endpoint: str,
+        endpoint_parameters: Optional[Dict[str, str]] = None,
         assumed_credentials: Optional[Dict[str, str]] = None,
     ):
         """
         Initialize the AsyncSMDetectorBuilder with async configuration support.
 
         :param endpoint: The SageMaker async endpoint name
+        :param endpoint_parameters: Optional[Dict[str, str]] = Additional parameters to pass to the model endpoint.
         :param assumed_credentials: Optional credentials for the endpoint
         """
         self.endpoint = endpoint
+        self.endpoint_parameters = endpoint_parameters
         self.assumed_credentials = assumed_credentials or {}
         self.async_config = ServiceConfig.async_endpoint_config
 
@@ -162,7 +167,11 @@ class AsyncSMDetectorBuilder:
             logger.debug(f"Building AsyncSMDetector for endpoint: {self.endpoint}")
 
             # Create the detector with async configuration
-            detector = AsyncSMDetector(endpoint=self.endpoint, assumed_credentials=self.assumed_credentials)
+            detector = AsyncSMDetector(
+                endpoint=self.endpoint, 
+                endpoint_parameters=self.endpoint_parameters,
+                assumed_credentials=self.assumed_credentials
+            )
 
             logger.debug(f"Successfully created AsyncSMDetector for endpoint: {self.endpoint}")
             return detector

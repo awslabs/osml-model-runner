@@ -95,6 +95,7 @@ class HTTPDetector(Detector):
         name: Optional[str] = None,
         endpoint_parameters: Optional[Dict[str, str]] = None,
         retry: Optional[urllib3.Retry] = None,
+        **kwargs
     ) -> None:
         """
         Initializes the HTTPDetector with the model endpoint URL, optional name, and retry policy.
@@ -214,7 +215,7 @@ class HTTPDetectorBuilder(FeatureEndpointBuilder):
     detection.
     """
 
-    def __init__(self, endpoint: str, endpoint_parameters: Optional[Dict[str, str]] = None):
+    def __init__(self, endpoint: str, endpoint_parameters: Optional[Dict[str, str]] = None, **kwargs):
         """
         Initializes the HTTPDetectorBuilder with the model endpoint URL.
 
