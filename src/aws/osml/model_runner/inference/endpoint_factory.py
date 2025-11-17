@@ -4,6 +4,8 @@ from typing import Dict, Optional
 
 from aws.osml.model_runner.api import ModelInvokeMode
 
+from .batch_sm_detector import BatchSMDetectorBuilder
+from .async_sm_detector import AsyncSMDetectorBuilder
 from .detector import Detector
 from .http_detector import HTTPDetectorBuilder
 from .sm_detector import SMDetectorBuilder
@@ -33,16 +35,22 @@ class FeatureDetectorFactory:
         """
         :return: a feature detector based on the parameters defined during initialization
         """
-        detector = None
-        if self.endpoint_mode == ModelInvokeMode.SM_ENDPOINT:
-            detector = SMDetectorBuilder(
-                endpoint=self.endpoint,
-                endpoint_parameters=self.endpoint_parameters,
-                assumed_credentials=self.assumed_credentials,
-            ).build()
-        if self.endpoint_mode == ModelInvokeMode.HTTP_ENDPOINT:
-            detector = HTTPDetectorBuilder(
-                endpoint=self.endpoint,
-                endpoint_parameters=self.endpoint_parameters,
-            ).build()
-        return detector
+
+        builder_class = None
+        match self.endpoint_mode:
+            case ModelInvokeMode.SM_ENDPOINT:
+                builder_class = SMDetectorBuilder
+            case ModelInvokeMode.HTTP_ENDPOINT:
+                builder_class = HTTPDetectorBuilder
+            case ModelInvokeMode.SM_ENDPOINT_ASYNC:
+                builder_class = AsyncSMDetectorBuilder
+            case ModelInvokeMode.SM_BATCH:
+                builder_class = BatchSMDetectorBuilder
+        
+        if not builder_class:
+            raise ValueError(f"Unknown endpoint mode: {self.endpoint_mode}")
+        return builder_class(
+            endpoint=self.endpoint, 
+            endpoint_parameters=self.endpoint_parameters,
+            assumed_credentials=self.assumed_credentials,
+        ).build()

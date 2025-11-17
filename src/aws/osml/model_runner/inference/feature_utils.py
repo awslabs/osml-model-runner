@@ -177,6 +177,17 @@ def get_source_property(image_location: str, image_extension: str, dataset: gdal
 
     :return: the source dictionary property to attach to features
     """
+
+    # Build a source property for features 
+    # NOTE: Add in to enable a minimum sourceMetadata file.
+    source_property = {
+        "sourceMetadata": [
+            {
+                "location": image_location,
+            }
+        ]
+    }
+
     # Currently we only support deriving source metadata from NITF images
     if image_extension == "NITF":
         try:
@@ -204,14 +215,12 @@ def get_source_property(image_location: str, image_extension: str, dataset: gdal
                 ]
             }
 
-            return source_property
         except Exception as err:
             logger.warning(f"Source metadata not available for {image_extension} image extension! {err}")
-            return None
     else:
         logger.warning(f"Source metadata not available for {image_extension} image extension!")
-        return None
 
+    return source_property
 
 def add_properties_to_features(job_id: str, feature_properties: str, features: List[Feature]) -> List[Feature]:
     """

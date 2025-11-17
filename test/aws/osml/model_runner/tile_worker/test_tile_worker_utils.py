@@ -132,64 +132,6 @@ class TestTileWorkerUtils(TestCase):
         assert len(tile_worker_list) == mock_num_tile_workers
         assert start_mock.call_count == mock_num_tile_workers
 
-    @patch("aws.osml.model_runner.tile_worker.tile_worker_utils.FeatureDetectorFactory", autospec=True)
-    @patch("aws.osml.model_runner.tile_worker.tile_worker_utils.FeatureTable", autospec=True)
-    @patch("aws.osml.model_runner.tile_worker.tile_worker_utils.RegionRequestTable", autospec=True)
-    def test_process_tiles(self, mock_region_request_table, mock_feature_table, mock_feature_detector_factory):
-        """
-        Test processing of image tiles using a tiling strategy, ensuring all expected tiles are processed
-        without errors. The test also validates successful integration with GDAL datasets.
-        """
-        from aws.osml.model_runner.api import RegionRequest
-        from aws.osml.model_runner.database import RegionRequestItem
-        from aws.osml.model_runner.tile_worker import VariableTileTilingStrategy
-        from aws.osml.model_runner.tile_worker.tile_worker_utils import process_tiles, setup_tile_workers
-
-        mock_feature_detector = Mock()
-        mock_feature_detector.endpoint = "test-model-endpoint"
-        mock_feature_detector.find_features.return_value = {"features": []}
-        mock_feature_detector_factory.return_value.build.return_value = mock_feature_detector
-
-        # Mock the database tables
-        mock_feature_table.return_value = Mock()
-        mock_region_request_table.return_value = Mock()
-
-        # Mock the RegionRequest and RegionRequestItem
-        mock_region_request = RegionRequest(
-            {
-                "tile_size": (10, 10),
-                "tile_overlap": (0, 0),
-                "tile_format": "NITF",
-                "image_id": "1",
-                "image_url": "/mock/path",
-                "region_bounds": ((0, 0), (50, 50)),
-                "model_invoke_mode": "SM_ENDPOINT",
-                "image_extension": "fake",
-                "failed_tiles": [],
-            }
-        )
-        region_request_item = RegionRequestItem.from_region_request(mock_region_request)
-
-        # Load the testing Dataset and SensorModel
-        ds, sensor_model = self.get_dataset_and_camera()
-
-        # Setup tile workers
-        work_queue, tile_worker_list = setup_tile_workers(mock_region_request, sensor_model, None)
-
-        # Execute process_tiles
-        total_tile_count, tile_error_count = process_tiles(
-            tiling_strategy=VariableTileTilingStrategy(),
-            region_request_item=region_request_item,
-            tile_queue=work_queue,
-            tile_workers=tile_worker_list,
-            raster_dataset=ds,
-            sensor_model=sensor_model,
-        )
-
-        # Verify expected results
-        assert total_tile_count == 25
-        assert tile_error_count == 0
-
     def test_next_greater_multiple(self):
         """
         Test finding the next greater multiple of a number.

@@ -81,7 +81,7 @@ class TestRegionRequestHandler(TestCase):
         self.mock_tile_workers = [MagicMock()]
 
     @patch("aws.osml.model_runner.region_request_handler.setup_tile_workers")
-    @patch("aws.osml.model_runner.region_request_handler.process_tiles")
+    @patch("aws.osml.model_runner.region_request_handler.TileProcessor.process_tiles")
     def test_process_region_request_success(self, mock_process_tiles, mock_setup_workers):
         """
         Test successful region processing.
@@ -149,7 +149,7 @@ class TestRegionRequestHandler(TestCase):
         self.mock_endpoint_statistics_table.decrement_region_count.assert_not_called()
 
     @patch("aws.osml.model_runner.region_request_handler.setup_tile_workers")
-    @patch("aws.osml.model_runner.region_request_handler.process_tiles")
+    @patch("aws.osml.model_runner.region_request_handler.TileProcessor.process_tiles")
     def test_process_region_request_exception(self, mock_process_tiles, mock_setup_workers):
         """
         Test region processing failure scenario.
