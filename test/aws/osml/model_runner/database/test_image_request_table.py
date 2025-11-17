@@ -76,17 +76,6 @@ class TestImageRequestTable(unittest.TestCase):
         assert resulting_image_request_item.region_error == Decimal(1)
         assert resulting_image_request_item.region_success == Decimal(0)
 
-    def test_is_image_complete_success(self):
-        """
-        Validate that we can successfully determine when an image has been completed.
-        """
-        self.image_request_table.start_image_request(self.image_request_item)
-        self.image_request_item.region_count = Decimal(1)
-        self.image_request_item.region_success = Decimal(1)
-        self.image_request_item.region_error = Decimal(0)
-        self.image_request_table.update_ddb_item(self.image_request_item)
-        assert self.image_request_table.is_image_request_complete(self.image_request_item)
-
     def test_region_ended_success(self):
         """
         Validate that we can successfully end an image's processing by setting its end time.
@@ -141,7 +130,7 @@ class TestImageRequestTable(unittest.TestCase):
         with self.assertRaises(GetImageRequestItemException):
             self.image_request_table.get_image_request("DOES-NOT-EXIST-IMAGE-ID")
 
-    def test_is_image_request_complete_failure(self):
+    def test_is_image_request_complete_image_table_failure(self):
         """
         Validate that we throw the correct IsImageCompleteException when checking if an image is complete fails.
         """

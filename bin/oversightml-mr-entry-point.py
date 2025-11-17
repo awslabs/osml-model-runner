@@ -14,6 +14,8 @@ from pythonjsonlogger import jsonlogger
 from aws.osml.model_runner import ModelRunner
 from aws.osml.model_runner.common import ThreadingLocalContextFilter
 
+logger = logging.getLogger(__name__)
+
 
 def handler_stop_signals(signal_num: int, frame: Optional[FrameType], model_runner: ModelRunner) -> None:
     model_runner.stop()
@@ -26,9 +28,8 @@ def configure_logging(verbose: bool) -> None:
 
     :param verbose: if true the logging level will be set to DEBUG, otherwise it will be set to INFO.
     """
-    logging_level = logging.INFO
-    if verbose:
-        logging_level = logging.DEBUG
+
+    logging_level = os.getenv("LOG_LEVEL") or (logging.DEBUG if verbose else logging.INFO)
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging_level)
@@ -62,11 +63,16 @@ def setup_code_profiling() -> None:
 
 
 def main() -> int:
+    # Parse command line arguments
+    args = parse_args()
+    
+    # Configure logging first
+    configure_logging(args.verbose)
+
+    # Create and configure model runner
     model_runner = ModelRunner()
 
     map_signals(model_runner)
-    args = parse_args()
-    configure_logging(args.verbose)
     setup_code_profiling()
 
     model_runner.run()

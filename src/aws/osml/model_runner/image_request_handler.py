@@ -17,12 +17,10 @@ from osgeo import gdal
 from osgeo.gdal import Dataset
 
 from aws.osml.gdal import GDALConfigEnv, get_image_extension, load_gdal_dataset
-from aws.osml.model_runner.api import ModelInvokeMode, get_image_path
-from aws.osml.model_runner.app_config import BotoConfig
 from aws.osml.photogrammetry import SensorModel
 
-from .api import VALID_MODEL_HOSTING_OPTIONS, ImageRequest, RegionRequest
-from .app_config import MetricLabels, ServiceConfig
+from .api import get_image_path, VALID_MODEL_HOSTING_OPTIONS, ImageRequest, RegionRequest, ModelInvokeMode
+from .app_config import BotoConfig, MetricLabels, ServiceConfig
 from .common import (
     EndpointUtils,
     ImageDimensions,
@@ -40,6 +38,7 @@ from .database import (
     ImageRequestTable,
     RegionRequestItem,
     RegionRequestTable,
+    TileRequestTable,
 )
 from .exceptions import (
     AggregateFeaturesException,
@@ -54,7 +53,7 @@ from .queue import RequestQueue
 from .region_request_handler import RegionRequestHandler
 from .sink import SinkFactory
 from .status import ImageStatusMonitor
-from .tile_worker import TilingStrategy, select_features
+from .tile_worker import select_features, TilingStrategy, BatchTileProcessor, setup_upload_tile_workers, setup_batch_submission_worker
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
@@ -80,6 +79,7 @@ class ImageRequestHandler:
         endpoint_utils: EndpointUtils,
         config: ServiceConfig,
         region_request_handler: RegionRequestHandler,
+        tile_request_table: Optional[TileRequestTable] = None,
     ) -> None:
         """
         Initialize the ImageRequestHandler with the necessary dependencies.
@@ -105,6 +105,7 @@ class ImageRequestHandler:
         self.config = config
         self.region_request_handler = region_request_handler
         self.on_image_update = ObservableEvent()
+        self.tile_request_table = tile_request_table
 
     def process_image_request(self, image_request: ImageRequest) -> None:
         """
@@ -176,7 +177,11 @@ class ImageRequestHandler:
                 self.image_status_monitor.process_event(image_request_item, RequestStatus.IN_PROGRESS, "Processing regions")
 
                 # Place the resulting region requests on the appropriate work queue
-                self.queue_region_request(regions, image_request, ds, sensor_model, extension)
+                if image_request.model_invoke_mode == ModelInvokeMode.SM_BATCH:
+                    # handle batch inference at the image level
+                    self.queue_batch_request(regions, image_request, ds, sensor_model, extension)
+                else:
+                    self.queue_region_request(regions, image_request, ds, sensor_model, extension)
 
         except Exception as err:
             # We failed try and gracefully update our image request
@@ -259,7 +264,8 @@ class ImageRequestHandler:
         )
 
         # If the image is finished then complete it
-        if self.image_request_table.is_image_request_complete(image_request_item):
+        image_is_done, _, _ = self.region_request_table.is_image_request_complete(image_request_item)
+        if image_is_done:
             image_format = str(raster_dataset.GetDriver().ShortName).upper()
             self.complete_image_request(first_region_request, image_format, raster_dataset, sensor_model)
 
@@ -308,11 +314,11 @@ class ImageRequestHandler:
                 # Region size chosen to break large images into pieces that can be handled by a
                 # single tile worker
                 region_size: ImageDimensions = ast.literal_eval(self.config.region_size)
-                tile_size: ImageDimensions = ast.literal_eval(image_request_item.tile_size)
+                tile_size: ImageDimensions = ast.literal_eval(image_request_item.tile_size) if isinstance(image_request_item.tile_size, str) else image_request_item.tile_size
                 if not image_request_item.tile_overlap:
                     minimum_overlap = (0, 0)
                 else:
-                    minimum_overlap = ast.literal_eval(image_request_item.tile_overlap)
+                    minimum_overlap = ast.literal_eval(image_request_item.tile_overlap) if isinstance(image_request_item.tile_overlap, str) else image_request_item.tile_overlap
 
                 all_regions = self.tiling_strategy.compute_regions(
                     processing_bounds, region_size, tile_size, minimum_overlap
@@ -574,3 +580,72 @@ class ImageRequestHandler:
                     "TargetVariant": selected_variant
                 }
         return image_request
+
+    def queue_batch_request(
+        self,
+        all_regions: List[ImageRegion],
+        image_request: ImageRequest,
+        raster_dataset: Dataset,
+        sensor_model: Optional[SensorModel],
+        image_extension: Optional[str],
+    ) -> None:
+        """
+            For batch processing, we don't want to create separate threads for regions/tiles, instead
+            get all tiles ready in the main process and submmit the request for batch processing. 
+        """
+
+
+        # Set up our threaded tile worker pool
+        tile_queue, tile_workers = setup_upload_tile_workers(
+            image_request, sensor_model, ServiceConfig.elevation_model
+        )
+        
+        batch_tile_processor = BatchTileProcessor(self.tile_request_table)
+
+        # process all regions
+        for region in all_regions:
+            region_request = RegionRequest(
+                image_request.get_shared_values(),
+                region_bounds=region,
+                region_id=f"{region[0]}{region[1]}-{image_request.job_id}",
+                image_extension=image_extension,
+            )
+
+            # Create a new entry to the region request being started
+            region_request_item = RegionRequestItem.from_region_request(region_request)
+
+            # Start region request processing
+            self.region_request_table.start_region_request(region_request_item)
+            logger.debug(f"Enhanced handler starting region request: region id: {region_request_item.region_id}")
+
+            # Upload tiles to S3
+            total_tile_count, failed_tile_count = batch_tile_processor.process_tiles(
+                self.tiling_strategy,
+                region_request,
+                region_request_item,
+                tile_queue,
+                tile_workers,
+                raster_dataset,
+                sensor_model,
+            )
+
+            # update the expected number of tiles
+            region_request_item.total_tiles = total_tile_count
+            region_request_item = self.region_request_table.update_region_request(region_request_item)
+
+        # shutdown workers
+        batch_tile_processor.shutdown_workers = True # turn ON shutdown of workers
+        tile_error_count = batch_tile_processor.shut_down_workers(tile_workers, tile_queue)
+
+        # submit to Batch processing
+        in_queue, worker = setup_batch_submission_worker(image_request)
+
+        # Place the image info onto our processing queue
+        image_info = dict(
+            job_id=image_request.job_id,
+            instance_type=image_request.instance_type,
+            instance_count=int(image_request.instance_count)
+        )
+        in_queue.put(image_info)
+        in_queue.put(None)
+        worker.join()
