@@ -15,7 +15,7 @@ WORKDIR /home
 
 # Install necessary packages
 USER root
-RUN dnf update -y && dnf install -y wget shadow-utils gcc && dnf clean all
+RUN dnf update -y && dnf install -y wget shadow-utils gcc gcc-c++ make && dnf clean all
 
 # Install Miniconda - dynamically detect architecture at build time
 RUN ARCH=$(uname -m) && \
@@ -33,7 +33,7 @@ RUN ARCH=$(uname -m) && \
     ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 
 # Copy the conda environment file
-COPY conda/model-runner-py311.yml environment.yml
+COPY environment-py313.yml environment.yml
 
 # Accept Conda TOS before creating the environment
 RUN conda config --set always_yes true && \
@@ -51,9 +51,7 @@ RUN conda env create -f environment.yml \
 COPY . osml-model-runner
 
 # Install the model runner application
-RUN . /opt/conda/etc/profile.d/conda.sh && \
-    conda activate ${CONDA_TARGET_ENV} && \
-    python3 -m pip install osml-model-runner/.
+RUN conda run -n ${CONDA_TARGET_ENV} python3 -m pip install osml-model-runner/.
 
 # Stage 2: Runtime environment
 FROM --platform=${TARGETPLATFORM} public.ecr.aws/amazonlinux/amazonlinux:2023-minimal AS model_runner
