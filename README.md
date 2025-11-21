@@ -6,7 +6,7 @@ tiles, invokes an ML model endpoint with each tile, and finally aggregates all t
 application itself has been containerized and is designed to run on a distributed cluster of machines collaborating
 across instances to process images as quickly as possible.
 
-### Table of Contents
+## Table of Contents
 
 * [Getting Started](#getting-started)
   * [Key Design Concepts](#key-design-concepts)
@@ -20,7 +20,7 @@ across instances to process images as quickly as possible.
   * [Running ModelRunner](#running-modelrunner)
   * [Infrastructure](#infrastructure)
     * [S3](#s3)
-  * [Documentation](#documentation)
+  * [Code Documentation](#code-documentation)
 * [Support & Feedback](#support--feedback)
 * [Security](#security)
 * [License](#license)
@@ -95,7 +95,7 @@ CloudWatch Logs Insights can be leveraged to provide anything from an overview o
 diagnostics.  For example, querying the `/aws/OSML/MRService` log group using the following query will provide a
 "Timeline" view of a specific job.
 
-```
+```text
 fields @timestamp, message, job_id, region_id, @logStream
 | filter job_id like /<job_id>/
 | filter tag like "TIMELINE EVENT"
@@ -119,7 +119,6 @@ First, ensure you have installed the following tools locally
 
 * [docker](https://nodejs.org/en)
 * [tox](https://tox.wiki/en/latest/installation.html)
-* [osml cdk](https://github.com/aws-solutions-library-samples/osml-cdk-constructs) deployed into your aws account
 
 ### Development Environment
 
