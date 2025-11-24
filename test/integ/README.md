@@ -30,7 +30,29 @@ This directory contains a unified integration test suite for OSML Model Runner w
 
 ## Quick Start
 
-The simplest way to run an integration test:
+### Using pytest (Recommended)
+
+Integration tests are now wrapped in standard pytest fixtures, allowing you to use pytest's powerful test discovery and execution features:
+
+```bash
+# Run all integration tests (with real-time output)
+pytest test/integ/test_integration.py -s -v
+
+# Run with verbose logging (set environment variable)
+INTEG_TEST_VERBOSE=true pytest test/integ/test_integration.py -s -vv
+
+# Run with custom timeout
+INTEG_TEST_TIMEOUT=45 pytest test/integ/test_integration.py -s -v
+
+# Run with custom delay between tests
+INTEG_TEST_DELAY=10 pytest test/integ/test_integration.py::TestIntegrationSuite::test_integration_suite -s -v
+```
+
+**Note**: The `-s` flag disables output capturing, allowing you to see real-time test output. Use `-vv` for even more verbose pytest output.
+
+### Using the CLI Script
+
+You can also use the original CLI script for backward compatibility:
 
 ```bash
 # Test with your image and model
@@ -80,6 +102,8 @@ bin/
 
 test/integ/
 ├── integ_runner.py        # Test runner implementation (IntegRunner class)
+├── test_integration.py    # Pytest wrappers for integration tests
+├── conftest.py            # Pytest configuration and fixtures
 ├── types.py               # Local type definitions (no dependency on model runner)
 ├── config.py              # Configuration management
 ├── validator.py           # GeoJSON feature validation utilities

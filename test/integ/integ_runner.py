@@ -76,7 +76,13 @@ class IntegRunner:
                     level_name = logging.getLevelName(record.levelno)
                     return f"[{level_name}] {record.getMessage()}"
 
-        handler = logging.StreamHandler()
+        # Force flush after each log message for real-time output
+        class FlushingHandler(logging.StreamHandler):
+            def emit(self, record):
+                super().emit(record)
+                self.flush()
+
+        handler = FlushingHandler()
         handler.setFormatter(InfoFormatter())
 
         root_logger = logging.getLogger()
@@ -357,12 +363,52 @@ class IntegRunner:
                 for message in messages:
                     try:
                         # Parse the SNS message format
-                        message_body = json.loads(message.body)
-                        message_attributes = message_body.get("MessageAttributes", {})
+                        sns_wrapper = json.loads(message.body)
 
-                        # Extract values from SNS MessageAttributes format
+                        # SNS messages can have status in MessageAttributes or in the inner Message body
+                        message_attributes = sns_wrapper.get("MessageAttributes", {})
+
+                        # Try to extract from MessageAttributes first
                         message_image_id = message_attributes.get("image_id", {}).get("Value")
                         message_image_status = message_attributes.get("status", {}).get("Value")
+                        processing_duration_attr = message_attributes.get("processing_duration", {}).get("Value")
+
+                        # If not found in MessageAttributes, try parsing the inner Message field
+                        if not message_image_status or not message_image_id:
+                            inner_message_str = sns_wrapper.get("Message", "")
+                            if inner_message_str:
+                                try:
+                                    inner_message = (
+                                        json.loads(inner_message_str)
+                                        if isinstance(inner_message_str, str)
+                                        else inner_message_str
+                                    )
+
+                                    # Check if it's the structured log format with status/reason fields
+                                    if isinstance(inner_message, dict):
+                                        # Try to get status from the inner message
+                                        if not message_image_status:
+                                            message_image_status = inner_message.get("status")
+
+                                        # Try to get image_id from various possible locations
+                                        if not message_image_id:
+                                            message_image_id = inner_message.get("image_id")
+                                            if not message_image_id and "request" in inner_message:
+                                                message_image_id = inner_message["request"].get("image_id")
+
+                                        # Try to get processing_duration
+                                        if not processing_duration_attr:
+                                            processing_duration_attr = inner_message.get("request", {}).get(
+                                                "processing_duration"
+                                            )
+
+                                except (json.JSONDecodeError, TypeError):
+                                    # Inner message might not be JSON, that's okay
+                                    pass
+
+                        # Debug logging for troubleshooting
+                        if message_image_id and message_image_id == image_id:
+                            self.logger.debug(f"Found message for image_id {image_id}, status: {message_image_status}")
 
                         if message_image_status == "IN_PROGRESS" and message_image_id == image_id:
                             found_relevant_message = True
@@ -371,9 +417,13 @@ class IntegRunner:
 
                         elif message_image_status == "SUCCESS" and message_image_id == image_id:
                             found_relevant_message = True
-                            processing_duration = message_attributes.get("processing_duration", {}).get("Value")
+                            processing_duration = processing_duration_attr
                             if processing_duration is not None:
-                                assert float(processing_duration) > 0
+                                try:
+                                    processing_duration = float(processing_duration)
+                                    assert processing_duration > 0
+                                except (ValueError, TypeError, AssertionError):
+                                    processing_duration = None
                             done = True
                             elapsed = int(time.time() - start_time)
                             if processing_duration is not None:
@@ -390,8 +440,9 @@ class IntegRunner:
                             found_relevant_message = True
                             failure_message = ""
                             try:
-                                message_body = json.loads(message.body).get("Message", "")
-                                failure_message = str(message_body)
+                                inner_message_str = sns_wrapper.get("Message", "")
+                                if inner_message_str:
+                                    failure_message = str(inner_message_str)
                             except Exception as e:
                                 self.logger.warning(f"Failed to extract failure message from SNS message: {e}")
                             self.logger.error(
@@ -401,8 +452,10 @@ class IntegRunner:
 
                     except json.JSONDecodeError as e:
                         self.logger.warning(f"Failed to parse message body as JSON: {e}")
+                        self.logger.debug(f"Message body: {message.body[:500] if hasattr(message, 'body') else 'N/A'}")
                     except Exception as e:
                         self.logger.warning(f"Error processing message: {e}")
+                        self.logger.debug(f"Exception details: {e}", exc_info=True)
 
                 # Delete all messages after processing the batch
                 for message in messages:

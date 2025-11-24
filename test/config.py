@@ -75,16 +75,23 @@ class BaseConfig:
 
         Automatically loads configuration from task definition if required values are missing.
         """
-        self.ACCOUNT = self.ACCOUNT or self._get_aws_account()
+        # Try to get region first (faster, doesn't require AWS calls)
         self.REGION = self.REGION or self._get_aws_region()
 
         # Automatically load from task definition if we don't have task definition values yet
+        # This will also extract account ID from the ARN, so we skip the STS call if loading from task definition
         if not self.FEATURE_TABLE or not self.IMAGE_QUEUE_NAME:
             try:
                 self._load_from_task_definition()
+                # Account ID will be extracted from task definition ARN in _load_from_task_definition
             except Exception as e:
                 # If building fails, log but continue with empty config
                 logger.debug(f"Could not automatically load config from task definition: {e}")
+                # Only try STS if we didn't load from task definition
+                self.ACCOUNT = self.ACCOUNT or self._get_aws_account()
+        else:
+            # Only try STS if we're not loading from task definition
+            self.ACCOUNT = self.ACCOUNT or self._get_aws_account()
 
     def _load_from_task_definition(self, pattern: Optional[str] = None, region: Optional[str] = None) -> None:
         """
@@ -97,17 +104,20 @@ class BaseConfig:
         task_def_pattern = pattern or os.environ.get("TASK_DEFINITION_PATTERN", "ModelRunnerDataplane")
         region = region or self._get_aws_region() or "us-west-2"
 
+        logger.info(f"Creating ECS client for region: {region}")
         ecs_client = boto3.client("ecs", region_name=region)
 
         # Find the latest matching task definition
         logger.info(f"Searching for task definition: {task_def_pattern}")
         paginator = ecs_client.get_paginator("list_task_definitions")
+        logger.info("Paginating through task definitions...")
         matching_arns = [
             arn
             for page in paginator.paginate(sort="DESC")
             for arn in page.get("taskDefinitionArns", [])
             if task_def_pattern in arn
         ]
+        logger.info(f"Found {len(matching_arns)} matching task definition(s)")
 
         if not matching_arns:
             raise RuntimeError(
@@ -118,6 +128,17 @@ class BaseConfig:
         task_def_arn = matching_arns[0]
         task_def_name = task_def_arn.split("/")[-1]
         logger.info(f"Found task definition: {task_def_name}")
+
+        # Extract account ID from task definition ARN if not already set
+        # ARN format: arn:aws:ecs:region:account-id:task-definition/task-def-name:revision
+        if not self.ACCOUNT:
+            try:
+                arn_parts = task_def_arn.split(":")
+                if len(arn_parts) >= 5:
+                    self.ACCOUNT = arn_parts[4]
+                    logger.debug(f"Extracted account ID from task definition ARN: {self.ACCOUNT}")
+            except Exception as e:
+                logger.debug(f"Failed to extract account ID from task definition ARN: {e}")
 
         # Extract environment variables from task definition
         response = ecs_client.describe_task_definition(taskDefinition=task_def_arn)
@@ -168,11 +189,21 @@ class BaseConfig:
 
         :returns: AWS account ID if found, None otherwise.
         """
+        # Try environment variable first (fastest, no AWS call needed)
+        account = os.environ.get("ACCOUNT")
+        if account:
+            return account
+
+        # Try STS call (may hang if network/credentials issue)
         try:
-            return boto3.client("sts").get_caller_identity().get("Account")
+            logger.debug("Attempting to get AWS account from STS...")
+            account = boto3.client("sts").get_caller_identity().get("Account")
+            if account:
+                logger.debug(f"Successfully retrieved account ID from STS: {account}")
+            return account
         except Exception as e:
             logger.debug(f"Failed to get AWS account from STS: {e}")
-            return os.environ.get("ACCOUNT")
+            return None
 
     def _get_aws_region(self) -> Optional[str]:
         """
