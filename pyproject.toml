@@ -18,6 +18,9 @@ addopts = "-ra -q"
 testpaths = [
     "test"
 ]
+markers = [
+    "integration: Integration tests",
+]
 
 [tool.autopep8]
 max_line_length = 125
