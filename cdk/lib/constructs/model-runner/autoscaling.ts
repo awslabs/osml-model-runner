@@ -83,11 +83,14 @@ export class Autoscaling extends Construct {
   private createAdcAutoscaling(
     props: AutoscalingProps
   ): EcsIsoServiceAutoscaler {
+    // Scale out when region queue has backlog
+    // Using a higher threshold and multiple evaluation periods to prevent rapid scaling
     const regionQueueScalingAlarm = new Alarm(this, "RegionQueueScalingAlarm", {
       metric:
         props.regionRequestQueue.metricApproximateNumberOfMessagesVisible(),
-      evaluationPeriods: 1,
-      threshold: 3
+      evaluationPeriods: 3,
+      threshold: 10,
+      datapointsToAlarm: 2
     });
 
     return new EcsIsoServiceAutoscaler(this, "MRServiceAutoscaling", {
@@ -131,18 +134,18 @@ export class Autoscaling extends Construct {
       ]
     });
 
-    // Scale based on image queue messages
+    // Scale based on image queue depth (messages waiting to be processed)
+    // This helps ensure capacity is available when new image requests arrive
     mrServiceScaling.scaleOnMetric("ImageQueueScaling", {
-      metric: props.imageRequestQueue.metricNumberOfMessagesReceived({
-        period: Duration.minutes(5),
-        statistic: "sum"
-      }),
+      metric:
+        props.imageRequestQueue.metricApproximateNumberOfMessagesVisible(),
       scalingSteps: [
-        { change: -1, upper: 0 },
-        { change: +1, lower: 1 }
+        { change: +2, lower: 5 },
+        { change: +5, lower: 20 },
+        { change: +10, lower: 50 }
       ],
-      cooldown: Duration.minutes(1),
-      evaluationPeriods: 3
+      cooldown: Duration.minutes(2),
+      evaluationPeriods: 2
     });
   }
 }

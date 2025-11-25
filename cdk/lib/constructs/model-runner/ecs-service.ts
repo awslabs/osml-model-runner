@@ -298,13 +298,20 @@ export class ECSService extends Construct {
    * @returns The created FargateService
    */
   private createFargateService(props: ECSServiceProps): FargateService {
+    // Set desired count to match min capacity to avoid immediate autoscaling
+    // Autoscaling will manage the count from this initial value
+    const desiredCount = Math.max(
+      props.config.ECS_DEFAULT_DESIRE_COUNT,
+      props.config.ECS_AUTOSCALING_TASK_MIN_COUNT
+    );
+
     const service = new FargateService(this, "MRService", {
       taskDefinition: this.taskDefinition,
       cluster: this.cluster,
       minHealthyPercent: 100,
       securityGroups: props.securityGroups,
       vpcSubnets: props.vpc.selectSubnets(),
-      desiredCount: props.config.ECS_DEFAULT_DESIRE_COUNT
+      desiredCount: desiredCount
     });
 
     return service;
