@@ -117,13 +117,30 @@ class EndpointLoadImageScheduler(ImageScheduler):
         # This is just a noop placeholder for the abstract method defined on the base class.
         pass
 
+    def _is_http_endpoint(self, endpoint_name: str) -> bool:
+        """
+        Check if the endpoint name is an HTTP endpoint URL.
+
+        :param endpoint_name: The endpoint identifier (name or URL)
+        :return: True if this is an HTTP endpoint URL, False otherwise
+        """
+        return endpoint_name.startswith("http://") or endpoint_name.startswith("https://")
+
     def _get_endpoint_instance_count(self, endpoint_name: str) -> int:
         """
         Get the number of instances backing a SageMaker endpoint.
 
-        :param endpoint_name: Name of the SageMaker endpoint
+        For HTTP endpoints, returns a default value since instance counts
+        cannot be determined via SageMaker APIs.
+
+        :param endpoint_name: Name of the SageMaker endpoint or HTTP endpoint URL
         :return: Number of instances backing the endpoint
         """
+        # HTTP endpoints are not SageMaker endpoints, so we can't query instance counts
+        if self._is_http_endpoint(endpoint_name):
+            logger.debug(f"HTTP endpoint detected: {endpoint_name}. Using default instance count of 1.")
+            return 1  # Default to 1 instance for HTTP endpoints
+
         try:
             response = self.sm_client.describe_endpoint(EndpointName=endpoint_name)
             total_instances = 0
