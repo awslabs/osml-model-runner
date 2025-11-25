@@ -174,6 +174,7 @@ test/load/
 ├── locust_status_monitor.py  # Background status monitoring thread
 ├── locust_load_shape.py   # Custom load shape for time window control
 ├── locust_job_tracker.py  # Job tracking and statistics calculation
+├── generate_cost_report.py # Cost report generator using AWS Cost Explorer
 ├── types.py               # Local type definitions (no dependency on model runner)
 ├── config.py              # Configuration management
 ├── requirements.txt        # Python dependencies for load tests
@@ -266,6 +267,46 @@ During test execution, comprehensive statistics are displayed periodically (ever
             Total GB Processed: 2.45
             Total Pixels Processed: 1048576000
 ```
+
+## Cost Reporting
+
+After running a load test, you can generate a cost report using AWS Cost Explorer to analyze the AWS costs incurred during the test period.
+
+### Requirements
+
+- AWS credentials configured with Cost Explorer API access
+- IAM permissions: `ce:GetCostAndUsage`
+- **Note**: Cost Explorer API is only available in `us-east-1` region
+- **Note**: Cost data may have a 24-48 hour delay before being available
+
+### Usage
+
+The `generate_cost_report.py` script reads a load test summary JSON file (typically `logs/job_summary.json`) and generates a comprehensive cost report:
+
+```bash
+# Generate cost report from job_summary.json
+python test/load/generate_cost_report.py logs/job_summary.json
+
+# Save report to JSON file
+python test/load/generate_cost_report.py logs/job_summary.json --output cost_report.json
+```
+
+### Report Contents
+
+The cost report includes:
+
+- **Load Test Summary**: Test duration, images processed, GB processed, pixels processed
+- **Cost Summary**:
+  - Total cost (USD)
+  - Cost per hour
+  - Cost per image
+  - Cost per GB
+  - Cost per gigapixel
+- **Costs by Service**: Breakdown of costs by AWS service (SageMaker, EC2, S3, ECS, SQS, Lambda, CloudWatch, ECR, etc.)
+
+The script extracts the time range from the summary file (`start_time` and `stop_time` fields) and queries AWS Cost Explorer for costs during that period. The report is displayed in a formatted table and can optionally be saved to a JSON file for further analysis.
+
+**Note**: The cost report captures costs for all AWS services running in the account during the test period, not just services provisioned by Model Runner. For accurate cost attribution, this tool should be used in an AWS account that only has Model Runner deployed.
 
 ## Benefits
 
