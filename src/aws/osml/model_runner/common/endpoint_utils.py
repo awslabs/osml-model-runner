@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import logging
 import math
@@ -24,6 +24,15 @@ class EndpointUtils:
         self.max_region_cache: TTLCache = TTLCache(maxsize=10, ttl=60)
         self.ec2_client = boto3.client("ec2", config=BotoConfig.sagemaker)
 
+    def _is_http_endpoint(self, endpoint_name: str) -> bool:
+        """
+        Check if the endpoint name is an HTTP endpoint URL.
+
+        :param endpoint_name: The endpoint identifier (name or URL)
+        :return: True if this is an HTTP endpoint URL, False otherwise
+        """
+        return endpoint_name.startswith("http://") or endpoint_name.startswith("https://")
+
     @cachedmethod(operator.attrgetter("max_region_cache"))
     def calculate_max_regions(self, endpoint_name: str, model_invocation_role: Optional[str] = None) -> int:
         """
@@ -34,11 +43,25 @@ class EndpointUtils:
 
             math.floor(10 * VCPUs * Number of Instances) / Workers Per CPU
 
-        :param endpoint_name: str = the name of the endpoint
+        For HTTP endpoints, returns a large default value since instance counts and
+        instance types cannot be determined via SageMaker APIs.
+
+        :param endpoint_name: str = the name of the endpoint or HTTP endpoint URL
         :param model_invocation_role: Optional[str] = the modal of an invocation role
 
         :returns: int = max endpoint count for the endpoint
         """
+        # HTTP endpoints are not SageMaker endpoints, so we can't query instance counts or types
+        if self._is_http_endpoint(endpoint_name):
+            # Use a large default value to avoid throttling HTTP endpoints
+            # This is a reasonable default that allows HTTP endpoints to process requests
+            default_max_regions = 10000
+            logger.debug(
+                f"HTTP endpoint detected: {endpoint_name}. "
+                f"Using default max regions of {default_max_regions} (cannot determine from SageMaker)."
+            )
+            return default_max_regions
+
         assumed_credentials = None
         if model_invocation_role:
             assumed_credentials = get_credentials_for_assumed_role(model_invocation_role)
