@@ -233,32 +233,28 @@ export class Messaging extends Construct {
   private createImageStatusQueue(props: MessagingProps): Queue {
     // Use SQS_MANAGED encryption for queues subscribed to SNS topics
     // KMS_MANAGED encryption requires additional KMS key permissions for SNS subscriptions
-    const dlq = new Queue(this, "ImageStatusQueueDLQ", {
-      queueName: `${props.config.SQS_IMAGE_STATUS_QUEUE}-dlq`,
-      retentionPeriod: Duration.days(14),
+    const queue = new Queue(this, "ImageStatusQueue", {
+      queueName: props.config.SQS_IMAGE_STATUS_QUEUE,
+      visibilityTimeout: Duration.minutes(15),
+      retentionPeriod: Duration.days(1),
+      removalPolicy: RemovalPolicy.DESTROY,
       encryption: QueueEncryption.SQS_MANAGED
     });
 
-    const queue = new Queue(this, "ImageStatusQueue", {
-      queueName: props.config.SQS_IMAGE_STATUS_QUEUE,
-      visibilityTimeout: Duration.seconds(300),
-      retentionPeriod: Duration.days(14),
-      removalPolicy: RemovalPolicy.DESTROY,
-      encryption: QueueEncryption.SQS_MANAGED,
-      deadLetterQueue: {
-        maxReceiveCount: 3,
-        queue: dlq
-      }
-    });
-
     // Suppress SQS encryption findings - SQS_MANAGED used for SNS compatibility
+    // Suppress DLQ requirement - status queues intentionally do not use DLQs and do not retry
     NagSuppressions.addResourceSuppressions(
-      [queue, dlq],
+      [queue],
       [
         {
           id: "AwsSolutions-SQS4",
           reason:
             "SQS queue uses SQS_MANAGED encryption for compatibility with SNS subscriptions. KMS encryption requires additional KMS key permissions for SNS."
+        },
+        {
+          id: "AwsSolutions-SQS3",
+          reason:
+            "Status queues intentionally do not use DLQs and do not retry failed messages. Messages are consumed once and dropped if processing fails."
         }
       ],
       true
@@ -276,32 +272,28 @@ export class Messaging extends Construct {
   private createRegionStatusQueue(props: MessagingProps): Queue {
     // Use SQS_MANAGED encryption for queues subscribed to SNS topics
     // KMS_MANAGED encryption requires additional KMS key permissions for SNS subscriptions
-    const dlq = new Queue(this, "RegionStatusQueueDLQ", {
-      queueName: `${props.config.SQS_REGION_STATUS_QUEUE}-dlq`,
-      retentionPeriod: Duration.days(14),
+    const queue = new Queue(this, "RegionStatusQueue", {
+      queueName: props.config.SQS_REGION_STATUS_QUEUE,
+      visibilityTimeout: Duration.minutes(15),
+      retentionPeriod: Duration.days(1),
+      removalPolicy: RemovalPolicy.DESTROY,
       encryption: QueueEncryption.SQS_MANAGED
     });
 
-    const queue = new Queue(this, "RegionStatusQueue", {
-      queueName: props.config.SQS_REGION_STATUS_QUEUE,
-      visibilityTimeout: Duration.seconds(300),
-      retentionPeriod: Duration.days(14),
-      removalPolicy: RemovalPolicy.DESTROY,
-      encryption: QueueEncryption.SQS_MANAGED,
-      deadLetterQueue: {
-        maxReceiveCount: 3,
-        queue: dlq
-      }
-    });
-
     // Suppress SQS encryption findings - SQS_MANAGED used for SNS compatibility
+    // Suppress DLQ requirement - status queues intentionally do not use DLQs and do not retry
     NagSuppressions.addResourceSuppressions(
-      [queue, dlq],
+      [queue],
       [
         {
           id: "AwsSolutions-SQS4",
           reason:
             "SQS queue uses SQS_MANAGED encryption for compatibility with SNS subscriptions. KMS encryption requires additional KMS key permissions for SNS."
+        },
+        {
+          id: "AwsSolutions-SQS3",
+          reason:
+            "Status queues intentionally do not use DLQs and do not retry failed messages. Messages are consumed once and dropped if processing fails."
         }
       ],
       true
