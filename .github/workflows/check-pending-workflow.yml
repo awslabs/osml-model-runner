@@ -1,0 +1,22 @@
+name: Check Pending Workflow
+
+permissions:
+  contents: read
+  actions: read
+
+on:
+  workflow_call:
+    secrets:
+      GITHUB_TOKEN:
+        required: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for pending workflows
+        uses: ahmadnassri/action-workflow-queue@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          delay: 300000
+          timeout: 7200000

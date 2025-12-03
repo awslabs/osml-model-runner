@@ -1,0 +1,77 @@
+name: Deploy
+
+permissions:
+  id-token: write
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      aws_region:
+        required: true
+        type: string
+      account_id:
+        required: true
+        type: string
+      build_from_source:
+        required: false
+        type: boolean
+        default: true
+
+env:
+  AWS_REGION: ${{ inputs.aws_region }}
+  AWS_PAGER: ""
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          lfs: 'true'
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws_region }}
+          role-to-assume: arn:aws:iam::${{ inputs.account_id }}:role/GithubAction-AssumeRoleWithAction
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          role-duration-seconds: 7200
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install CDK and dependencies
+        working-directory: cdk
+        run: |
+          npm install -g aws-cdk
+          npm install
+      - name: Generate deployment.json
+        working-directory: cdk
+        run: |
+          python3 << 'EOF'
+          import json
+          with open('bin/deployment/deployment.json.example') as f:
+              config = json.load(f)
+          config['account']['id'] = '${{ inputs.account_id }}'
+          config['account']['prodLike'] = False
+          if 'networkConfig' in config:
+              del config['networkConfig']
+          if 'dataplaneConfig' in config:
+              config['dataplaneConfig']['BUILD_FROM_SOURCE'] = ${{ inputs.build_from_source }}
+          if 'testModelsConfig' in config:
+              config['testModelsConfig']['BUILD_FROM_SOURCE'] = ${{ inputs.build_from_source }}
+          with open('bin/deployment/deployment.json', 'w') as f:
+              json.dump(config, f, indent=2)
+          EOF
+      - name: Build and synthesize CDK
+        working-directory: cdk
+        run: |
+          npm run build
+          cdk synth
+      - name: Bootstrap CDK
+        working-directory: cdk
+        run: cdk bootstrap --force
+      - name: Deploy CDK infrastructure
+        working-directory: cdk
+        run: cdk deploy --all --require-approval never --concurrency 3

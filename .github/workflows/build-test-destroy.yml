@@ -1,0 +1,51 @@
+name: Validate
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: "us-west-2"
+  AWS_PAGER: ""
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+jobs:
+  'Deploy / CheckPendingWorkflow':
+    uses: ./.github/workflows/check-pending-workflow.yml
+    secrets: inherit
+
+  'Deploy / DeployModelRunner':
+    needs: 'Deploy / CheckPendingWorkflow'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      aws_region: ${{ env.AWS_REGION }}
+      account_id: ${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}
+      build_from_source: true
+    secrets: inherit
+
+  'Test / RunIntegrationTests':
+    needs: 'Deploy / DeployModelRunner'
+    uses: ./.github/workflows/run-integration-tests.yml
+    with:
+      aws_region: ${{ env.AWS_REGION }}
+      account_id: ${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}
+    secrets: inherit
+
+  'Cleanup / DestroyModelRunner':
+    if: ${{ always() }}
+    needs:
+      - 'Deploy / CheckPendingWorkflow'
+      - 'Deploy / DeployModelRunner'
+      - 'Test / RunIntegrationTests'
+    uses: ./.github/workflows/destroy.yml
+    with:
+      aws_region: ${{ env.AWS_REGION }}
+      account_id: ${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}
+    secrets: inherit
