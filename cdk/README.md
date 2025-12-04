@@ -16,6 +16,145 @@ Before deploying, ensure the following tools and resources are available:
 
 ---
 
+## 🏗️ Stacks Overview
+
+This CDK application deploys multiple stacks that work together to provide the complete Model Runner infrastructure. Understanding what each stack creates will help you plan your deployment and manage resources effectively.
+
+### NetworkStack (`<project-name>-Network`)
+
+The **NetworkStack** provides the foundational networking infrastructure that all other stacks depend on. It manages VPC creation or import and network security.
+
+**Resources Created:**
+
+- **VPC**: Either creates a new VPC or imports an existing one based on configuration
+  - New VPCs include public and private subnets across 2 availability zones
+  - CIDR block: `10.0.0.0/16` (configurable)
+  - Internet Gateway for public subnets
+  - NAT Gateway for private subnet egress
+- **Security Groups**: Network security rules for Model Runner services
+- **VPC Flow Logs**: Network traffic logging (enabled for production-like environments)
+- **Subnet Selection**: Configures which subnets to use for resource deployment
+
+**Key Features:**
+
+- Can import existing VPCs to integrate with your existing network infrastructure
+- Supports custom subnet and security group selection
+- Automatically configures proper routing for public and private subnets
+
+---
+
+### ModelRunnerStack (`<project-name>-ModelRunner`)
+
+The **ModelRunnerStack** deploys the core Model Runner dataplane - the main application infrastructure that processes geospatial imagery and runs ML models.
+
+**Resources Created:**
+
+#### **Database (DynamoDB)**
+
+- **Outstanding Image Requests Table**: Tracks pending image processing requests
+- **Image Request Table**: Stores image request status and metadata
+- **Features Table**: Stores extracted feature data from processed images
+- **Endpoint Statistics Table**: Tracks endpoint performance metrics
+- **Region Request Table**: Manages region-level processing requests
+- **AWS Backup Configuration**: Automated backups for production environments (when `prodLike: true`)
+
+#### **Messaging (SQS & SNS)**
+
+- **Image Request Queue**: Primary queue for image processing requests
+- **Region Request Queue**: Queue for region-level processing tasks
+- **Dead Letter Queues**: Handles failed messages from both request queues
+- **Image Status Topic** (optional): SNS topic for image processing status notifications
+- **Region Status Topic** (optional): SNS topic for region processing status notifications
+- **Status Queues** (optional): SQS queues subscribed to status topics
+
+#### **Compute (ECS)**
+
+- **ECS Cluster**: Container orchestration cluster for Model Runner tasks
+- **Fargate Service**: Serverless container service running Model Runner containers
+- **Task Definition**: Container configuration with CPU, memory, and environment variables
+- **Container Image**: Model Runner Docker image (built from source or pulled from registry)
+- **CloudWatch Log Group**: Centralized logging for all container logs
+- **ECS Roles**: IAM roles for task execution and task permissions
+
+#### **Autoscaling**
+
+- **ECS Service Autoscaler**: Automatically scales ECS tasks based on queue depth
+- **CloudWatch Alarms**: Monitors queue metrics to trigger scaling events
+- **Scaling Policies**: Configurable min/max task counts and scaling increments
+
+#### **Output Sinks**
+
+- **S3 Bucket** (optional): Stores processed output data and results
+  - Includes access logging bucket
+  - Versioning enabled for production environments
+  - Server-side encryption enabled
+- **Kinesis Data Stream** (optional): Real-time streaming output for processed data
+
+#### **Monitoring**
+
+- **CloudWatch Dashboard** (optional): Pre-configured dashboard with key metrics
+  - ECS service metrics (CPU, memory, task count)
+  - Queue metrics (message count, visibility timeout)
+  - Custom Model Runner metrics
+
+**Key Features:**
+
+- Fully serverless architecture using Fargate (no EC2 instances to manage)
+- Automatic scaling based on workload
+- Configurable resource allocation (CPU, memory, worker count)
+- Optional status notifications via SNS
+- Production-ready with backups, encryption, and monitoring
+
+---
+
+### IntegrationTestStack (`<project-name>-IntegrationTest`)
+
+The **IntegrationTestStack** deploys test infrastructure for development and integration testing. This stack is only deployed when `deployIntegrationTests: true` in your configuration.
+
+**Resources Created:**
+
+#### **Test Imagery**
+
+- **S3 Bucket**: Dedicated bucket for storing test imagery files
+- **Bucket Deployment**: Automatically uploads test images from local `cdk/assets/imagery/` directory
+- **Encryption**: Server-side encryption enabled
+- **Access Control**: Private bucket with proper IAM permissions
+
+#### **Test Models**
+
+- **SageMaker Endpoints**:
+  - **Centerpoint Endpoint**: Object detection model endpoint
+  - **Flood Endpoint**: Flood detection model endpoint
+  - **Multi-Container Endpoint**: Multi-model inference endpoint
+- **HTTP Endpoint**: Container-based HTTP endpoint for testing HTTP model integration
+- **Container Resources**: ECS task definitions and services for HTTP endpoint
+- **IAM Roles**: SageMaker execution roles with necessary permissions
+
+**Key Features:**
+
+- Provides ready-to-use test models for validating Model Runner functionality
+- Includes both SageMaker and HTTP-based endpoints for different integration patterns
+- Test imagery is automatically deployed for immediate use
+- Shares the same VPC as ModelRunnerStack for consistent networking
+
+---
+
+### SageMakerRoleStack (`<project-name>-SageMakerRole`)
+
+The **SageMakerRoleStack** creates a dedicated IAM role for SageMaker endpoints. This is deployed separately to ensure proper cleanup of network interfaces when endpoints are deleted.
+
+**Resources Created:**
+
+- **IAM Role**: SageMaker execution role with permissions for:
+  - Accessing S3 buckets
+  - CloudWatch logging
+  - VPC network access
+  - Model artifact access
+
+**Note**: This stack exists as a workaround for a CloudFormation limitation with SageMaker endpoint cleanup. It ensures network interfaces are properly cleaned up when endpoints are deleted.
+
+---
+
 ## ⚙️ Configuration
 
 ### Deployment File: `bin/deployment/deployment.json`
@@ -210,37 +349,6 @@ This command will:
 - Skip interactive approval prompts
 - Automatically proceed with deployment changes
 - Deploy multiple stacks in parallel (up to 3 concurrent deployments)
-
----
-
-## 🧱 Project Structure
-
-```text
-cdk
-├── bin/
-│   ├── app.ts                        # Entry point, loads config and launches stack
-│   └── deployment/
-│       ├── deployment.json           # Your environment-specific config
-│       ├── deployment.json.example   # Template for creating new configs
-│       └── load-deployment.ts        # Configuration loader and validator
-├── lib/
-│   ├── model-runner-stack.ts         # Root CDK stack
-│   ├── integration-test-stack.ts     # Integration test resources CDK stack
-│   └── constructs/                   # Modular construct classes
-│       ├── types.ts                  # Common types and interfaces
-│       ├── dataplane.ts              # Main Dataplane construct
-│       ├── network.ts                # Network - VPC and networking resources
-│       ├── database-tables.ts        # DatabaseTables - DynamoDB tables
-│       ├── messaging.ts              # Messaging - SQS queues and SNS topics
-│       ├── ecs-service.ts            # ECSService - ECS cluster, services, and roles
-│       ├── ecs-roles.ts              # ECSRoles - ECS task and execution roles
-│       ├── monitoring.ts             # Monitoring - CloudWatch dashboards
-│       ├── autoscaling.ts            # Autoscaling - ECS autoscaling policies
-│       └── sinks.ts                  # Sinks - S3 bucket and Kinesis stream outputs
-├── test/                             # Unit tests and cdk-nag checks
-│   └── test-utils.ts                 # Test utilities and NAG report generation
-└── package.json                      # Project config and npm
-```
 
 ---
 
