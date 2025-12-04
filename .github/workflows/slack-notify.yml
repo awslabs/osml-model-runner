@@ -1,4 +1,4 @@
-name: Slack New PR Notification
+name: Notify Slack
 
 on:
   pull_request:
@@ -9,9 +9,9 @@ permissions:
   pull-requests: read
 
 jobs:
-  send_starting_slack_notification:
-    name: Send Starting Slack Notification
+  notify-pr-created:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Send PR Created Notification
         if: github.event_name == 'pull_request' && github.event.action == 'opened'
