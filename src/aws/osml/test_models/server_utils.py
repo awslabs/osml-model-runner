@@ -2,12 +2,14 @@
 
 import logging
 import os
+import random
 import sys
+import time
 from secrets import token_hex
 from typing import Dict, List, Optional, Union
 
 import json_logging
-from flask import Flask
+from flask import Flask, request
 from osgeo import gdal
 
 # Enable exceptions for GDAL
@@ -124,3 +126,82 @@ def detect_to_feature(
         feature["properties"]["imageGeometry"] = {"type": "Polygon", "coordinates": [fixed_object_mask]}
 
     return feature
+
+
+def parse_custom_attributes() -> Dict[str, str]:
+    """
+    Parse the SageMaker CustomAttributes header from the request.
+
+    The CustomAttributes header contains comma-separated key=value pairs that can
+    be used to pass additional information to the model endpoint.
+
+    Example header value: "mock_latency_mean=500,mock_latency_std=50,trace_id=abc123"
+
+    :return: Dictionary of parsed key-value pairs from the CustomAttributes header.
+             Returns an empty dictionary if the header is not present or parsing fails.
+    """
+    # Get the CustomAttributes header from the request
+    custom_attributes = request.headers.get("X-Amzn-SageMaker-Custom-Attributes", "")
+
+    if not custom_attributes:
+        return {}
+
+    # Parse the custom attributes
+    attributes = {}
+    try:
+        for pair in custom_attributes.split(","):
+            if "=" in pair:
+                key, value = pair.split("=", 1)
+                attributes[key.strip()] = value.strip()
+    except Exception:
+        # If parsing fails, return empty dictionary
+        return {}
+
+    return attributes
+
+
+def simulate_model_latency() -> None:
+    """
+    Simulate model inference latency by sleeping for a random duration based on
+    custom attributes provided in the request header.
+
+    This function checks for 'mock_latency_mean' and 'mock_latency_std' parameters
+    in the CustomAttributes header. If found, it sleeps for a random number of
+    milliseconds drawn from a normal distribution with the specified mean and
+    standard deviation.
+
+    If only mock_latency_mean is provided, mock_latency_std defaults to 10% of the mean.
+    If neither parameter is present, no sleep occurs.
+
+    :return: None
+    """
+    # Get parsed custom attributes
+    attributes = parse_custom_attributes()
+
+    # Check for mock_latency_mean
+    if "mock_latency_mean" not in attributes:
+        return
+
+    try:
+        # Parse the mean latency
+        mean_ms = float(attributes["mock_latency_mean"])
+
+        # Parse or calculate the standard deviation
+        if "mock_latency_std" in attributes:
+            std_ms = float(attributes["mock_latency_std"])
+        else:
+            # Default to 10% of mean if std is not provided
+            std_ms = mean_ms * 0.1
+
+        # Generate a random latency using normal distribution
+        latency_ms = random.gauss(mean_ms, std_ms)
+
+        # Ensure latency is non-negative
+        latency_ms = max(0, latency_ms)
+
+        # Convert to seconds and sleep
+        time.sleep(latency_ms / 1000.0)
+
+    except (ValueError, TypeError):
+        # If conversion to float fails, just return without sleeping
+        return

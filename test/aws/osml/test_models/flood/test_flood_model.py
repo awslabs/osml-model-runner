@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 import unittest
 
 from moto import mock_aws
@@ -106,3 +107,79 @@ class FloodModelTest(unittest.TestCase):
         response = self.client.post("/invocations", data=data_binary)
 
         assert response.status_code == 400
+
+    def test_predict_with_mock_latency_mean_and_std(self):
+        """
+        Test the flood model with mock latency using both mean and std.
+
+        Verifies that the model adds latency when custom attributes are provided
+        and still returns the correct GeoJSON result with expected number of features.
+        """
+        with open("test/data/test-model.tif", "rb") as data_binary:
+            start_time = time.time()
+            response = self.client.post(
+                "/invocations",
+                data=data_binary,
+                headers={"X-Amzn-SageMaker-Custom-Attributes": "mock_latency_mean=100,mock_latency_std=10"},
+            )
+            elapsed_time = time.time() - start_time
+
+        # Verify the response is successful
+        assert response.status_code == 200
+
+        # Verify the latency was added (should be at least ~90ms, accounting for some variance)
+        assert elapsed_time > 0.05
+
+        # Verify the GeoJSON result is still correct
+        actual_geojson_result = json.loads(response.data)
+        assert actual_geojson_result["type"] == "FeatureCollection"
+        assert len(actual_geojson_result["features"]) == 10
+
+    def test_predict_with_mock_latency_mean_only(self):
+        """
+        Test the flood model with mock latency using only mean (std defaults to 10%).
+
+        Verifies that when only mean is provided, std defaults to 10% of mean.
+        """
+        with open("test/data/test-model.tif", "rb") as data_binary:
+            start_time = time.time()
+            response = self.client.post(
+                "/invocations",
+                data=data_binary,
+                headers={"X-Amzn-SageMaker-Custom-Attributes": "mock_latency_mean=150"},
+            )
+            elapsed_time = time.time() - start_time
+
+        # Verify the response is successful
+        assert response.status_code == 200
+
+        # Verify the latency was added (should be at least ~120ms, accounting for variance)
+        assert elapsed_time > 0.08
+
+        # Verify the GeoJSON result is still correct
+        actual_geojson_result = json.loads(response.data)
+        assert actual_geojson_result["type"] == "FeatureCollection"
+        assert len(actual_geojson_result["features"]) == 10
+
+    def test_predict_without_mock_latency(self):
+        """
+        Test the flood model without mock latency custom attributes.
+
+        Verifies that when no custom attributes are provided, no additional
+        latency is added and processing is fast.
+        """
+        with open("test/data/test-model.tif", "rb") as data_binary:
+            start_time = time.time()
+            response = self.client.post("/invocations", data=data_binary)
+            elapsed_time = time.time() - start_time
+
+        # Verify the response is successful
+        assert response.status_code == 200
+
+        # Verify processing is fast (should be well under 1s without added latency)
+        assert elapsed_time < 1.0
+
+        # Verify the GeoJSON result is correct
+        actual_geojson_result = json.loads(response.data)
+        assert actual_geojson_result["type"] == "FeatureCollection"
+        assert len(actual_geojson_result["features"]) == 10
