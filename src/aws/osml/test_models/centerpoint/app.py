@@ -9,7 +9,13 @@ from flask import Response, request
 from matplotlib.patches import CirclePolygon
 from osgeo import gdal
 
-from aws.osml.test_models.server_utils import build_flask_app, build_logger, detect_to_feature, setup_server
+from aws.osml.test_models.server_utils import (
+    build_flask_app,
+    build_logger,
+    detect_to_feature,
+    setup_server,
+    simulate_model_latency,
+)
 
 # Enable exceptions for GDAL
 gdal.UseExceptions()
@@ -107,6 +113,10 @@ def predict() -> Response:
     :return: Response: Contains the GeoJSON results or an error status
     """
     app.logger.debug("Invoking centerpoint model endpoint")
+
+    # Simulate model latency if custom attributes are provided
+    simulate_model_latency()
+
     temp_ds_name = "/vsimem/" + token_hex(16)
     gdal_dataset = None
     try:

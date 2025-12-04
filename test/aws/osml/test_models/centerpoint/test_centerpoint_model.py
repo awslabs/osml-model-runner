@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 import unittest
 
 from moto import mock_aws
@@ -110,3 +111,85 @@ class CenterpointModelTest(unittest.TestCase):
         response = self.client.post("/invocations", data=b"")
 
         self.assertEqual(response.status_code, 400)
+
+    def test_predict_with_mock_latency_mean_and_std(self):
+        """
+        Test the centerpoint model with mock latency using both mean and std.
+
+        Verifies that the model adds latency when custom attributes are provided
+        and still returns the correct GeoJSON result.
+        """
+        with open("test/data/test-model.tif", "rb") as data_binary:
+            start_time = time.time()
+            response = self.client.post(
+                "/invocations",
+                data=data_binary,
+                headers={"X-Amzn-SageMaker-Custom-Attributes": "mock_latency_mean=100,mock_latency_std=10"},
+            )
+            elapsed_time = time.time() - start_time
+
+        # Verify the response is successful
+        self.assertEqual(response.status_code, 200)
+
+        # Verify the latency was added (should be at least ~90ms, accounting for some variance)
+        self.assertGreater(elapsed_time, 0.05)
+
+        # Verify the GeoJSON result is still correct
+        sample_output = "test/data/centerpoint_tests.geojson"
+        with open(sample_output, "r") as model_output_geojson:
+            expected_json_result = json.loads(model_output_geojson.read())
+
+        actual_geojson_result = json.loads(response.data)
+        self.compare_two_geojson_results(actual_geojson_result, expected_json_result)
+
+    def test_predict_with_mock_latency_mean_only(self):
+        """
+        Test the centerpoint model with mock latency using only mean (std defaults to 10%).
+
+        Verifies that when only mean is provided, std defaults to 10% of mean.
+        """
+        with open("test/data/test-model.tif", "rb") as data_binary:
+            start_time = time.time()
+            response = self.client.post(
+                "/invocations",
+                data=data_binary,
+                headers={"X-Amzn-SageMaker-Custom-Attributes": "mock_latency_mean=150"},
+            )
+            elapsed_time = time.time() - start_time
+
+        # Verify the response is successful
+        self.assertEqual(response.status_code, 200)
+
+        # Verify the latency was added (should be at least ~120ms, accounting for variance)
+        self.assertGreater(elapsed_time, 0.08)
+
+        # Verify the GeoJSON result is still correct
+        actual_geojson_result = json.loads(response.data)
+        self.assertIn("features", actual_geojson_result)
+        self.assertEqual(actual_geojson_result["type"], "FeatureCollection")
+
+    def test_predict_without_mock_latency(self):
+        """
+        Test the centerpoint model without mock latency custom attributes.
+
+        Verifies that when no custom attributes are provided, no additional
+        latency is added and processing is fast.
+        """
+        with open("test/data/test-model.tif", "rb") as data_binary:
+            start_time = time.time()
+            response = self.client.post("/invocations", data=data_binary)
+            elapsed_time = time.time() - start_time
+
+        # Verify the response is successful
+        self.assertEqual(response.status_code, 200)
+
+        # Verify processing is fast (should be well under 50ms without added latency)
+        self.assertLess(elapsed_time, 1.0)
+
+        # Verify the GeoJSON result is correct
+        sample_output = "test/data/centerpoint_tests.geojson"
+        with open(sample_output, "r") as model_output_geojson:
+            expected_json_result = json.loads(model_output_geojson.read())
+
+        actual_geojson_result = json.loads(response.data)
+        self.compare_two_geojson_results(actual_geojson_result, expected_json_result)
