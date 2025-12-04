@@ -8,16 +8,20 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  tox:
+  test:
     uses: ./.github/workflows/tox.yml
     secrets: inherit
   pypi:
-    needs: [tox]
+    needs: [test]
     uses: ./.github/workflows/pypi.yml
     secrets: inherit
   docker:
-    needs: [tox]
+    needs: [test]
     uses: ./.github/workflows/docker.yml
     secrets: inherit
   docs:

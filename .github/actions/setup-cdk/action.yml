@@ -1,0 +1,22 @@
+name: 'Setup CDK'
+description: 'Setup Node.js and install CDK dependencies'
+inputs:
+  node_version:
+    description: 'Node.js version'
+    required: false
+    default: '24'
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node_version }}
+        cache: 'npm'
+        cache-dependency-path: cdk/package-lock.json
+    - name: Install CDK and dependencies
+      working-directory: cdk
+      shell: bash
+      run: |
+        npm install -g aws-cdk
+        npm ci

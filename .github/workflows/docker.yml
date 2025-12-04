@@ -1,4 +1,4 @@
-name: Docker Build & Publish
+name: Build Docker Image
 
 on:
   workflow_call:
@@ -13,9 +13,14 @@ env:
   REGISTRY: awsosml
   IMAGE_NAME: ${{ github.event.repository.name }}
 
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  docker:
+  build-docker-image:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,6 +41,8 @@ jobs:
             type=semver,pattern={{raw}},enable=${{ github.event_name == 'release' }}
             type=raw,value=nightly-dev,enable=${{ github.ref == 'refs/heads/main' && github.event_name == 'push' || github.event_name == 'workflow_dispatch'}}
             type=raw,value={{date 'YYYYMMDD-hhmmss' tz='UTC'}},enable=${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v5
         with:
           context: .
@@ -43,3 +50,5 @@ jobs:
           push: ${{ env.push }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

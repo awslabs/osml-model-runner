@@ -1,4 +1,4 @@
-name: Destroy
+name: Destroy Infrastructure
 
 permissions:
   id-token: write
@@ -10,50 +10,38 @@ on:
       aws_region:
         required: true
         type: string
-      account_id:
+    secrets:
+      MODEL_RUNNER_ACCOUNT_ID:
         required: true
-        type: string
 
 env:
   AWS_REGION: ${{ inputs.aws_region }}
   AWS_PAGER: ""
+  NODE_VERSION: '24'
+  PYTHON_VERSION: '3.13'
 
 jobs:
-  destroy:
+  destroy-infrastructure:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Setup AWS OIDC
+        uses: ./.github/actions/setup-aws-oidc
         with:
-          aws-region: ${{ inputs.aws_region }}
-          role-to-assume: arn:aws:iam::${{ inputs.account_id }}:role/GithubAction-AssumeRoleWithAction
-          role-session-name: GitHub_to_AWS_via_FederatedOIDC
-          role-duration-seconds: 14400
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+          aws_region: ${{ inputs.aws_region }}
+          account_id: ${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}
+          role_duration_seconds: '14400'
+      - name: Setup CDK
+        uses: ./.github/actions/setup-cdk
         with:
-          node-version: '18'
-      - name: Install CDK and dependencies
-        working-directory: cdk
-        run: |
-          npm install -g aws-cdk
-          npm install
+          node_version: ${{ env.NODE_VERSION }}
       - name: Generate deployment.json
-        working-directory: cdk
-        run: |
-          python3 << 'EOF'
-          import json
-          with open('bin/deployment/deployment.json.example') as f:
-              config = json.load(f)
-          config['account']['id'] = '${{ inputs.account_id }}'
-          config['account']['prodLike'] = False
-          if 'networkConfig' in config:
-              del config['networkConfig']
-          with open('bin/deployment/deployment.json', 'w') as f:
-              json.dump(config, f, indent=2)
-          EOF
+        uses: ./.github/actions/generate-deployment-json
+        with:
+          account_id: ${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}
+          build_from_source: 'false'
       - name: Build CDK
         working-directory: cdk
         run: npm run build

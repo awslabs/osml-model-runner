@@ -1,4 +1,4 @@
-name: Deploy
+name: Deploy Infrastructure
 
 permissions:
   id-token: write
@@ -10,60 +10,44 @@ on:
       aws_region:
         required: true
         type: string
-      account_id:
-        required: true
-        type: string
       build_from_source:
         required: false
         type: boolean
         default: true
+    secrets:
+      MODEL_RUNNER_ACCOUNT_ID:
+        required: true
 
 env:
   AWS_REGION: ${{ inputs.aws_region }}
   AWS_PAGER: ""
+  NODE_VERSION: '24'
+  PYTHON_VERSION: '3.13'
 
 jobs:
-  deploy:
+  deploy-infrastructure:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           lfs: 'true'
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Setup AWS OIDC
+        uses: ./.github/actions/setup-aws-oidc
         with:
-          aws-region: ${{ inputs.aws_region }}
-          role-to-assume: arn:aws:iam::${{ inputs.account_id }}:role/GithubAction-AssumeRoleWithAction
-          role-session-name: GitHub_to_AWS_via_FederatedOIDC
-          role-duration-seconds: 7200
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+          aws_region: ${{ inputs.aws_region }}
+          account_id: ${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}
+          role_duration_seconds: '7200'
+      - name: Setup CDK
+        uses: ./.github/actions/setup-cdk
         with:
-          node-version: '18'
-      - name: Install CDK and dependencies
-        working-directory: cdk
-        run: |
-          npm install -g aws-cdk
-          npm install
+          node_version: ${{ env.NODE_VERSION }}
       - name: Generate deployment.json
-        working-directory: cdk
-        run: |
-          python3 << 'EOF'
-          import json
-          with open('bin/deployment/deployment.json.example') as f:
-              config = json.load(f)
-          config['account']['id'] = '${{ inputs.account_id }}'
-          config['account']['prodLike'] = False
-          if 'networkConfig' in config:
-              del config['networkConfig']
-          if 'dataplaneConfig' in config:
-              config['dataplaneConfig']['BUILD_FROM_SOURCE'] = ${{ inputs.build_from_source }}
-          if 'testModelsConfig' in config:
-              config['testModelsConfig']['BUILD_FROM_SOURCE'] = ${{ inputs.build_from_source }}
-          with open('bin/deployment/deployment.json', 'w') as f:
-              json.dump(config, f, indent=2)
-          EOF
+        uses: ./.github/actions/generate-deployment-json
+        with:
+          account_id: ${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}
+          build_from_source: ${{ inputs.build_from_source }}
       - name: Build and synthesize CDK
         working-directory: cdk
         run: |

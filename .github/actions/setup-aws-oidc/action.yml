@@ -1,0 +1,23 @@
+name: 'Setup AWS OIDC'
+description: 'Configure AWS credentials using OIDC'
+inputs:
+  aws_region:
+    description: 'AWS region'
+    required: true
+  account_id:
+    description: 'AWS account ID'
+    required: true
+  role_duration_seconds:
+    description: 'Role session duration in seconds'
+    required: false
+    default: '7200'
+runs:
+  using: composite
+  steps:
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-region: ${{ inputs.aws_region }}
+        role-to-assume: arn:aws:iam::${{ inputs.account_id }}:role/GithubAction-AssumeRoleWithAction
+        role-session-name: GitHub_to_AWS_via_FederatedOIDC
+        role-duration-seconds: ${{ inputs.role_duration_seconds }}
