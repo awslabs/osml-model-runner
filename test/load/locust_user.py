@@ -30,7 +30,7 @@ class ModelRunnerLoadTestUser(User):
     Locust user that submits image processing requests to Model Runner.
 
     Each user instance cycles through available images and submits them
-    for processing, respecting queue depth limits.
+    for processing.
     """
 
     def __init__(self, environment):
@@ -106,24 +106,6 @@ class ModelRunnerLoadTestUser(User):
         """
         return random.uniform(1, 3)
 
-    def _check_queue_depth(self) -> bool:
-        """
-        Check if queue depth is acceptable for submitting new requests.
-
-        :return: True if queue depth is acceptable, False otherwise
-        """
-        try:
-            queue = self.sqs_resource.get_queue_by_name(
-                QueueName=self.config.IMAGE_QUEUE_NAME,
-                QueueOwnerAWSAccountId=self.config.ACCOUNT,
-            )
-            depth = int(queue.attributes.get("ApproximateNumberOfMessages", 0))
-            max_depth = getattr(self.environment.parsed_options, "max_queue_depth", 3)
-            return depth <= max_depth
-        except Exception as e:
-            logger.warning(f"Failed to check queue depth: {e}")
-            return True  # Allow submission if check fails
-
     @task
     def submit_image_request(self):
         """
@@ -131,11 +113,6 @@ class ModelRunnerLoadTestUser(User):
 
         This is the main task that Locust users will execute repeatedly.
         """
-        # Check queue depth before submitting
-        if not self._check_queue_depth():
-            logger.debug("Queue depth too high, waiting...")
-            time.sleep(1)
-            return
 
         if not self.images:
             logger.warning("No images available")
