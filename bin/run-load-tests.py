@@ -93,12 +93,6 @@ def main() -> int:
         help="Processing window duration in minutes (default: 1)",
     )
     parser.add_argument(
-        "--max-queue-depth",
-        type=int,
-        default=3,
-        help="Maximum queue depth before throttling (default: 3)",
-    )
-    parser.add_argument(
         "--headless",
         action="store_true",
         help="Run in headless mode (no web UI)",
@@ -169,8 +163,6 @@ def main() -> int:
         args.model_name,
         "--processing-window-min",
         str(args.processing_window_min),
-        "--max-queue-depth",
-        str(args.max_queue_depth),
         "--host",
         args.host,
     ]

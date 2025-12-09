@@ -88,10 +88,28 @@ def add_custom_arguments(parser) -> None:
         help="Wait for all jobs to complete after time window expires",
     )
     parser.add_argument(
-        "--max-queue-depth",
-        type=int,
-        default=3,
-        help="Maximum queue depth before throttling submissions (default: 3)",
+        "--test-imagery-location",
+        type=str,
+        default="s3://osml-test-images-<account>",
+        help="S3 location of test images (for RandomRequestUser and PredefinedRequestsUser)",
+    )
+    parser.add_argument(
+        "--test-results-location",
+        type=str,
+        default="s3://mr-bucket-sink-<account>",
+        help="S3 location of image results (for RandomRequestUser and PredefinedRequestsUser)",
+    )
+    parser.add_argument(
+        "--request-file",
+        type=str,
+        default="./bin/locust/sample-requests.json",
+        help="Path to JSON file containing predefined requests (for PredefinedRequestsUser)",
+    )
+    parser.add_argument(
+        "--mr-input-queue",
+        type=str,
+        default=None,
+        help="Name of ModelRunner image request queue (overrides config)",
     )
 
 

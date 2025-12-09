@@ -13,6 +13,18 @@ Load tests submit multiple images to the Model Runner over a specified time wind
 
 The load tests use [Locust](https://locust.io/) for concurrent load generation, providing scalability and real-time monitoring capabilities.
 
+### User Classes
+
+The load test suite provides multiple user classes for different testing scenarios:
+
+1. **`ModelRunnerLoadTestUser`** (default): Submits image processing jobs without waiting for completion. Best for high-throughput load testing where you want to stress the system.
+
+2. **`PredefinedRequestsUser`**: Reads requests from a JSON file and executes them sequentially, waiting for each job to complete. Useful for testing specific request patterns.
+
+3. **`RandomRequestUser`**: Selects random images and SageMaker endpoints, waiting for each job to complete. Useful for testing with varied configurations.
+
+4. **`ModelRunnerUser`**: Base class that provides synchronous processing (waits for completion). Used by `PredefinedRequestsUser` and `RandomRequestUser`.
+
 ## Prerequisites
 
 1. **Install dependencies:**
@@ -73,7 +85,7 @@ python bin/run-load-tests.py \
 **Using Locust Directly:**
 
 ```bash
-# For advanced options, use Locust directly
+# ModelRunnerLoadTestUser (default - submits jobs without waiting)
 locust -f test/load/locustfile.py \
   --headless \
   --users 5 \
@@ -82,6 +94,25 @@ locust -f test/load/locustfile.py \
   --result-bucket s3://my-results \
   --model-name centerpoint \
   --processing-window-min 10
+
+# PredefinedRequestsUser (reads from JSON file, waits for completion)
+locust -f test/load/locustfile.py \
+  --headless \
+  --users 5 \
+  --spawn-rate 1 \
+  --user-class test.load.predefined_requests_user.PredefinedRequestsUser \
+  --test-imagery-location s3://my-images \
+  --test-results-location s3://my-results \
+  --request-file ./sample-requests.json
+
+# RandomRequestUser (random images/endpoints, waits for completion)
+locust -f test/load/locustfile.py \
+  --headless \
+  --users 5 \
+  --spawn-rate 1 \
+  --user-class test.load.random_requests_user.RandomRequestUser \
+  --test-imagery-location s3://my-images \
+  --test-results-location s3://my-results
 ```
 
 ### Using Environment Variables
@@ -115,7 +146,6 @@ Load tests can be configured via environment variables:
 - `--users`: Number of concurrent users (default: `1`)
 - `--spawn-rate`: Rate to spawn users per second (default: `1.0`)
 - `--processing-window-min`: Processing window duration in minutes (default: `1`)
-- `--max-queue-depth`: Maximum queue depth before throttling (default: `3`)
 - `--headless`: Run in headless mode (no web UI)
 - `--host`: Host URL for Locust (default: `http://localhost`)
 - `--web-host`: Web UI host (default: `0.0.0.0`)
@@ -130,6 +160,14 @@ Load tests can be configured via environment variables:
 
 - `--aws-account`: AWS Account ID (auto-detected if not provided)
 - `--aws-region`: AWS Region (auto-detected if not provided)
+- `--user-class`: User class to use (default: `test.load.locust_user.ModelRunnerLoadTestUser`)
+  - `test.load.locust_user.ModelRunnerLoadTestUser`: Submit jobs without waiting (default)
+  - `test.load.predefined_requests_user.PredefinedRequestsUser`: Read from JSON file, wait for completion
+  - `test.load.random_requests_user.RandomRequestUser`: Random images/endpoints, wait for completion
+- `--test-imagery-location`: S3 location of test images (for PredefinedRequestsUser and RandomRequestUser)
+- `--test-results-location`: S3 location for results (for PredefinedRequestsUser and RandomRequestUser)
+- `--request-file`: Path to JSON file with predefined requests (for PredefinedRequestsUser)
+- `--mr-input-queue`: Name of ModelRunner input queue (overrides config)
 
 All standard Locust arguments (`--users`, `--spawn-rate`, `--run-time`, etc.) are also supported when using Locust directly.
 
@@ -141,7 +179,7 @@ The Locust-based load test works as follows:
 
 2. **Concurrent Load Generation**: Multiple Locust users run concurrently, each submitting image processing requests independently.
 
-3. **Queue Management**: Before submitting each image, users check the SQS queue depth. If the queue depth exceeds the threshold, they wait before submitting more.
+3. **Load Generation**: Multiple Locust users run concurrently, each submitting image processing requests independently. The load test does not throttle based on queue depth, allowing you to stress the system to its limits.
 
 4. **Background Status Monitoring**: A singleton background thread monitors the SQS status queue for all job completion messages and maintains a cache of job statuses.
 
@@ -168,18 +206,22 @@ The Locust-based load test works as follows:
 
 ```text
 test/load/
-├── locustfile.py          # Main Locust entry point
-├── locust_user.py         # Locust User class for submitting requests
-├── locust_setup.py        # Locust event handlers and CLI arguments
-├── locust_status_monitor.py  # Background status monitoring thread
-├── locust_load_shape.py   # Custom load shape for time window control
-├── locust_job_tracker.py  # Job tracking and statistics calculation
-├── generate_cost_report.py # Cost report generator using AWS Cost Explorer
-├── types.py               # Local type definitions (no dependency on model runner)
-├── config.py              # Configuration management
-├── requirements.txt        # Python dependencies for load tests
-├── __init__.py            # Package initialization
-└── README.md              # This file
+├── locustfile.py              # Main Locust entry point
+├── locust_user.py             # ModelRunnerLoadTestUser - submits jobs without waiting
+├── model_runner_user.py       # ModelRunnerUser base class - waits for completion
+├── predefined_requests_user.py # PredefinedRequestsUser - reads from JSON file
+├── random_requests_user.py    # RandomRequestUser - random images/endpoints
+├── locust_setup.py            # Locust event handlers and CLI arguments
+├── locust_status_monitor.py   # Background status monitoring thread
+├── locust_load_shape.py       # Custom load shape for time window control
+├── locust_job_tracker.py      # Job tracking and statistics calculation
+├── generate_cost_report.py    # Cost report generator using AWS Cost Explorer
+├── _test_utils.py             # Utility functions (S3 path parsing, etc.)
+├── types.py                   # Local type definitions (no dependency on model runner)
+├── config.py                  # Configuration management
+├── requirements.txt           # Python dependencies for load tests
+├── __init__.py                # Package initialization
+└── README.md                  # This file
 ```
 
 ## Output
@@ -322,6 +364,8 @@ The script extracts the time range from the summary file (`start_time` and `stop
 ✅ **Independent**: No dependency on the main model runner package
 ✅ **Background Monitoring**: Shared status monitor tracks all job completions
 ✅ **Completion Waiting**: Optional wait for all jobs to complete after time window expires
+✅ **Multiple User Classes**: Choose between fire-and-forget or wait-for-completion patterns
+✅ **True Load Testing**: No queue depth throttling - stress the system to its limits
 
 ## Dependencies
 

@@ -9,8 +9,5 @@
 boto3==1.40.70
 botocore==1.40.70
 
-# GDAL for image metadata
-GDAL>=3.12.0
-
 # Locust for load testing
 locust>=2.42.2

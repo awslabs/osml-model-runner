@@ -11,6 +11,7 @@ import json
 import logging
 from test.load.locust_job_tracker import get_job_tracker
 from threading import Thread
+from typing import Optional, Tuple
 
 import boto3
 from botocore.exceptions import ClientError
@@ -37,6 +38,62 @@ class ImageJobStatusMonitor(Thread):
         self.sqs_resource = None
         self.job_tracker = get_job_tracker()
 
+    def _parse_status_message(self, message_body: str) -> Optional[Tuple[str, str, Optional[float]]]:
+        """
+        Parse an SNS-wrapped status message from the SQS queue.
+
+        Extracts image_id, status, and processing_duration from either MessageAttributes
+        or the inner Message body.
+
+        :param message_body: JSON string of the SNS message wrapper
+        :return: Tuple of (image_id, status, processing_duration) or None if parsing fails
+        """
+        try:
+            sns_wrapper = json.loads(message_body)
+            message_attributes = sns_wrapper.get("MessageAttributes", {})
+
+            # Extract from MessageAttributes first
+            image_id = message_attributes.get("image_id", {}).get("Value")
+            status = message_attributes.get("status", {}).get("Value") or message_attributes.get("image_status", {}).get(
+                "Value"
+            )
+            processing_duration = message_attributes.get("processing_duration", {}).get("Value")
+
+            # If missing, try parsing inner Message field
+            if not image_id or not status:
+                inner_message_str = sns_wrapper.get("Message", "")
+                if inner_message_str:
+                    try:
+                        inner_message = (
+                            json.loads(inner_message_str) if isinstance(inner_message_str, str) else inner_message_str
+                        )
+                        if isinstance(inner_message, dict):
+                            if not status:
+                                status = inner_message.get("status")
+                            if not image_id:
+                                image_id = inner_message.get("image_id") or inner_message.get("request", {}).get("image_id")
+                            if not processing_duration:
+                                processing_duration = inner_message.get("request", {}).get("processing_duration")
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            if image_id and status:
+                # Parse and validate processing_duration
+                duration = None
+                if processing_duration:
+                    try:
+                        duration = float(processing_duration)
+                        if duration <= 0:
+                            duration = None
+                    except (ValueError, TypeError):
+                        pass
+                return (image_id, status, duration)
+
+        except (json.JSONDecodeError, KeyError, TypeError):
+            pass
+
+        return None
+
     def run(self) -> None:
         """
         Main thread loop that continuously polls the SQS queue for job status updates.
@@ -59,23 +116,12 @@ class ImageJobStatusMonitor(Thread):
 
                     for message in messages:
                         try:
-                            message_body = json.loads(message.body)
-                            message_attributes = message_body.get("MessageAttributes", {})
-
-                            message_image_id = message_attributes.get("image_id", {}).get("Value")
-                            message_image_status = message_attributes.get("image_status", {}).get(
-                                "Value"
-                            ) or message_attributes.get("status", {}).get("Value")
-                            processing_duration = message_attributes.get("processing_duration", {}).get("Value")
-
-                            if message_image_id and message_image_status:
-                                # Update the job tracker
-                                duration = float(processing_duration) if processing_duration else None
-                                self.job_tracker.update_job_status(message_image_id, message_image_status, duration)
-
+                            parsed = self._parse_status_message(message.body)
+                            if parsed:
+                                image_id, status, duration = parsed
+                                self.job_tracker.update_job_status(image_id, status, duration)
                             message.delete()
-
-                        except (json.JSONDecodeError, KeyError) as e:
+                        except Exception as e:
                             logger.debug(f"Error processing status message: {e}")
 
                 except ClientError as error:
