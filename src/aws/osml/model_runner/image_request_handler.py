@@ -50,8 +50,8 @@ from .exceptions import (
 )
 from .inference import calculate_processing_bounds, get_source_property
 from .inference.feature_utils import add_properties_to_features
-from .queue import RequestQueue
 from .region_request_handler import RegionRequestHandler
+from .scheduler import RequestQueue
 from .sink import SinkFactory
 from .status import ImageStatusMonitor
 from .tile_worker import TilingStrategy, select_features

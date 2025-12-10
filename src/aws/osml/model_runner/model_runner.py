@@ -20,9 +20,8 @@ from .database import (
 )
 from .exceptions import RetryableJobException, SelfThrottledRegionException
 from .image_request_handler import ImageRequestHandler
-from .queue import BufferedImageRequestQueue, RequestQueue
 from .region_request_handler import RegionRequestHandler
-from .scheduler import EndpointLoadImageScheduler
+from .scheduler import BufferedImageRequestQueue, EndpointLoadImageScheduler, RequestQueue
 from .status import ImageStatusMonitor, RegionStatusMonitor
 from .tile_worker import TilingStrategy, VariableOverlapTilingStrategy
 

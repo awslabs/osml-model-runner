@@ -13,7 +13,7 @@ from botocore.exceptions import ClientError
 from aws.osml.model_runner.api import ImageRequest
 from aws.osml.model_runner.app_config import BotoConfig
 from aws.osml.model_runner.database import ImageRequestStatusRecord
-from aws.osml.model_runner.queue import BufferedImageRequestQueue
+from aws.osml.model_runner.scheduler.buffered_image_request_queue import BufferedImageRequestQueue
 from aws.osml.model_runner.scheduler.image_scheduler import ImageScheduler
 
 logger = logging.getLogger(__name__)
