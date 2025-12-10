@@ -154,14 +154,14 @@
   - Run minimum 100 iterations
 
 - [ ] 4. Implement EndpointVariantSelector
-- [ ] 4.1 Create EndpointVariantSelector class skeleton
+- [x] 4.1 Create EndpointVariantSelector class skeleton
   - Create new file: src/aws/osml/model_runner/scheduler/endpoint_variant_selector.py
   - Implement __init__ accepting sm_client and cache_ttl_seconds
   - Set up instance variables for caching
   - Add comprehensive docstrings following Sphinx format
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 4.2 Implement EndpointVariantSelector.select_variant()
+- [x] 4.2 Implement EndpointVariantSelector.select_variant()
   - Implement main select_variant(image_request) method
   - Check if TargetVariant already set (if so, return unchanged - always honor explicit variant)
   - Check if SageMaker endpoint using _is_sagemaker_endpoint()
@@ -169,7 +169,7 @@
   - For SageMaker without TargetVariant: select variant and update request
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 4.3 Implement EndpointVariantSelector helper methods
+- [x] 4.3 Implement EndpointVariantSelector helper methods
   - Implement _is_sagemaker_endpoint() to check if request uses SageMaker
   - Implement _needs_variant_selection() to check if TargetVariant is not set
   - Implement _get_endpoint_variants() to query SageMaker with caching
@@ -177,11 +177,11 @@
   - Extract logic from ImageRequestHandler.set_default_model_endpoint_variant()
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 4.4 Update scheduler/__init__.py to export EndpointVariantSelector
+- [x] 4.4 Update scheduler/__init__.py to export EndpointVariantSelector
   - Add EndpointVariantSelector to imports
   - _Requirements: 4.1_
 
-- [ ]* 4.5 Write unit tests for EndpointVariantSelector
+- [x] 4.5 Write unit tests for EndpointVariantSelector
   - Test single variant endpoint returns that variant
   - Test multi-variant with equal weights (50/50 split) over many selections
   - Test explicit TargetVariant is honored (never overridden)
