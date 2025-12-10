@@ -199,15 +199,15 @@
   - Verify distribution approximates configured weights using chi-squared test
   - Run minimum 100 iterations (each with 1000 selections)
 
-- [ ] 5. Enhance RequestedJobsTable
-- [ ] 5.1 Update RequestedJobsTable.add_new_request() signature
+- [x] 5. Enhance RequestedJobsTable
+- [x] 5.1 Update RequestedJobsTable.add_new_request() signature
   - Modify method signature to include region_count: Optional[int] = None parameter
   - Update ImageRequestStatusRecord.new_from_request() to accept region_count
   - Store region_count in DynamoDB item when provided
   - Update docstring to document new parameter
   - _Requirements: 1.5, 3.3_
 
-- [ ]* 5.2 Write unit tests for RequestedJobsTable enhancements
+- [x] 5.2 Write unit tests for RequestedJobsTable enhancements
   - Test add_new_request() with region_count=10 stores value correctly in DDB
   - Test add_new_request() without region_count stores None in DDB
   - Test get_outstanding_requests() returns records with region_count field
