@@ -1,5 +1,6 @@
 #  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
+import logging
 import os
 from dataclasses import dataclass, field
 from enum import Enum
@@ -10,6 +11,8 @@ from botocore.config import Config
 
 from aws.osml.gdal import GDALDigitalElevationModelTileFactory
 from aws.osml.photogrammetry import DigitalElevationModel, ElevationModel, SRTMTileSet
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -54,6 +57,13 @@ class ServiceConfig:
     throttling_vcpu_scale_factor: str = os.getenv("THROTTLING_SCALE_FACTOR", "10")
     throttling_retry_timeout: str = os.getenv("THROTTLING_RETRY_TIMEOUT", "10")
 
+    # Capacity-based throttling configuration
+    scheduler_throttling_enabled: bool = os.getenv("SCHEDULER_THROTTLING_ENABLED", "True") in ["True", "true"]
+    default_instance_concurrency: int = int(os.getenv("DEFAULT_INSTANCE_CONCURRENCY", "2"))
+    default_http_endpoint_concurrency: int = int(os.getenv("DEFAULT_HTTP_ENDPOINT_CONCURRENCY", "10"))
+    tile_workers_per_instance: int = int(os.getenv("TILE_WORKERS_PER_INSTANCE", "4"))
+    capacity_target_percentage: float = float(os.getenv("CAPACITY_TARGET_PERCENTAGE", "1.0"))
+
     # Constant configuration
     kinesis_max_record_per_batch: str = "500"
     kinesis_max_record_size_batch: str = "5242880"  # 5 MB in bytes
@@ -65,10 +75,41 @@ class ServiceConfig:
 
     def __post_init__(self):
         """
-        Post-initialization method to set up the elevation model.
+        Post-initialization method to set up the elevation model and validate configuration.
         """
+        self._validate_configuration()
         self.elevation_model = self.create_elevation_model()
         self.metrics_config = self.configure_metrics()
+
+    def _validate_configuration(self) -> None:
+        """
+        Validate capacity-based throttling configuration parameters.
+
+        Invalid values are replaced with safe defaults and warnings are logged.
+        """
+        # Validate capacity_target_percentage > 0.0
+        if self.capacity_target_percentage <= 0.0:
+            logger.warning(
+                f"Invalid capacity_target_percentage: {self.capacity_target_percentage}. "
+                "Must be greater than 0.0. Defaulting to 1.0."
+            )
+            self.capacity_target_percentage = 1.0
+
+        # Validate default_instance_concurrency >= 1
+        if self.default_instance_concurrency < 1:
+            logger.warning(
+                f"Invalid default_instance_concurrency: {self.default_instance_concurrency}. "
+                "Must be at least 1. Defaulting to 2."
+            )
+            self.default_instance_concurrency = 2
+
+        # Validate tile_workers_per_instance >= 1
+        if self.tile_workers_per_instance < 1:
+            logger.warning(
+                f"Invalid tile_workers_per_instance: {self.tile_workers_per_instance}. "
+                "Must be at least 1. Defaulting to 4."
+            )
+            self.tile_workers_per_instance = 4
 
     def create_elevation_model(self) -> Optional[ElevationModel]:
         """

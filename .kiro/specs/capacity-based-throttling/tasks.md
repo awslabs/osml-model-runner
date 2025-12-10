@@ -2,8 +2,8 @@
 
 ## Phase 1: Add New Components
 
-- [ ] 1. Implement configuration enhancements
-- [ ] 1.1 Add new environment variables to ServiceConfig
+- [x] 1. Implement configuration enhancements
+- [x] 1.1 Add new environment variables to ServiceConfig
   - Add SCHEDULER_THROTTLING_ENABLED (default "True")
   - Add DEFAULT_INSTANCE_CONCURRENCY (default "2")
   - Add DEFAULT_HTTP_ENDPOINT_CONCURRENCY (default "10")
@@ -11,13 +11,13 @@
   - Add CAPACITY_TARGET_PERCENTAGE (default "1.0")
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 8.5_
 
-- [ ] 1.2 Add validation logic in ServiceConfig.__post_init__
+- [x] 1.2 Add validation logic in ServiceConfig.__post_init__
   - Validate capacity_target_percentage > 0.0, default to 1.0 with warning if invalid
   - Validate default_instance_concurrency >= 1, default to 2 with warning if invalid
   - Validate tile_workers_per_instance >= 1, default to 4 with warning if invalid
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 8.5_
 
-- [ ] 1.3 Write unit tests for configuration validation
+- [x] 1.3 Write unit tests for configuration validation
   - Test valid capacity_target_percentage values (0.8, 1.0, 1.2) are accepted
   - Test invalid capacity_target_percentage (0.0, -0.5) defaults to 1.0 with warning
   - Test invalid default_instance_concurrency (0, -1) defaults to 2 with warning
