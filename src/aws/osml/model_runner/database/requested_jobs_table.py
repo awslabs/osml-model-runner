@@ -45,11 +45,12 @@ class ImageRequestStatusRecord(DataclassDDBMixin):
     region_count: Optional[int] = None
 
     @classmethod
-    def new_from_request(cls, image_request: ImageRequest) -> "ImageRequestStatusRecord":
+    def new_from_request(cls, image_request: ImageRequest, region_count: Optional[int] = None) -> "ImageRequestStatusRecord":
         """
         Create a new status record from an image request.
 
         :param image_request: The image processing request to create a status record for
+        :param region_count: Optional total number of regions to process for capacity planning
         :return: A new ImageRequestStatusRecord instance
         """
         return cls(
@@ -60,7 +61,7 @@ class ImageRequestStatusRecord(DataclassDDBMixin):
             last_attempt=0,
             num_attempts=0,
             regions_complete=[],
-            region_count=None,
+            region_count=region_count,
         )
 
 
@@ -90,17 +91,20 @@ class RequestedJobsTable:
         self.client = boto3.resource("dynamodb", config=BotoConfig.ddb)
         self.table = self.client.Table(table_name)
 
-    def add_new_request(self, image_request: ImageRequest) -> ImageRequestStatusRecord:
+    def add_new_request(self, image_request: ImageRequest, region_count: Optional[int] = None) -> ImageRequestStatusRecord:
         """
         Add a new status record to the table based on the image request.
 
         :param image_request: The image processing request to add
+        :param region_count: Optional total number of regions to process for capacity planning.
+                           When provided, enables the scheduler to estimate image load for
+                           capacity-based throttling decisions.
         :return: The status record for the image processing request
         :raises ClientError: If there is an error adding the request to DynamoDB
         """
         logger.debug(f"Adding ImageRequest for {image_request.job_id} to image request table.")
         try:
-            request_status_record = ImageRequestStatusRecord.new_from_request(image_request)
+            request_status_record = ImageRequestStatusRecord.new_from_request(image_request, region_count)
             self.table.put_item(Item=request_status_record.to_ddb_item())
             return request_status_record
         except ClientError as ce:

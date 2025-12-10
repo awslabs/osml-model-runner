@@ -203,6 +203,95 @@ class TestRequestedJobsTable(unittest.TestCase):
         with self.assertRaises(ClientError):
             self.table.update_request_details(image_request, region_count)
 
+    def test_add_new_request_with_region_count(self):
+        """Test adding a new request with region_count stores value correctly in DDB."""
+        # Arrange
+        image_request = self.create_sample_image_request()
+        region_count = 10
+
+        # Act
+        self.table.add_new_request(image_request, region_count=region_count)
+
+        # Assert - Verify the item was added with region_count
+        response = self.ddb.Table(self.table_name).get_item(
+            Key={"endpoint_id": image_request.model_name, "job_id": image_request.job_id}
+        )
+        item = response["Item"]
+
+        self.assertEqual(item["endpoint_id"], image_request.model_name)
+        self.assertEqual(item["job_id"], image_request.job_id)
+        self.assertEqual(item["num_attempts"], 0)
+        self.assertEqual(item["regions_complete"], [])
+        self.assertEqual(item["region_count"], region_count)
+
+    def test_add_new_request_without_region_count(self):
+        """Test adding a new request without region_count stores None in DDB."""
+        # Arrange
+        image_request = self.create_sample_image_request()
+
+        # Act
+        self.table.add_new_request(image_request)
+
+        # Assert - Verify the item was added without region_count (None)
+        response = self.ddb.Table(self.table_name).get_item(
+            Key={"endpoint_id": image_request.model_name, "job_id": image_request.job_id}
+        )
+        item = response["Item"]
+
+        self.assertEqual(item["endpoint_id"], image_request.model_name)
+        self.assertEqual(item["job_id"], image_request.job_id)
+        self.assertEqual(item["num_attempts"], 0)
+        self.assertEqual(item["regions_complete"], [])
+        # In DynamoDB, None values are not stored, so the key won't exist
+        self.assertNotIn("region_count", item)
+
+    def test_get_outstanding_requests_returns_region_count(self):
+        """Test get_outstanding_requests() returns records with region_count field."""
+        # Arrange - Add requests with and without region_count
+        request_with_count = self.create_sample_image_request(job_name="test-job-with-count")
+        request_without_count = self.create_sample_image_request(job_name="test-job-without-count")
+
+        self.table.add_new_request(request_with_count, region_count=15)
+        self.table.add_new_request(request_without_count)
+
+        # Act
+        outstanding = self.table.get_outstanding_requests()
+
+        # Assert
+        self.assertEqual(len(outstanding), 2)
+
+        # Find the records by job_id
+        record_with_count = next(r for r in outstanding if r.job_id == request_with_count.job_id)
+        record_without_count = next(r for r in outstanding if r.job_id == request_without_count.job_id)
+
+        self.assertEqual(record_with_count.region_count, 15)
+        self.assertIsNone(record_without_count.region_count)
+
+    def test_region_count_persists_across_start_next_attempt(self):
+        """Test region_count persists across start_next_attempt() calls."""
+        # Arrange
+        image_request = self.create_sample_image_request()
+        region_count = 20
+        self.table.add_new_request(image_request, region_count=region_count)
+
+        # Act - Get the record and start next attempt
+        records = self.table.get_outstanding_requests()
+        self.assertEqual(len(records), 1)
+        initial_record = records[0]
+        self.assertEqual(initial_record.region_count, region_count)
+
+        # Start next attempt
+        success = self.table.start_next_attempt(initial_record)
+        self.assertTrue(success)
+
+        # Assert - Verify region_count persists after attempt update
+        updated_records = self.table.get_outstanding_requests()
+        self.assertEqual(len(updated_records), 1)
+        updated_record = updated_records[0]
+
+        self.assertEqual(updated_record.region_count, region_count)
+        self.assertEqual(updated_record.num_attempts, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
