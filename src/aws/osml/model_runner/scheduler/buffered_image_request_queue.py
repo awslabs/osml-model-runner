@@ -4,7 +4,7 @@ import dataclasses
 import json
 import logging
 import time
-from typing import List
+from typing import List, Optional
 
 import boto3
 from aws_embedded_metrics import metric_scope
@@ -15,6 +15,9 @@ from botocore.exceptions import ClientError
 from aws.osml.model_runner.api import ImageRequest
 from aws.osml.model_runner.app_config import BotoConfig
 from aws.osml.model_runner.database.requested_jobs_table import ImageRequestStatusRecord, RequestedJobsTable
+from aws.osml.model_runner.exceptions import LoadImageException
+from aws.osml.model_runner.scheduler.endpoint_variant_selector import EndpointVariantSelector
+from aws.osml.model_runner.tile_worker import RegionCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,8 @@ class BufferedImageRequestQueue:
         max_jobs_lookahead: int = 500,
         retry_time: int = 600,
         max_retry_attempts: int = 1,
+        region_calculator: Optional[RegionCalculator] = None,
+        variant_selector: Optional[EndpointVariantSelector] = None,
     ):
         """
         Initialize the buffered image request queue.
@@ -46,11 +51,18 @@ class BufferedImageRequestQueue:
         :param max_jobs_lookahead: Maximum number of jobs to look ahead in the queue
         :param retry_time: Time in seconds before retrying failed requests
         :param max_retry_attempts: Maximum number of retry attempts for failed requests
+        :param region_calculator: Optional calculator for determining image regions. When provided,
+                                 enables fail-fast validation by calculating regions during buffering
+                                 and storing region_count for capacity planning.
+        :param variant_selector: Optional selector for endpoint variants. When provided, enables early
+                                variant selection during buffering using weighted random selection.
         """
         self.requested_jobs_table = requested_jobs_table
         self.max_jobs_lookahead = max_jobs_lookahead
         self.retry_time = retry_time
         self.max_retry_attempts = max_retry_attempts
+        self.region_calculator = region_calculator
+        self.variant_selector = variant_selector
 
         self.sqs_client = boto3.client("sqs", config=BotoConfig.default)
         self.image_queue_url = image_queue_url
@@ -96,6 +108,17 @@ class BufferedImageRequestQueue:
         """
         Fetch new requests from the SQS queue and add them to DynamoDB.
 
+        For each valid request:
+        1. Parse the ImageRequest from SQS message
+        2. If region_calculator is provided, calculate regions by reading image header
+        3. Store region_count = len(regions) in DDB for capacity planning
+        4. If image is inaccessible, move message to DLQ immediately (fail-fast)
+        5. Add request to DynamoDB with region_count
+        6. Delete message from SQS queue
+
+        This approach provides fail-fast behavior: images that cannot be accessed
+        are rejected immediately rather than consuming scheduler capacity.
+
         :return: List of new image request status records
         """
         outstanding_requests = []
@@ -125,10 +148,46 @@ class BufferedImageRequestQueue:
                         if not image_request.is_valid():
                             raise ValueError(f"Invalid image request: {message_body}")
 
+                        # Select variant if variant_selector is provided
+                        # This happens before region calculation to ensure variant is set early
+                        if self.variant_selector:
+                            image_request = self.variant_selector.select_variant(image_request)
+
+                        # Calculate region count if region_calculator is provided
+                        region_count = None
+                        if self.region_calculator:
+                            try:
+                                regions = self.region_calculator.calculate_regions(
+                                    image_url=image_request.image_url,
+                                    tile_size=image_request.tile_size,
+                                    tile_overlap=image_request.tile_overlap,
+                                    roi=image_request.roi,
+                                    image_read_role=image_request.image_read_role,
+                                )
+                                region_count = len(regions)
+                                logger.info(
+                                    f"Calculated {region_count} regions for image {image_request.image_id} "
+                                    f"during buffering"
+                                )
+                            except LoadImageException as e:
+                                # Image is inaccessible - fail fast by moving to DLQ immediately
+                                logger.error(
+                                    f"Image {image_request.image_url} is inaccessible during buffering. "
+                                    f"Moving to DLQ. Error: {e}"
+                                )
+                                logger.info(f"Moving inaccessible image {image_request.image_id} to DLQ")
+                                self._handle_invalid_message(message)
+                                continue
+                        else:
+                            logger.warning(
+                                f"Region calculator not provided for image {image_request.image_id}. "
+                                f"Region count will not be calculated during buffering."
+                            )
+
                         # If we have a valid request move it from the SQS queue into our DDB table. The order of these
                         # operations is important to ensure we don't lose any requests. (i.e. ensure they are added
                         # to the table before we delete them from the queue).
-                        request_status_record = self.requested_jobs_table.add_new_request(image_request)
+                        request_status_record = self.requested_jobs_table.add_new_request(image_request, region_count)
                         self.sqs_client.delete_message(QueueUrl=self.image_queue_url, ReceiptHandle=message["ReceiptHandle"])
                         outstanding_requests.append(request_status_record)
                         messages_to_fetch -= 1

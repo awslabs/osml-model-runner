@@ -217,14 +217,14 @@
 ## Phase 2: Integrate with Scheduler
 
 - [ ] 6. Enhance BufferedImageRequestQueue
-- [ ] 6.1 Update BufferedImageRequestQueue.__init__() signature
+- [x] 6.1 Update BufferedImageRequestQueue.__init__() signature
   - Add optional region_calculator: Optional[RegionCalculator] = None parameter
   - Add optional variant_selector: Optional[EndpointVariantSelector] = None parameter
   - Store as instance variables
   - Update docstring to document new parameters
   - _Requirements: 3.1, 3.4, 4.1_
 
-- [ ] 6.2 Enhance BufferedImageRequestQueue._fetch_new_requests() for region calculation
+- [x] 6.2 Enhance BufferedImageRequestQueue._fetch_new_requests() for region calculation
   - After creating valid ImageRequest, check if region_calculator is provided
   - If provided: call region_calculator.calculate_regions() to get regions list
   - Calculate region_count = len(regions)
@@ -234,7 +234,7 @@
   - Log warning when region_calculator is not provided
   - _Requirements: 1.5, 3.1, 3.2, 3.3, 3.4_
 
-- [ ] 6.3 Enhance BufferedImageRequestQueue._fetch_new_requests() for variant selection
+- [x] 6.3 Enhance BufferedImageRequestQueue._fetch_new_requests() for variant selection
   - After creating valid ImageRequest, check if variant_selector is provided
   - If provided: call variant_selector.select_variant() to select variant early
   - Update image_request with selected TargetVariant
@@ -242,7 +242,7 @@
   - Always honor explicit TargetVariant (never override)
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ]* 6.4 Write unit tests for BufferedImageRequestQueue region calculation
+- [x] 6.4 Write unit tests for BufferedImageRequestQueue region calculation
   - Test _fetch_new_requests() with region_calculator calculates and stores region_count
   - Test _fetch_new_requests() moves inaccessible images to DLQ (fail-fast)
   - Test _fetch_new_requests() without region_calculator stores region_count=None
@@ -250,12 +250,28 @@
   - Test LoadImageException handling moves message to DLQ
   - _Requirements: 1.5, 3.1, 3.2, 3.3, 3.4_
 
-- [ ]* 6.5 Write unit tests for BufferedImageRequestQueue variant selection
+- [x] 6.5 Write unit tests for BufferedImageRequestQueue variant selection
   - Test _fetch_new_requests() with variant_selector selects variant early
   - Test _fetch_new_requests() without variant_selector leaves TargetVariant unchanged
   - Test _fetch_new_requests() honors explicit TargetVariant (never overrides)
   - Test _fetch_new_requests() works for HTTP endpoints (no variant selection)
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
+
+- [x] 6.6 Refactor queue package into scheduler package
+  - Move src/aws/osml/model_runner/queue/request_queue.py to src/aws/osml/model_runner/scheduler/request_queue.py
+  - Move src/aws/osml/model_runner/queue/buffered_image_request_queue.py to src/aws/osml/model_runner/scheduler/buffered_image_request_queue.py
+  - Delete src/aws/osml/model_runner/queue/__init__.py
+  - Delete src/aws/osml/model_runner/queue/ directory
+  - Update scheduler/__init__.py to export RequestQueue and BufferedImageRequestQueue
+  - Update all imports throughout codebase from queue.* to scheduler.*
+  - Remove TYPE_CHECKING constraints where possible now that circular imports are resolved
+  - Move test/aws/osml/model_runner/queue/test_request_queue.py to test/aws/osml/model_runner/scheduler/test_request_queue.py
+  - Move test/aws/osml/model_runner/queue/test_buffered_image_request_queue.py to test/aws/osml/model_runner/scheduler/test_buffered_image_request_queue.py
+  - Update test files to import from scheduler package instead of queue package
+  - Delete test/aws/osml/model_runner/queue/__init__.py
+  - Delete test/aws/osml/model_runner/queue/ directory
+  - Run tests to verify refactoring is successful
+  - _Requirements: 7.3_
 
 - [ ] 7. Enhance EndpointLoadImageScheduler with capacity-based throttling
 - [ ] 7.1 Update EndpointLoadImageScheduler.__init__() signature
