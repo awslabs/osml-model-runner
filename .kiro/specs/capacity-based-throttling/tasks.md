@@ -85,14 +85,14 @@
   - Run minimum 100 iterations
 
 - [ ] 3. Implement EndpointCapacityEstimator
-- [ ] 3.1 Create EndpointCapacityEstimator class skeleton
+- [x] 3.1 Create EndpointCapacityEstimator class skeleton
   - Create new file: src/aws/osml/model_runner/scheduler/endpoint_capacity_estimator.py
   - Implement __init__ accepting sm_client, default_instance_concurrency, default_http_concurrency, cache_ttl_seconds
   - Set up instance variables for configuration and caching
   - Add comprehensive docstrings following Sphinx format
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 3.2 Implement EndpointCapacityEstimator.estimate_capacity()
+- [x] 3.2 Implement EndpointCapacityEstimator.estimate_capacity()
   - Implement main estimate_capacity(endpoint_name, variant_name) method
   - Check if HTTP endpoint using _is_http_endpoint()
   - For HTTP: return default_http_concurrency
@@ -100,7 +100,7 @@
   - Add docstring explaining variant_name parameter (None = all variants, specific = that variant only)
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 3.3 Implement EndpointCapacityEstimator helper methods
+- [x] 3.3 Implement EndpointCapacityEstimator helper methods
   - Implement _is_http_endpoint() to check for http:// or https:// prefix
   - Implement _get_sagemaker_capacity() to query SageMaker DescribeEndpoint with caching
   - Implement _get_variant_capacity() to calculate capacity for single variant
@@ -109,11 +109,11 @@
   - Use default_instance_concurrency if tag not present
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 3.4 Update scheduler/__init__.py to export EndpointCapacityEstimator
+- [x] 3.4 Update scheduler/__init__.py to export EndpointCapacityEstimator
   - Add EndpointCapacityEstimator to imports
   - _Requirements: 2.6_
 
-- [ ]* 3.5 Write unit tests for EndpointCapacityEstimator
+- [x] 3.5 Write unit tests for EndpointCapacityEstimator
   - Test HTTP endpoint (http://example.com) returns DEFAULT_HTTP_ENDPOINT_CONCURRENCY
   - Test HTTPS endpoint (https://example.com) returns DEFAULT_HTTP_ENDPOINT_CONCURRENCY
   - Test serverless endpoint with MaxConcurrency=100 returns 100
