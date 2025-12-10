@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
 import unittest
 from unittest import TestCase
@@ -39,7 +39,7 @@ class TestRequestQueue(TestCase):
         and initializing the RequestQueue object.
         """
         from aws.osml.model_runner.app_config import BotoConfig
-        from aws.osml.model_runner.queue.request_queue import RequestQueue
+        from aws.osml.model_runner.scheduler.request_queue import RequestQueue
 
         # Set up SQS resource and client
         self.sqs = boto3.resource("sqs", config=BotoConfig.default)

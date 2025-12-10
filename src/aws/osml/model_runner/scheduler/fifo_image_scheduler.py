@@ -4,8 +4,8 @@ import logging
 from typing import Optional
 
 from aws.osml.model_runner.api import ImageRequest, InvalidImageRequestException
-from aws.osml.model_runner.queue import RequestQueue
 from aws.osml.model_runner.scheduler.image_scheduler import ImageScheduler
+from aws.osml.model_runner.scheduler.request_queue import RequestQueue
 
 logger = logging.getLogger(__name__)
 

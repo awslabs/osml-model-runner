@@ -13,7 +13,7 @@ from aws.osml.model_runner.common import EndpointUtils, RequestStatus
 from aws.osml.model_runner.database import EndpointStatisticsTable, ImageRequestItem, ImageRequestTable, RegionRequestTable
 from aws.osml.model_runner.exceptions import ProcessImageException
 from aws.osml.model_runner.image_request_handler import ImageRequestHandler
-from aws.osml.model_runner.queue import RequestQueue
+from aws.osml.model_runner.scheduler import RequestQueue
 from aws.osml.model_runner.status import ImageStatusMonitor
 from aws.osml.model_runner.tile_worker import TilingStrategy
 
