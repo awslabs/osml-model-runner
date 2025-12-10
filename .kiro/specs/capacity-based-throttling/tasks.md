@@ -25,7 +25,7 @@
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 8.5_
 
 - [ ] 2. Implement RegionCalculator interface and implementation
-- [ ] 2.1 Create RegionCalculator abstract base class
+- [x] 2.1 Create RegionCalculator abstract base class
   - Create new file: src/aws/osml/model_runner/tile_worker/region_calculator.py
   - Define RegionCalculator as ABC with @abstractmethod calculate_regions()
   - Add proper type hints (ImageDimensions, ImageRegion, Optional[shapely.geometry.base.BaseGeometry])
@@ -38,13 +38,13 @@
   - Test that calculate_regions() must be implemented by subclasses
   - _Requirements: 7.1, 7.4_
 
-- [ ] 2.3 Implement ToolkitRegionCalculator class
+- [x] 2.3 Implement ToolkitRegionCalculator class
   - Create new file: src/aws/osml/model_runner/tile_worker/toolkit_region_calculator.py
   - Implement __init__ accepting TilingStrategy and region_size
   - Implement calculate_regions() main method
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 7.1_
 
-- [ ] 2.4 Implement ToolkitRegionCalculator helper methods
+- [x] 2.4 Implement ToolkitRegionCalculator helper methods
   - Implement _load_image_and_calculate_bounds() to load GDAL dataset and sensor model
   - Implement _compute_regions() to use TilingStrategy
   - Reuse get_credentials_for_assumed_role for IAM role assumption
@@ -54,12 +54,12 @@
   - Raise LoadImageException for inaccessible images (fail-fast)
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 7.1_
 
-- [ ] 2.5 Update tile_worker/__init__.py to export RegionCalculator
+- [x] 2.5 Update tile_worker/__init__.py to export RegionCalculator
   - Add RegionCalculator to imports
   - Add ToolkitRegionCalculator to imports
   - _Requirements: 7.1_
 
-- [ ] 2.6 Write unit tests for ToolkitRegionCalculator
+- [x] 2.6 Write unit tests for ToolkitRegionCalculator
   - Test small image (1024×1024) returns 1 region
   - Test large image (20480×20480) returns 4 regions
   - Test image with ROI returns fewer regions than without ROI
