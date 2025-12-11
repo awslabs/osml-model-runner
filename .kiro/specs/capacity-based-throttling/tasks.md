@@ -274,25 +274,16 @@
   - _Requirements: 7.3_
 
 - [ ] 7. Enhance EndpointLoadImageScheduler with capacity-based throttling
-- [ ] 7.1 Update EndpointLoadImageScheduler.__init__() signature
+- [x] 7.1 Update EndpointLoadImageScheduler.__init__() signature
   - Add optional capacity_estimator: Optional[EndpointCapacityEstimator] = None parameter
-  - Add optional variant_selector: Optional[EndpointVariantSelector] = None parameter
   - Add throttling_enabled: bool = True parameter
   - Add capacity_target_percentage: float = 1.0 parameter
   - Store as instance variables
   - Update docstring to document new parameters
-  - _Requirements: 1.1, 1.2, 1.3, 4.1, 8.1, 8.2, 8.3, 8.4_
+  - Note: variant_selector is NOT needed - variant selection already happened in BufferedImageRequestQueue (task 6.3)
+  - _Requirements: 1.1, 1.2, 1.3, 8.1, 8.2, 8.3, 8.4_
 
-- [ ] 7.2 Implement EndpointLoadImageScheduler._ensure_variant_selected()
-  - Check if request.request_payload has TargetVariant set
-  - If set: return request unchanged (always honor explicit variant)
-  - If not set and variant_selector provided: call variant_selector.select_variant()
-  - Update request with selected TargetVariant
-  - Return modified request
-  - Add comprehensive docstring
-  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
-
-- [ ] 7.3 Implement EndpointLoadImageScheduler._estimate_image_load()
+- [x] 7.2 Implement EndpointLoadImageScheduler._estimate_image_load()
   - Accept ImageRequestStatusRecord parameter
   - If region_count is not None: return region_count × TILE_WORKERS_PER_INSTANCE
   - If region_count is None: return default estimate (20 × TILE_WORKERS_PER_INSTANCE)
@@ -300,7 +291,7 @@
   - Add comprehensive docstring
   - _Requirements: 1.1, 3.3_
 
-- [ ] 7.4 Implement EndpointLoadImageScheduler._calculate_available_capacity()
+- [x] 7.3 Implement EndpointLoadImageScheduler._calculate_available_capacity()
   - Accept endpoint_name, variant_name, and outstanding_requests parameters
   - Call capacity_estimator.estimate_capacity(endpoint_name, variant_name) to get max capacity
   - Calculate target_capacity = max_capacity × capacity_target_percentage
@@ -311,7 +302,7 @@
   - Add comprehensive docstring explaining capacity_target_percentage
   - _Requirements: 1.2, 1.3, 2.1, 2.2, 2.3, 2.4, 2.5, 8.1, 8.2, 8.3, 8.4_
 
-- [ ] 7.5 Implement EndpointLoadImageScheduler._check_capacity_available()
+- [x] 7.4 Implement EndpointLoadImageScheduler._check_capacity_available()
   - Accept request and available_capacity parameters
   - Calculate image_load using _estimate_image_load(request)
   - If available_capacity >= image_load: return True
@@ -321,53 +312,48 @@
   - Add comprehensive docstring explaining single image exception
   - _Requirements: 1.3, 1.4_
 
-- [ ] 7.6 Enhance EndpointLoadImageScheduler.get_next_scheduled_request() with throttling
+- [x] 7.5 Enhance EndpointLoadImageScheduler.get_next_scheduled_request() with throttling
   - After getting outstanding_requests, check if throttling_enabled
   - If throttling_enabled is False: use existing logic (no capacity checks)
   - If throttling_enabled is True and capacity_estimator provided:
-    - For each candidate request: call _ensure_variant_selected()
-    - Calculate available_capacity using _calculate_available_capacity()
+    - For each candidate request: extract TargetVariant from request (already set by BufferedImageRequestQueue)
+    - Calculate available_capacity using _calculate_available_capacity() for the specific variant
     - Check capacity using _check_capacity_available()
     - Only proceed with start_next_attempt() if capacity available
     - Log INFO for scheduling decisions with capacity details
     - Log WARN when images are throttled due to insufficient capacity
   - If capacity_estimator not provided: use existing logic
+  - Note: No variant selection needed here - BufferedImageRequestQueue already selected variant in task 6.3
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 5.1, 5.2_
 
-- [ ]* 7.7 Write unit tests for EndpointLoadImageScheduler._ensure_variant_selected()
-  - Test explicit TargetVariant is honored (not overridden)
-  - Test variant selection when TargetVariant not set
-  - Test no variant_selector provided returns request unchanged
-  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
-
-- [ ]* 7.8 Write unit tests for EndpointLoadImageScheduler._estimate_image_load()
+- [x] 7.6 Write unit tests for EndpointLoadImageScheduler._estimate_image_load()
   - Test with region_count=10 and TILE_WORKERS=4 returns 40
   - Test with region_count=None returns default (20 × TILE_WORKERS)
   - _Requirements: 1.1, 3.3_
 
-- [ ]* 7.9 Write unit tests for EndpointLoadImageScheduler._calculate_available_capacity()
+- [x] 7.7 Write unit tests for EndpointLoadImageScheduler._calculate_available_capacity()
   - Test with max_capacity=100, target=0.8, current_load=50 returns 30
   - Test with max_capacity=50, target=1.0, current_load=30 returns 20
   - Test with max_capacity=200, target=1.2, current_load=100 returns 140
   - Test filters requests by endpoint and variant correctly
   - _Requirements: 1.2, 1.3, 2.1, 2.2, 2.3, 2.4, 2.5, 8.1, 8.2, 8.3, 8.4_
 
-- [ ]* 7.10 Write unit tests for EndpointLoadImageScheduler._check_capacity_available()
+- [x] 7.8 Write unit tests for EndpointLoadImageScheduler._check_capacity_available()
   - Test sufficient capacity returns True
   - Test insufficient capacity returns False
   - Test single image exception returns True when no other jobs
   - _Requirements: 1.3, 1.4_
 
-- [ ]* 7.11 Write unit tests for EndpointLoadImageScheduler.get_next_scheduled_request() throttling
+- [x] 7.9 Write unit tests for EndpointLoadImageScheduler.get_next_scheduled_request() throttling
   - Test throttling_enabled=False schedules without capacity checks
   - Test throttling_enabled=True checks capacity before scheduling
-  - Test variant selection happens before capacity calculation
+  - Test capacity calculation uses TargetVariant from request (already set by queue)
   - Test capacity calculation for specific variant (not all variants)
   - Test no capacity_estimator provided uses existing logic
   - Test logging of throttling decisions
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 5.1, 5.2_
 
-- [ ]* 7.12 Write property test for capacity never over-committed
+- [ ]* 7.10 Write property test for capacity never over-committed
   - **Property 1: Capacity never over-committed**
   - **Validates: Requirements 1.3, 1.5**
   - Generate random max_capacity (1-1000) and reservation_requests (1-50 requests, 1-100 load each)
@@ -375,7 +361,7 @@
   - Verify sum of successful reservations never exceeds max_capacity
   - Run minimum 100 iterations
 
-- [ ]* 7.13 Write property test for job start atomicity
+- [ ]* 7.11 Write property test for job start atomicity
   - **Property 9: Job start is atomic**
   - **Validates: Requirements 1.5**
   - Generate random num_threads (2-10) and num_jobs (5-20)
@@ -383,14 +369,14 @@
   - Verify only one thread succeeds per job due to conditional update
   - Run minimum 100 iterations
 
-- [ ]* 7.14 Write property test for capacity target percentage
+- [ ]* 7.12 Write property test for capacity target percentage
   - **Property 12: Capacity target percentage applied correctly**
   - **Validates: Requirements 8.1**
   - Generate random max_capacity (1-1000) and target_percentage (0.1-1.5)
   - Verify target_capacity = max_capacity × target_percentage
   - Run minimum 100 iterations
 
-- [ ]* 7.15 Write property test for throttling respects configuration flag
+- [ ]* 7.13 Write property test for throttling respects configuration flag
   - **Property 8: Throttling respects configuration flag**
   - **Validates: Requirements 5.2**
   - Generate random throttling_enabled (True/False), image_load (1-1000), available_capacity (0-100)
@@ -513,12 +499,10 @@
   - Instantiate with SageMaker client (boto3.client("sagemaker"))
   - Pass cache_ttl_seconds=300
   - Inject into BufferedImageRequestQueue as optional parameter
-  - Inject into EndpointLoadImageScheduler as optional parameter
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
 - [ ] 10.4 Update EndpointLoadImageScheduler instantiation
   - Pass capacity_estimator parameter
-  - Pass variant_selector parameter
   - Pass throttling_enabled=config.scheduler_throttling_enabled
   - Pass capacity_target_percentage=config.capacity_target_percentage
   - _Requirements: 1.1, 1.2, 1.3, 5.1, 5.2, 8.1, 8.2, 8.3, 8.4, 8.5_

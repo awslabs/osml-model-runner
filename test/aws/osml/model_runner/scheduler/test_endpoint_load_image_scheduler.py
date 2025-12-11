@@ -188,3 +188,698 @@ class TestEndpointLoadImageScheduler(unittest.TestCase):
         """Test EndpointUtilizationSummary calculations"""
         summary = EndpointUtilizationSummary(endpoint_id="test-endpoint", instance_count=2, current_load=4, requests=[])
         self.assertEqual(summary.load_factor, 2)
+
+    def test_estimate_image_load_with_region_count(self):
+        """Test _estimate_image_load with region_count=10 and TILE_WORKERS=4 returns 40"""
+        # Create a status record with region_count=10
+        status_record = self.create_status_record("job1", "endpoint1-model", region_count=10)
+
+        # Call _estimate_image_load
+        estimated_load = self.scheduler._estimate_image_load(status_record)
+
+        # With default TILE_WORKERS_PER_INSTANCE=4, expected load is 10 * 4 = 40
+        self.assertEqual(estimated_load, 40)
+
+    def test_estimate_image_load_without_region_count(self):
+        """Test _estimate_image_load with region_count=None returns default (20 × TILE_WORKERS)"""
+        # Create a status record without region_count (None)
+        status_record = self.create_status_record("job1", "endpoint1-model", region_count=None)
+
+        # Call _estimate_image_load
+        estimated_load = self.scheduler._estimate_image_load(status_record)
+
+        # With default TILE_WORKERS_PER_INSTANCE=4 and default region count of 20,
+        # expected load is 20 * 4 = 80
+        self.assertEqual(estimated_load, 80)
+
+    def test_check_capacity_available_sufficient_capacity(self):
+        """Test _check_capacity_available returns True when sufficient capacity is available"""
+        # Create a request with region_count=5 (load = 5 * 4 = 20)
+        request = self.create_status_record("job1", "endpoint1-model", region_count=5)
+
+        # Available capacity is 50, which is greater than required load of 20
+        available_capacity = 50
+        outstanding_requests = [request]
+
+        # Should return True because available_capacity (50) >= image_load (20)
+        result = self.scheduler._check_capacity_available(request, available_capacity, outstanding_requests)
+        self.assertTrue(result)
+
+    def test_check_capacity_available_insufficient_capacity(self):
+        """Test _check_capacity_available returns False when insufficient capacity and other jobs running"""
+        # Create requests with region_count
+        current_time = int(time.time())
+        request1 = self.create_status_record("job1", "endpoint1-model", region_count=10, last_attempt=0)
+        request2 = self.create_status_record("job2", "endpoint1-model", region_count=5, last_attempt=current_time - 10)
+
+        # Available capacity is 10, but request1 needs 40 (10 * 4)
+        available_capacity = 10
+        outstanding_requests = [request1, request2]
+
+        # Should return False because available_capacity (10) < image_load (40)
+        # and there are other jobs running (request2 with last_attempt set)
+        result = self.scheduler._check_capacity_available(request1, available_capacity, outstanding_requests)
+        self.assertFalse(result)
+
+    def test_check_capacity_available_single_image_exception(self):
+        """Test _check_capacity_available returns True for single image exception (prevents deadlock)"""
+        # Create a request with large region_count=20 (load = 20 * 4 = 80)
+        request = self.create_status_record("job1", "endpoint1-model", region_count=20)
+
+        # Available capacity is only 30, which is less than required load of 80
+        available_capacity = 30
+        outstanding_requests = [request]  # Only this job for this endpoint
+
+        # Should return True due to single image exception
+        # This prevents deadlock when a single image exceeds total endpoint capacity
+        result = self.scheduler._check_capacity_available(request, available_capacity, outstanding_requests)
+        self.assertTrue(result)
+
+    def test_check_capacity_available_single_image_exception_with_variant(self):
+        """Test single image exception considers variant when checking for other jobs"""
+        # Create requests with different variants
+        request1 = self.create_status_record("job1", "endpoint1-model", region_count=20)
+        # Initialize model_endpoint_parameters if None
+        if request1.request_payload.model_endpoint_parameters is None:
+            request1.request_payload.model_endpoint_parameters = {}
+        request1.request_payload.model_endpoint_parameters["TargetVariant"] = "variant-1"
+
+        request2 = self.create_status_record("job2", "endpoint1-model", region_count=5)
+        # Initialize model_endpoint_parameters if None
+        if request2.request_payload.model_endpoint_parameters is None:
+            request2.request_payload.model_endpoint_parameters = {}
+        request2.request_payload.model_endpoint_parameters["TargetVariant"] = "variant-2"
+
+        # Available capacity is 30, request1 needs 80 (20 * 4)
+        available_capacity = 30
+        outstanding_requests = [request1, request2]
+
+        # Should return True because request2 is on a different variant
+        # So request1 is the only job for variant-1
+        result = self.scheduler._check_capacity_available(request1, available_capacity, outstanding_requests)
+        self.assertTrue(result)
+
+    def test_check_capacity_available_no_single_image_exception_with_same_variant(self):
+        """Test single image exception does NOT apply when other jobs on same variant"""
+        # Create requests with same variant
+        current_time = int(time.time())
+        request1 = self.create_status_record("job1", "endpoint1-model", region_count=20, last_attempt=0)
+        # Initialize model_endpoint_parameters if None
+        if request1.request_payload.model_endpoint_parameters is None:
+            request1.request_payload.model_endpoint_parameters = {}
+        request1.request_payload.model_endpoint_parameters["TargetVariant"] = "variant-1"
+
+        request2 = self.create_status_record("job2", "endpoint1-model", region_count=5, last_attempt=current_time - 10)
+        # Initialize model_endpoint_parameters if None
+        if request2.request_payload.model_endpoint_parameters is None:
+            request2.request_payload.model_endpoint_parameters = {}
+        request2.request_payload.model_endpoint_parameters["TargetVariant"] = "variant-1"
+
+        # Available capacity is 30, request1 needs 80 (20 * 4)
+        available_capacity = 30
+        outstanding_requests = [request1, request2]
+
+        # Should return False because request2 is also on variant-1 and is running (last_attempt set)
+        # So request1 is NOT the only job for this endpoint/variant
+        result = self.scheduler._check_capacity_available(request1, available_capacity, outstanding_requests)
+        self.assertFalse(result)
+
+    def test_calculate_available_capacity_with_target_80_percent(self):
+        """Test _calculate_available_capacity with max_capacity=100, target=0.8, current_load=50 returns 30"""
+        from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
+
+        # Create a mock capacity estimator that returns max_capacity=100
+        mock_capacity_estimator = Mock(spec=EndpointCapacityEstimator)
+        mock_capacity_estimator.estimate_capacity.return_value = 100
+
+        # Create scheduler with capacity_target_percentage=0.8
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=mock_capacity_estimator,
+            throttling_enabled=True,
+            capacity_target_percentage=0.8,
+        )
+
+        # Create outstanding requests with total load close to 50
+        # 10*4 = 40, 2*4 = 8, total = 48 (close enough)
+        # Set last_attempt to recent time so they are considered "currently running"
+        current_time = int(time.time())
+        request1 = self.create_status_record("job1", "endpoint1-model", region_count=10, last_attempt=current_time - 10)
+        request2 = self.create_status_record("job2", "endpoint1-model", region_count=2, last_attempt=current_time - 20)
+
+        # Initialize model_endpoint_parameters to None for both requests
+        if request1.request_payload.model_endpoint_parameters is None:
+            request1.request_payload.model_endpoint_parameters = {}
+        if request2.request_payload.model_endpoint_parameters is None:
+            request2.request_payload.model_endpoint_parameters = {}
+
+        outstanding_requests = [request1, request2]
+
+        # Calculate available capacity
+        # max_capacity = 100, target = 0.8, so target_capacity = 80
+        # current_load = 10*4 + 2*4 = 40 + 8 = 48
+        # available = 80 - 48 = 32
+        available_capacity = scheduler._calculate_available_capacity("endpoint1-model", None, outstanding_requests)
+
+        self.assertEqual(available_capacity, 32)
+
+    def test_calculate_available_capacity_with_target_100_percent(self):
+        """Test _calculate_available_capacity with max_capacity=50, target=1.0, current_load=30 returns 20"""
+        from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
+
+        # Create a mock capacity estimator that returns max_capacity=50
+        mock_capacity_estimator = Mock(spec=EndpointCapacityEstimator)
+        mock_capacity_estimator.estimate_capacity.return_value = 50
+
+        # Create scheduler with capacity_target_percentage=1.0 (default)
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=mock_capacity_estimator,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        # Create outstanding requests with total load of 28 (close to 30)
+        # To get load=30 with TILE_WORKERS=4: need 30/4 = 7.5 regions
+        # Use 7 regions (28 load) which is close to 30
+        # Set last_attempt to recent time so it's considered "currently running"
+        current_time = int(time.time())
+        request1 = self.create_status_record("job1", "endpoint1-model", region_count=7, last_attempt=current_time - 10)
+
+        # Initialize model_endpoint_parameters
+        if request1.request_payload.model_endpoint_parameters is None:
+            request1.request_payload.model_endpoint_parameters = {}
+
+        outstanding_requests = [request1]
+
+        # Calculate available capacity
+        # max_capacity = 50, target = 1.0, so target_capacity = 50
+        # current_load = 7*4 = 28
+        # available = 50 - 28 = 22
+        available_capacity = scheduler._calculate_available_capacity("endpoint1-model", None, outstanding_requests)
+
+        self.assertEqual(available_capacity, 22)
+
+    def test_calculate_available_capacity_with_target_120_percent(self):
+        """Test _calculate_available_capacity with max_capacity=200, target=1.2, current_load=100 returns 140"""
+        from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
+
+        # Create a mock capacity estimator that returns max_capacity=200
+        mock_capacity_estimator = Mock(spec=EndpointCapacityEstimator)
+        mock_capacity_estimator.estimate_capacity.return_value = 200
+
+        # Create scheduler with capacity_target_percentage=1.2
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=mock_capacity_estimator,
+            throttling_enabled=True,
+            capacity_target_percentage=1.2,
+        )
+
+        # Create outstanding requests with total load of 100
+        # To get load=100 with TILE_WORKERS=4: need 100/4 = 25 regions
+        # Set last_attempt to recent time so it's considered "currently running"
+        current_time = int(time.time())
+        request1 = self.create_status_record("job1", "endpoint1-model", region_count=25, last_attempt=current_time - 10)
+
+        # Initialize model_endpoint_parameters
+        if request1.request_payload.model_endpoint_parameters is None:
+            request1.request_payload.model_endpoint_parameters = {}
+
+        outstanding_requests = [request1]
+
+        # Calculate available capacity
+        # max_capacity = 200, target = 1.2, so target_capacity = 240
+        # current_load = 25*4 = 100
+        # available = 240 - 100 = 140
+        available_capacity = scheduler._calculate_available_capacity("endpoint1-model", None, outstanding_requests)
+
+        self.assertEqual(available_capacity, 140)
+
+    def test_calculate_available_capacity_filters_by_endpoint_and_variant(self):
+        """Test _calculate_available_capacity filters requests by endpoint and variant correctly"""
+        from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
+
+        # Create a mock capacity estimator that returns max_capacity=100
+        mock_capacity_estimator = Mock(spec=EndpointCapacityEstimator)
+        mock_capacity_estimator.estimate_capacity.return_value = 100
+
+        # Create scheduler with default settings
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=mock_capacity_estimator,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        # Create requests for different endpoints and variants
+        # Set last_attempt to recent time so they are considered "currently running"
+        current_time = int(time.time())
+        
+        # Request 1: endpoint1-model, variant-1, region_count=10 (load=40)
+        request1 = self.create_status_record("job1", "endpoint1-model", region_count=10, last_attempt=current_time - 10)
+        if request1.request_payload.model_endpoint_parameters is None:
+            request1.request_payload.model_endpoint_parameters = {}
+        request1.request_payload.model_endpoint_parameters["TargetVariant"] = "variant-1"
+
+        # Request 2: endpoint1-model, variant-2, region_count=5 (load=20)
+        request2 = self.create_status_record("job2", "endpoint1-model", region_count=5, last_attempt=current_time - 20)
+        if request2.request_payload.model_endpoint_parameters is None:
+            request2.request_payload.model_endpoint_parameters = {}
+        request2.request_payload.model_endpoint_parameters["TargetVariant"] = "variant-2"
+
+        # Request 3: endpoint2-model, variant-1, region_count=8 (load=32)
+        request3 = self.create_status_record("job3", "endpoint2-model", region_count=8, last_attempt=current_time - 30)
+        if request3.request_payload.model_endpoint_parameters is None:
+            request3.request_payload.model_endpoint_parameters = {}
+        request3.request_payload.model_endpoint_parameters["TargetVariant"] = "variant-1"
+
+        # Request 4: endpoint1-model, variant-1, region_count=3 (load=12)
+        request4 = self.create_status_record("job4", "endpoint1-model", region_count=3, last_attempt=current_time - 40)
+        if request4.request_payload.model_endpoint_parameters is None:
+            request4.request_payload.model_endpoint_parameters = {}
+        request4.request_payload.model_endpoint_parameters["TargetVariant"] = "variant-1"
+
+        outstanding_requests = [request1, request2, request3, request4]
+
+        # Calculate available capacity for endpoint1-model, variant-1
+        # Should only count request1 (40) and request4 (12) = 52 total load
+        # max_capacity = 100, target = 1.0, so target_capacity = 100
+        # available = 100 - 52 = 48
+        available_capacity = scheduler._calculate_available_capacity("endpoint1-model", "variant-1", outstanding_requests)
+        self.assertEqual(available_capacity, 48)
+
+        # Calculate available capacity for endpoint1-model, variant-2
+        # Should only count request2 (20) = 20 total load
+        # available = 100 - 20 = 80
+        available_capacity = scheduler._calculate_available_capacity("endpoint1-model", "variant-2", outstanding_requests)
+        self.assertEqual(available_capacity, 80)
+
+        # Calculate available capacity for endpoint2-model, variant-1
+        # Should only count request3 (32) = 32 total load
+        # available = 100 - 32 = 68
+        available_capacity = scheduler._calculate_available_capacity("endpoint2-model", "variant-1", outstanding_requests)
+        self.assertEqual(available_capacity, 68)
+
+    def test_get_next_scheduled_request_throttling_disabled(self):
+        """Test throttling_enabled=False schedules without capacity checks"""
+        from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
+
+        # Create a mock capacity estimator that would return insufficient capacity
+        mock_capacity_estimator = Mock(spec=EndpointCapacityEstimator)
+        mock_capacity_estimator.estimate_capacity.return_value = 10  # Very low capacity
+
+        # Create scheduler with throttling disabled
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=mock_capacity_estimator,
+            throttling_enabled=False,  # Throttling disabled
+            capacity_target_percentage=1.0,
+        )
+
+        # Create a request with high load that would exceed capacity
+        time_in_past = int(time.time() - 5)
+        request = self.create_status_record("job1", "endpoint1-model", request_time=time_in_past, region_count=100)
+
+        self.mock_queue.get_outstanding_requests.return_value = [request]
+        self.mock_queue.requested_jobs_table.start_next_attempt.return_value = True
+
+        # Should schedule the request even though capacity is insufficient
+        result = scheduler.get_next_scheduled_request()
+        self.assertIsNotNone(result)
+        self.assertEqual(result.job_id, "job1-id")
+
+        # Verify capacity estimator was NOT called (no capacity checks)
+        mock_capacity_estimator.estimate_capacity.assert_not_called()
+
+    def test_get_next_scheduled_request_throttling_enabled_checks_capacity(self):
+        """Test throttling_enabled=True checks capacity before scheduling"""
+        from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
+
+        # Create a mock capacity estimator with sufficient capacity
+        mock_capacity_estimator = Mock(spec=EndpointCapacityEstimator)
+        mock_capacity_estimator.estimate_capacity.return_value = 200  # High capacity
+
+        # Create scheduler with throttling enabled
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=mock_capacity_estimator,
+            throttling_enabled=True,  # Throttling enabled
+            capacity_target_percentage=1.0,
+        )
+
+        # Create a request with moderate load
+        time_in_past = int(time.time() - 5)
+        request = self.create_status_record("job1", "endpoint1-model", request_time=time_in_past, region_count=10)
+
+        self.mock_queue.get_outstanding_requests.return_value = [request]
+        self.mock_queue.requested_jobs_table.start_next_attempt.return_value = True
+
+        # Should schedule the request because capacity is sufficient
+        result = scheduler.get_next_scheduled_request()
+        self.assertIsNotNone(result)
+        self.assertEqual(result.job_id, "job1-id")
+
+        # Verify capacity estimator WAS called (capacity checks performed)
+        mock_capacity_estimator.estimate_capacity.assert_called_once_with("endpoint1-model", None)
+
+    def test_get_next_scheduled_request_throttling_blocks_insufficient_capacity(self):
+        """Test throttling blocks scheduling when capacity is insufficient"""
+        from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
+
+        # Create a mock capacity estimator with low capacity
+        mock_capacity_estimator = Mock(spec=EndpointCapacityEstimator)
+        mock_capacity_estimator.estimate_capacity.return_value = 20  # Low capacity
+
+        # Create scheduler with throttling enabled
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=mock_capacity_estimator,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        # Create two requests: one already running, one waiting
+        time_in_past = int(time.time() - 10)
+        running_request = self.create_status_record(
+            "job1", "endpoint1-model", request_time=time_in_past, region_count=4, last_attempt=time_in_past
+        )
+        waiting_request = self.create_status_record(
+            "job2", "endpoint1-model", request_time=time_in_past + 1, region_count=10
+        )
+
+        self.mock_queue.get_outstanding_requests.return_value = [running_request, waiting_request]
+        self.mock_queue.requested_jobs_table.start_next_attempt.return_value = True
+
+        # Should NOT schedule waiting_request because capacity is insufficient
+        # running_request load = 4 * 4 = 16
+        # waiting_request load = 10 * 4 = 40
+        # available capacity = 20 - 16 = 4 (less than 40 needed)
+        result = scheduler.get_next_scheduled_request()
+        self.assertIsNone(result)
+
+        # Verify capacity estimator was called
+        mock_capacity_estimator.estimate_capacity.assert_called()
+
+    def test_get_next_scheduled_request_uses_target_variant_from_request(self):
+        """Test capacity calculation uses TargetVariant from request (already set by queue)"""
+        from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
+
+        # Create a mock capacity estimator
+        mock_capacity_estimator = Mock(spec=EndpointCapacityEstimator)
+        mock_capacity_estimator.estimate_capacity.return_value = 100
+
+        # Create scheduler with throttling enabled
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=mock_capacity_estimator,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        # Create a request with explicit TargetVariant
+        time_in_past = int(time.time() - 5)
+        request = self.create_status_record("job1", "endpoint1-model", request_time=time_in_past, region_count=5)
+        if request.request_payload.model_endpoint_parameters is None:
+            request.request_payload.model_endpoint_parameters = {}
+        request.request_payload.model_endpoint_parameters["TargetVariant"] = "variant-1"
+
+        self.mock_queue.get_outstanding_requests.return_value = [request]
+        self.mock_queue.requested_jobs_table.start_next_attempt.return_value = True
+
+        # Schedule the request
+        result = scheduler.get_next_scheduled_request()
+        self.assertIsNotNone(result)
+
+        # Verify capacity estimator was called with the specific variant
+        mock_capacity_estimator.estimate_capacity.assert_called_once_with("endpoint1-model", "variant-1")
+
+    def test_get_next_scheduled_request_capacity_for_specific_variant(self):
+        """Test capacity calculation for specific variant (not all variants)"""
+        from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
+
+        # Create a mock capacity estimator that returns different capacities per variant
+        mock_capacity_estimator = Mock(spec=EndpointCapacityEstimator)
+
+        def estimate_capacity_side_effect(endpoint_name, variant_name):
+            if variant_name == "variant-1":
+                return 50  # variant-1 has capacity 50
+            elif variant_name == "variant-2":
+                return 100  # variant-2 has capacity 100
+            else:
+                return 150  # all variants combined
+
+        mock_capacity_estimator.estimate_capacity.side_effect = estimate_capacity_side_effect
+
+        # Create scheduler with throttling enabled
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=mock_capacity_estimator,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        # Create requests for different variants
+        time_in_past = int(time.time() - 10)
+
+        # Request 1: variant-1, region_count=10 (load=40)
+        request1 = self.create_status_record("job1", "endpoint1-model", request_time=time_in_past, region_count=10)
+        if request1.request_payload.model_endpoint_parameters is None:
+            request1.request_payload.model_endpoint_parameters = {}
+        request1.request_payload.model_endpoint_parameters["TargetVariant"] = "variant-1"
+
+        # Request 2: variant-2, region_count=20 (load=80)
+        request2 = self.create_status_record("job2", "endpoint1-model", request_time=time_in_past + 1, region_count=20)
+        if request2.request_payload.model_endpoint_parameters is None:
+            request2.request_payload.model_endpoint_parameters = {}
+        request2.request_payload.model_endpoint_parameters["TargetVariant"] = "variant-2"
+
+        self.mock_queue.get_outstanding_requests.return_value = [request1, request2]
+        self.mock_queue.requested_jobs_table.start_next_attempt.return_value = True
+
+        # Schedule request1 (variant-1)
+        # variant-1 capacity = 50, request1 load = 40, available = 50 - 0 = 50 (sufficient)
+        result = scheduler.get_next_scheduled_request()
+        self.assertIsNotNone(result)
+        self.assertEqual(result.job_id, "job1-id")
+
+        # Verify capacity was calculated for variant-1 specifically
+        mock_capacity_estimator.estimate_capacity.assert_called_with("endpoint1-model", "variant-1")
+
+    def test_get_next_scheduled_request_no_capacity_estimator_uses_existing_logic(self):
+        """Test no capacity_estimator provided uses existing logic (no capacity checks)"""
+        # Create scheduler without capacity estimator
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=None,  # No capacity estimator
+            throttling_enabled=True,  # Throttling enabled but no estimator
+            capacity_target_percentage=1.0,
+        )
+
+        # Create a request
+        time_in_past = int(time.time() - 5)
+        request = self.create_status_record("job1", "endpoint1-model", request_time=time_in_past, region_count=100)
+
+        self.mock_queue.get_outstanding_requests.return_value = [request]
+        self.mock_queue.requested_jobs_table.start_next_attempt.return_value = True
+
+        # Should schedule the request without capacity checks
+        result = scheduler.get_next_scheduled_request()
+        self.assertIsNotNone(result)
+        self.assertEqual(result.job_id, "job1-id")
+
+    def test_get_next_scheduled_request_logs_throttling_decisions(self):
+        """Test logging of throttling decisions"""
+        from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
+
+        # Create a mock capacity estimator with low capacity
+        mock_capacity_estimator = Mock(spec=EndpointCapacityEstimator)
+        mock_capacity_estimator.estimate_capacity.return_value = 20
+
+        # Create scheduler with throttling enabled
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=mock_capacity_estimator,
+            throttling_enabled=True,
+            capacity_target_percentage=0.8,
+        )
+
+        # Create two requests: one running, one waiting
+        time_in_past = int(time.time() - 10)
+        running_request = self.create_status_record(
+            "job1", "endpoint1-model", request_time=time_in_past, region_count=3, last_attempt=time_in_past
+        )
+        waiting_request = self.create_status_record(
+            "job2", "endpoint1-model", request_time=time_in_past + 1, region_count=10
+        )
+
+        self.mock_queue.get_outstanding_requests.return_value = [running_request, waiting_request]
+        self.mock_queue.requested_jobs_table.start_next_attempt.return_value = True
+
+        # Capture log output
+        with self.assertLogs(logger="aws.osml.model_runner.scheduler.endpoint_load_image_scheduler", level="INFO") as cm:
+            result = scheduler.get_next_scheduled_request()
+            self.assertIsNone(result)
+
+            # Verify info log was emitted for throttling (changed from WARNING to INFO level)
+            self.assertTrue(any("Throttling job job2-id due to insufficient capacity" in message for message in cm.output))
+            self.assertTrue(any("Required load:" in message for message in cm.output))
+            self.assertTrue(any("Available capacity:" in message for message in cm.output))
+
+    def test_get_next_scheduled_request_logs_successful_scheduling(self):
+        """Test logging of successful scheduling with capacity details"""
+        from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
+
+        # Create a mock capacity estimator with sufficient capacity
+        mock_capacity_estimator = Mock(spec=EndpointCapacityEstimator)
+        mock_capacity_estimator.estimate_capacity.return_value = 200
+
+        # Create scheduler with throttling enabled
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=mock_capacity_estimator,
+            throttling_enabled=True,
+            capacity_target_percentage=0.9,
+        )
+
+        # Create a request
+        time_in_past = int(time.time() - 5)
+        request = self.create_status_record("job1", "endpoint1-model", request_time=time_in_past, region_count=10)
+
+        self.mock_queue.get_outstanding_requests.return_value = [request]
+        self.mock_queue.requested_jobs_table.start_next_attempt.return_value = True
+
+        # Capture log output
+        with self.assertLogs(logger="aws.osml.model_runner.scheduler.endpoint_load_image_scheduler", level="INFO") as cm:
+            result = scheduler.get_next_scheduled_request()
+            self.assertIsNotNone(result)
+
+            # Verify info log was emitted with capacity details
+            self.assertTrue(any("Scheduling job job1-id with sufficient capacity" in message for message in cm.output))
+            self.assertTrue(any("Required load:" in message for message in cm.output))
+            self.assertTrue(any("Available capacity:" in message for message in cm.output))
+            self.assertTrue(any("Target percentage: 90.0%" in message for message in cm.output))
+
+    def test_check_capacity_available_single_image_exception_ignores_not_running_jobs(self):
+        """Test single image exception only considers currently running jobs (bug fix)"""
+        # Create requests where one is not running (last_attempt=0) and one is running
+        current_time = int(time.time())
+
+        # Request 1: Large image that needs 80 tiles (20 * 4)
+        request1 = self.create_status_record("job1", "endpoint1-model", region_count=20, last_attempt=0)
+
+        # Request 2: Not running yet (last_attempt=0), should be ignored for single image exception
+        request2 = self.create_status_record("job2", "endpoint1-model", region_count=5, last_attempt=0)
+
+        # Available capacity is only 30, which is less than required load of 80
+        available_capacity = 30
+        outstanding_requests = [request1, request2]
+
+        # Should return True due to single image exception
+        # Even though request2 exists, it's not running (last_attempt=0)
+        # So request1 is the only job that would be running
+        result = self.scheduler._check_capacity_available(request1, available_capacity, outstanding_requests)
+        self.assertTrue(result)
+
+    def test_check_capacity_available_single_image_exception_considers_running_jobs(self):
+        """Test single image exception correctly identifies running jobs"""
+        # Create requests where one is running
+        current_time = int(time.time())
+
+        # Request 1: Large image that needs 80 tiles (20 * 4)
+        request1 = self.create_status_record("job1", "endpoint1-model", region_count=20, last_attempt=0)
+
+        # Request 2: Currently running (last_attempt is recent)
+        request2 = self.create_status_record("job2", "endpoint1-model", region_count=5, last_attempt=current_time - 10)
+
+        # Available capacity is only 30, which is less than required load of 80
+        available_capacity = 30
+        outstanding_requests = [request1, request2]
+
+        # Should return False because request2 is running
+        # So request1 is NOT the only job for this endpoint
+        result = self.scheduler._check_capacity_available(request1, available_capacity, outstanding_requests)
+        self.assertFalse(result)
+
+    def test_get_running_jobs_for_endpoint_variant_filters_correctly(self):
+        """Test _get_running_jobs_for_endpoint_variant filters by running status"""
+        current_time = int(time.time())
+
+        # Create various requests with different states
+        # Running: last_attempt is recent
+        running_request = self.create_status_record(
+            "job1", "endpoint1-model", region_count=5, last_attempt=current_time - 10
+        )
+
+        # Not started: last_attempt=0
+        not_started_request = self.create_status_record("job2", "endpoint1-model", region_count=5, last_attempt=0)
+
+        # Timed out: last_attempt is too old (beyond retry_time)
+        timed_out_request = self.create_status_record(
+            "job3", "endpoint1-model", region_count=5, last_attempt=current_time - 700
+        )
+
+        # Different endpoint: should be excluded
+        different_endpoint_request = self.create_status_record(
+            "job4", "endpoint2-model", region_count=5, last_attempt=current_time - 10
+        )
+
+        outstanding_requests = [running_request, not_started_request, timed_out_request, different_endpoint_request]
+
+        # Get running jobs for endpoint1-model
+        running_jobs = self.scheduler._get_running_jobs_for_endpoint_variant(
+            "endpoint1-model", None, outstanding_requests
+        )
+
+        # Should only include running_request
+        self.assertEqual(len(running_jobs), 1)
+        self.assertEqual(running_jobs[0].job_id, "job1-id")
+
+    def test_get_running_jobs_for_endpoint_variant_excludes_job_id(self):
+        """Test _get_running_jobs_for_endpoint_variant excludes specified job_id"""
+        current_time = int(time.time())
+
+        # Create running requests
+        request1 = self.create_status_record("job1", "endpoint1-model", region_count=5, last_attempt=current_time - 10)
+        request2 = self.create_status_record("job2", "endpoint1-model", region_count=5, last_attempt=current_time - 20)
+
+        outstanding_requests = [request1, request2]
+
+        # Get running jobs excluding job1
+        running_jobs = self.scheduler._get_running_jobs_for_endpoint_variant(
+            "endpoint1-model", None, outstanding_requests, exclude_job_id="job1-id"
+        )
+
+        # Should only include request2
+        self.assertEqual(len(running_jobs), 1)
+        self.assertEqual(running_jobs[0].job_id, "job2-id")
+
+    def test_get_running_jobs_for_endpoint_variant_filters_by_variant(self):
+        """Test _get_running_jobs_for_endpoint_variant filters by variant correctly"""
+        current_time = int(time.time())
+
+        # Create running requests with different variants
+        request1 = self.create_status_record("job1", "endpoint1-model", region_count=5, last_attempt=current_time - 10)
+        if request1.request_payload.model_endpoint_parameters is None:
+            request1.request_payload.model_endpoint_parameters = {}
+        request1.request_payload.model_endpoint_parameters["TargetVariant"] = "variant-1"
+
+        request2 = self.create_status_record("job2", "endpoint1-model", region_count=5, last_attempt=current_time - 20)
+        if request2.request_payload.model_endpoint_parameters is None:
+            request2.request_payload.model_endpoint_parameters = {}
+        request2.request_payload.model_endpoint_parameters["TargetVariant"] = "variant-2"
+
+        outstanding_requests = [request1, request2]
+
+        # Get running jobs for variant-1
+        running_jobs = self.scheduler._get_running_jobs_for_endpoint_variant(
+            "endpoint1-model", "variant-1", outstanding_requests
+        )
+
+        # Should only include request1
+        self.assertEqual(len(running_jobs), 1)
+        self.assertEqual(running_jobs[0].job_id, "job1-id")
+
+
+if __name__ == "__main__":
+    unittest.main()
