@@ -1,4 +1,4 @@
-#  Copyright 2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2025-2026 Amazon.com, Inc. or its affiliates.
 
 import dataclasses
 import json
@@ -31,12 +31,19 @@ class BufferedImageRequestQueue:
     APPROX_NUMBER_OF_REQUESTS_BUFFERED = "ApproximateNumberOfRequestsBuffered"
     APPROX_NUMBER_OF_REQUESTS_VISIBLE = "ApproximateNumberOfRequestsVisible"
 
+    # Minimum time in seconds between metric emissions to avoid excessive logging
+    # Note that a typical system will have multiple model runner instances running at
+    # any one time each with their own scheduler. This metric will be emitted more
+    # frequently but this will reduce excessive data points and ensure that the metric
+    # is emitted at least once per minute.
+    METRIC_EMISSION_INTERVAL_SECONDS = 60
+
     def __init__(
         self,
         image_queue_url: str,
         image_dlq_url: str,
         requested_jobs_table: RequestedJobsTable,
-        max_jobs_lookahead: int = 500,
+        max_jobs_lookahead: int = 50,
         retry_time: int = 600,
         max_retry_attempts: int = 1,
         region_calculator: Optional[RegionCalculator] = None,
@@ -68,6 +75,9 @@ class BufferedImageRequestQueue:
         self.image_queue_url = image_queue_url
         self.image_dlq_url = image_dlq_url
 
+        # Track last metric emission time for periodic emission
+        self._last_metric_emission_time = 0.0
+
     def get_outstanding_requests(self) -> List[ImageRequestStatusRecord]:
         """
         Get the list of outstanding image requests by combining requests from the SQS queue
@@ -94,7 +104,7 @@ class BufferedImageRequestQueue:
                 request for request in outstanding_requests if request.last_attempt + self.retry_time < current_time
             ]
 
-            # Output custom CW metric with size of outstanding requests list.
+            # Output custom CW metric with size of outstanding requests list (periodic to avoid excessive logging)
             self._emit_buffered_queue_metrics(
                 num_buffered_requests=len(outstanding_requests), num_visible_requests=len(visible_requests)
             )
@@ -261,9 +271,15 @@ class BufferedImageRequestQueue:
         """
         Emit metrics about the number of buffered requests to CloudWatch.
 
+        Metrics are emitted periodically (controlled by METRIC_EMISSION_INTERVAL_SECONDS)
+        to avoid excessive logging.
+
         :param num_buffered_requests: The current number of requests in the buffer
         :param num_visible_requests: The current number of requests that are waiting to be processed
         """
         if isinstance(metrics, MetricsLogger):
-            metrics.put_metric(self.APPROX_NUMBER_OF_REQUESTS_BUFFERED, num_buffered_requests, str(Unit.COUNT.value))
-            metrics.put_metric(self.APPROX_NUMBER_OF_REQUESTS_VISIBLE, num_visible_requests, str(Unit.COUNT.value))
+            current_time = time.time()
+            if current_time - self._last_metric_emission_time >= self.METRIC_EMISSION_INTERVAL_SECONDS:
+                self._last_metric_emission_time = current_time
+                metrics.put_metric(self.APPROX_NUMBER_OF_REQUESTS_BUFFERED, num_buffered_requests, str(Unit.COUNT.value))
+                metrics.put_metric(self.APPROX_NUMBER_OF_REQUESTS_VISIBLE, num_visible_requests, str(Unit.COUNT.value))

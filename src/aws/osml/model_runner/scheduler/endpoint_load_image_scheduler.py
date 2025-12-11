@@ -1,4 +1,4 @@
-#  Copyright 2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2025-2026 Amazon.com, Inc. or its affiliates.
 
 import logging
 import time
@@ -115,15 +115,15 @@ class EndpointLoadImageScheduler(ImageScheduler):
         :return: The next image request to process, if any
         """
         # We want a consolidated log message that captures the result of the scheduling run
-        # at the end of each cycle. 
+        # at the end of each cycle.
         schedule_cycle_start_time = time.time()
         schedule_cycle_log_message = None
-        
+
         try:
             logger.debug("Starting image processing request selection process")
             outstanding_requests = self.image_request_queue.get_outstanding_requests()
             if not outstanding_requests:
-                schedule_cycle_log_message = "No image processing request available to start."
+                schedule_cycle_log_message = None
                 return None
             logger.debug(f"Retrieved {len(outstanding_requests)} image processing requests from the buffered queue")
 
@@ -148,7 +148,8 @@ class EndpointLoadImageScheduler(ImageScheduler):
             # Find next eligible request
             next_request = self._select_next_eligible_request(endpoint_utilization)
             if not next_request:
-                schedule_cycle_log_message = "No outstanding requests are eligible to start."
+                logger.debug("No outstanding requests are eligible to start.")
+                schedule_cycle_log_message = None
                 return None
             logger.debug(f"Selected job {next_request.job_id} requested at {next_request.request_time} for processing.")
 
@@ -196,12 +197,13 @@ class EndpointLoadImageScheduler(ImageScheduler):
             # do not return an image processing request because we want this worker to go check the region
             # queue before starting a new image.
             if self.image_request_queue.requested_jobs_table.start_next_attempt(next_request):
-                schedule_cycle_log_message = f"Started selected job {next_request.job_id}. Attempt # {next_request.num_attempts + 1}"
+                schedule_cycle_log_message = (
+                    f"Started selected job {next_request.job_id}. Attempt # {next_request.num_attempts + 1}"
+                )
                 return next_request.request_payload
 
             schedule_cycle_log_message = (
-                f"Unable to start selected job {next_request.job_id}. "
-                "Request was likely started by another worker."
+                f"Unable to start selected job {next_request.job_id}. " "Request was likely started by another worker."
             )
             return None
 
@@ -212,7 +214,7 @@ class EndpointLoadImageScheduler(ImageScheduler):
         finally:
             elapsed_ms = (time.time() - schedule_cycle_start_time) * 1000
             if schedule_cycle_log_message:
-                logger.info(f"SCHEDULER OUTCOME: {schedule_cycle_log_message}, elapsed_ms={elapsed_ms:.2f}")
+                logger.info(f"{schedule_cycle_log_message}, elapsed_ms={elapsed_ms:.2f}", extra={"tag": "SCHEDULER EVENT"})
 
     def finish_request(self, image_request: ImageRequest, should_retry: bool = False) -> None:
         """
@@ -229,8 +231,8 @@ class EndpointLoadImageScheduler(ImageScheduler):
         """
         Calculate the estimated load for an image request in concurrent tile requests.
 
-        The load is calculated as the number of regions remaining to be processed multiplied 
-        by the number of tile workers per instance. This represents the maximum number of 
+        The load is calculated as the number of regions remaining to be processed multiplied
+        by the number of tile workers per instance. This represents the maximum number of
         concurrent inference requests the image can generate at a time.
 
         When region_count is not available (None), a default estimate is used based on typical

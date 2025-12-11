@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 from unittest import TestCase, main
 
@@ -244,7 +244,7 @@ class TestImageRequest(TestCase):
         """
         invalid_params = "not a dictionary"
 
-        with self.assertLogs(level="WARNING") as log:
+        with self.assertLogs(level="INFO") as log:
             request = ImageRequest.from_external_message(
                 {
                     "jobName": "test-job-name",
