@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import logging
 from dataclasses import dataclass, field
@@ -211,7 +211,7 @@ class ImageRequest:
         if isinstance(endpoint_parameters, dict):
             return endpoint_parameters
         else:
-            logger.warning(
+            logger.info(
                 f"Missing/Invalid model endpoint parameters dictionary: {endpoint_parameters}."
                 f" Proceeding with default values."
             )

@@ -1,4 +1,4 @@
-#  Copyright 2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2025-2026 Amazon.com, Inc. or its affiliates.
 
 import time
 import unittest
@@ -435,7 +435,7 @@ class TestEndpointLoadImageScheduler(unittest.TestCase):
         # Create requests for different endpoints and variants
         # Set last_attempt to recent time so they are considered "currently running"
         current_time = int(time.time())
-        
+
         # Request 1: endpoint1-model, variant-1, region_count=10 (load=40)
         request1 = self.create_status_record("job1", "endpoint1-model", region_count=10, last_attempt=current_time - 10)
         if request1.request_payload.model_endpoint_parameters is None:
@@ -762,14 +762,9 @@ class TestEndpointLoadImageScheduler(unittest.TestCase):
 
     def test_check_capacity_available_single_image_exception_ignores_not_running_jobs(self):
         """Test single image exception only considers currently running jobs (bug fix)"""
-        # Create requests where one is not running (last_attempt=0) and one is running
-        current_time = int(time.time())
-
-        # Request 1: Large image that needs 80 tiles (20 * 4)
+        # Create multiple new requests (last_attempt=0) that exceed endpoint capacity
         request1 = self.create_status_record("job1", "endpoint1-model", region_count=20, last_attempt=0)
-
-        # Request 2: Not running yet (last_attempt=0), should be ignored for single image exception
-        request2 = self.create_status_record("job2", "endpoint1-model", region_count=5, last_attempt=0)
+        request2 = self.create_status_record("job2", "endpoint1-model", region_count=20, last_attempt=0)
 
         # Available capacity is only 30, which is less than required load of 80
         available_capacity = 30
@@ -777,7 +772,7 @@ class TestEndpointLoadImageScheduler(unittest.TestCase):
 
         # Should return True due to single image exception
         # Even though request2 exists, it's not running (last_attempt=0)
-        # So request1 is the only job that would be running
+        # So request1 is free to start even though it exceeds available capacity
         result = self.scheduler._check_capacity_available(request1, available_capacity, outstanding_requests)
         self.assertTrue(result)
 
@@ -827,9 +822,7 @@ class TestEndpointLoadImageScheduler(unittest.TestCase):
         outstanding_requests = [running_request, not_started_request, timed_out_request, different_endpoint_request]
 
         # Get running jobs for endpoint1-model
-        running_jobs = self.scheduler._get_running_jobs_for_endpoint_variant(
-            "endpoint1-model", None, outstanding_requests
-        )
+        running_jobs = self.scheduler._get_running_jobs_for_endpoint_variant("endpoint1-model", None, outstanding_requests)
 
         # Should only include running_request
         self.assertEqual(len(running_jobs), 1)

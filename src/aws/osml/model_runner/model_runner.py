@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import ast
 import logging
@@ -10,8 +10,7 @@ from aws.osml.gdal import load_gdal_dataset, set_gdal_default_configuration
 from aws.osml.model_runner.api import get_image_path
 
 from .api import ImageRequest, RegionRequest
-from .app_config import ServiceConfig
-from .app_config import BotoConfig
+from .app_config import BotoConfig, ServiceConfig
 from .common import EndpointUtils, ImageDimensions, ThreadingLocalContextFilter
 from .database import (
     EndpointStatisticsTable,
@@ -58,7 +57,7 @@ class ModelRunner:
         self.tiling_strategy = tiling_strategy
 
         # Set up internal queues and monitors
-        self.region_request_queue = RequestQueue(self.config.region_queue, wait_seconds=10)
+        self.region_request_queue = RequestQueue(self.config.region_queue, wait_seconds=20)
         self.region_requests_iter = iter(self.region_request_queue)
 
         # Set up tables and status monitors
@@ -99,10 +98,10 @@ class ModelRunner:
 
         # Set up the job scheduler with RegionCalculator and EndpointCapacityEstimator
         self.requested_jobs_table = RequestedJobsTable(self.config.outstanding_jobs_table)
-        
+
         # Create SageMaker client for capacity estimation and variant selection
         sm_client = boto3.client("sagemaker", config=BotoConfig.default)
-        
+
         # Create EndpointCapacityEstimator with configuration
         self.capacity_estimator = EndpointCapacityEstimator(
             sm_client=sm_client,
@@ -110,13 +109,13 @@ class ModelRunner:
             default_http_concurrency=self.config.default_http_endpoint_concurrency,
             cache_ttl_seconds=300,
         )
-        
+
         # Create EndpointVariantSelector for early variant selection
         self.variant_selector = EndpointVariantSelector(
             sm_client=sm_client,
             cache_ttl_seconds=300,
         )
-        
+
         self.image_job_scheduler = EndpointLoadImageScheduler(
             BufferedImageRequestQueue(
                 self.config.image_queue,
