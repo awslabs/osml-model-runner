@@ -273,7 +273,8 @@ export class ECSRoles extends Construct {
         "sagemaker:ListModelMetadata",
         "sagemaker:BatchGetRecord",
         "sagemaker:BatchGetMetrics",
-        "sagemaker:BatchPutMetrics"
+        "sagemaker:BatchPutMetrics",
+        "sagemaker:ListTags"
       ],
       resources: [
         `arn:${this.partition}:sagemaker:${props.account.region}:${props.account.id}:*`
