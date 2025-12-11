@@ -1,7 +1,9 @@
 #  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
 
+import ast
 import logging
 
+import boto3
 from osgeo import gdal
 
 from aws.osml.gdal import load_gdal_dataset, set_gdal_default_configuration
@@ -9,7 +11,8 @@ from aws.osml.model_runner.api import get_image_path
 
 from .api import ImageRequest, RegionRequest
 from .app_config import ServiceConfig
-from .common import EndpointUtils, ThreadingLocalContextFilter
+from .app_config import BotoConfig
+from .common import EndpointUtils, ImageDimensions, ThreadingLocalContextFilter
 from .database import (
     EndpointStatisticsTable,
     ImageRequestItem,
@@ -21,9 +24,15 @@ from .database import (
 from .exceptions import RetryableJobException, SelfThrottledRegionException
 from .image_request_handler import ImageRequestHandler
 from .region_request_handler import RegionRequestHandler
-from .scheduler import BufferedImageRequestQueue, EndpointLoadImageScheduler, RequestQueue
+from .scheduler import (
+    BufferedImageRequestQueue,
+    EndpointCapacityEstimator,
+    EndpointLoadImageScheduler,
+    EndpointVariantSelector,
+    RequestQueue,
+)
 from .status import ImageStatusMonitor, RegionStatusMonitor
-from .tile_worker import TilingStrategy, VariableOverlapTilingStrategy
+from .tile_worker import RegionCalculator, TilingStrategy, ToolkitRegionCalculator, VariableOverlapTilingStrategy
 
 # Set up logging configuration
 logger = logging.getLogger(__name__)
@@ -60,6 +69,12 @@ class ModelRunner:
         self.region_status_monitor = RegionStatusMonitor(self.config.region_status_topic)
         self.endpoint_utils = EndpointUtils()
 
+        # Create RegionCalculator for consistent region calculation
+        region_size: ImageDimensions = ast.literal_eval(self.config.region_size)
+        self.region_calculator: RegionCalculator = ToolkitRegionCalculator(
+            tiling_strategy=self.tiling_strategy, region_size=region_size
+        )
+
         # Handlers for image and region processing
         self.region_request_handler = RegionRequestHandler(
             region_request_table=self.region_request_table,
@@ -82,10 +97,37 @@ class ModelRunner:
             region_request_handler=self.region_request_handler,
         )
 
-        # Set up the job scheduler
+        # Set up the job scheduler with RegionCalculator and EndpointCapacityEstimator
         self.requested_jobs_table = RequestedJobsTable(self.config.outstanding_jobs_table)
+        
+        # Create SageMaker client for capacity estimation and variant selection
+        sm_client = boto3.client("sagemaker", config=BotoConfig.default)
+        
+        # Create EndpointCapacityEstimator with configuration
+        self.capacity_estimator = EndpointCapacityEstimator(
+            sm_client=sm_client,
+            default_instance_concurrency=self.config.default_instance_concurrency,
+            default_http_concurrency=self.config.default_http_endpoint_concurrency,
+            cache_ttl_seconds=300,
+        )
+        
+        # Create EndpointVariantSelector for early variant selection
+        self.variant_selector = EndpointVariantSelector(
+            sm_client=sm_client,
+            cache_ttl_seconds=300,
+        )
+        
         self.image_job_scheduler = EndpointLoadImageScheduler(
-            BufferedImageRequestQueue(self.config.image_queue, self.config.image_dlq, self.requested_jobs_table)
+            BufferedImageRequestQueue(
+                self.config.image_queue,
+                self.config.image_dlq,
+                self.requested_jobs_table,
+                region_calculator=self.region_calculator,
+                variant_selector=self.variant_selector,
+            ),
+            capacity_estimator=self.capacity_estimator,
+            throttling_enabled=self.config.scheduler_throttling_enabled,
+            capacity_target_percentage=self.config.capacity_target_percentage,
         )
         self.region_request_handler.on_region_complete.subscribe(
             lambda image_request, region_request, region_status: self.requested_jobs_table.complete_region(

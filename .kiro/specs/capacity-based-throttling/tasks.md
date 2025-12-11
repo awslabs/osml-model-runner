@@ -384,14 +384,14 @@
   - When throttling_enabled=True, verify capacity checks enforced
   - Run minimum 100 iterations
 
-- [ ] 8. Refactor ImageRequestHandler to use RegionCalculator
-- [ ] 8.1 Update ImageRequestHandler.__init__() to require RegionCalculator
+- [ ]* 8. Refactor ImageRequestHandler to use RegionCalculator
+- [ ]* 8.1 Update ImageRequestHandler.__init__() to require RegionCalculator
   - Add region_calculator: RegionCalculator parameter (required, not optional)
   - Store as instance variable
   - Update docstring to document new parameter
   - _Requirements: 7.1, 7.2_
 
-- [ ] 8.2 Refactor ImageRequestHandler.load_image_request() to use RegionCalculator
+- [ ]* 8.2 Refactor ImageRequestHandler.load_image_request() to use RegionCalculator
   - Locate existing inline region calculation logic
   - Replace with call to region_calculator.calculate_regions()
   - Pass image_url, tile_size, tile_overlap, roi, and image_read_role
@@ -399,7 +399,7 @@
   - Ensure consistent region calculation with BufferedImageRequestQueue
   - _Requirements: 3.1, 3.2, 7.1, 7.2_
 
-- [ ] 8.3 Remove ImageRequestHandler.set_default_model_endpoint_variant()
+- [ ]* 8.3 Remove ImageRequestHandler.set_default_model_endpoint_variant()
   - Delete the static method from ImageRequestHandler class
   - Remove call to this method in process_image_request()
   - Variant selection now happens earlier in BufferedImageRequestQueue or EndpointLoadImageScheduler
@@ -419,8 +419,8 @@
   - Test process_image_request() handles images with pre-selected variants
   - _Requirements: 4.1, 7.2_
 
-- [ ] 9. Add monitoring and metrics
-- [ ] 9.1 Add CloudWatch metrics to EndpointLoadImageScheduler
+- [ ]* 9. Add monitoring and metrics
+- [ ]* 9.1 Add CloudWatch metrics to EndpointLoadImageScheduler
   - Use @metric_scope decorator for get_next_scheduled_request()
   - Emit scheduler.images_throttled counter when image is delayed due to capacity
   - Emit scheduler.capacity_utilization gauge showing current utilization percentage
@@ -428,32 +428,32 @@
   - Add endpoint_name as dimension for all metrics
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 9.2 Add CloudWatch metrics to EndpointCapacityEstimator
+- [ ]* 9.2 Add CloudWatch metrics to EndpointCapacityEstimator
   - Use @metric_scope decorator for estimate_capacity()
   - Emit scheduler.endpoint_api_errors counter when SageMaker API fails
   - Add endpoint_name as dimension
   - _Requirements: 2.6_
 
-- [ ] 9.3 Add CloudWatch metrics to BufferedImageRequestQueue
+- [ ]* 9.3 Add CloudWatch metrics to BufferedImageRequestQueue
   - Use @metric_scope decorator for _fetch_new_requests()
   - Emit scheduler.image_access_errors counter when LoadImageException raised
   - Add endpoint_name as dimension
   - _Requirements: 3.4_
 
-- [ ] 9.4 Add comprehensive logging to EndpointLoadImageScheduler
+- [ ]* 9.4 Add comprehensive logging to EndpointLoadImageScheduler
   - Log INFO when scheduling image with capacity details (available, required, target percentage)
   - Log WARN when image is throttled due to insufficient capacity
   - Log WARN when capacity_estimator is not provided but throttling is enabled
   - Log ERROR for unexpected exceptions during scheduling
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 9.5 Add comprehensive logging to EndpointCapacityEstimator
+- [ ]* 9.5 Add comprehensive logging to EndpointCapacityEstimator
   - Log DEBUG for capacity calculations with breakdown (instances, concurrency, variants)
   - Log WARN when SageMaker API fails and using cached capacity
   - Log ERROR when all retries fail for SageMaker API
   - _Requirements: 2.6_
 
-- [ ] 9.6 Add comprehensive logging to BufferedImageRequestQueue
+- [ ]* 9.6 Add comprehensive logging to BufferedImageRequestQueue
   - Log INFO when region calculation succeeds with region count
   - Log WARN when region_calculator is not provided
   - Log ERROR when LoadImageException raised (image inaccessible)
@@ -478,14 +478,13 @@
   - _Requirements: 1.1, 1.2, 1.3, 2.6, 3.4_
 
 - [ ] 10. Update dependency wiring in model_runner.py
-- [ ] 10.1 Create and wire ToolkitRegionCalculator
+- [x] 10.1 Create and wire ToolkitRegionCalculator
   - Import ToolkitRegionCalculator and RegionCalculator
   - Instantiate ToolkitRegionCalculator with existing TilingStrategy and config.region_size
   - Inject into BufferedImageRequestQueue as optional parameter
-  - Inject into ImageRequestHandler as required parameter
   - _Requirements: 7.1, 7.3_
 
-- [ ] 10.2 Create and wire EndpointCapacityEstimator
+- [x] 10.2 Create and wire EndpointCapacityEstimator
   - Import EndpointCapacityEstimator
   - Instantiate with SageMaker client (boto3.client("sagemaker"))
   - Pass config.default_instance_concurrency
@@ -494,14 +493,14 @@
   - Inject into EndpointLoadImageScheduler as optional parameter
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 10.3 Create and wire EndpointVariantSelector
+- [x] 10.3 Create and wire EndpointVariantSelector
   - Import EndpointVariantSelector
   - Instantiate with SageMaker client (boto3.client("sagemaker"))
   - Pass cache_ttl_seconds=300
   - Inject into BufferedImageRequestQueue as optional parameter
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 10.4 Update EndpointLoadImageScheduler instantiation
+- [x] 10.4 Update EndpointLoadImageScheduler instantiation
   - Pass capacity_estimator parameter
   - Pass throttling_enabled=config.scheduler_throttling_enabled
   - Pass capacity_target_percentage=config.capacity_target_percentage
