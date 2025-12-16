@@ -43,7 +43,7 @@ The **NetworkStack** provides the foundational networking infrastructure that al
 
 ---
 
-### ModelRunnerStack (`<project-name>-ModelRunner`)
+### ModelRunnerStack (`<project-name>-Dataplane`)
 
 The **ModelRunnerStack** deploys the core Model Runner dataplane - the main application infrastructure that processes geospatial imagery and runs ML models.
 

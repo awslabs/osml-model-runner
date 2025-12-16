@@ -13,7 +13,6 @@
  */
 
 import { App, Stack } from "aws-cdk-lib";
-import { IVpc, Vpc } from "aws-cdk-lib/aws-ec2";
 
 import { SageMakerRole } from "../lib/constructs/integration-test/sagemaker-role";
 import { IntegrationTestStack } from "../lib/integration-test-stack";
@@ -61,18 +60,6 @@ if (deployment.deployIntegrationTests) {
 }
 
 // -----------------------------------------------------------------------------
-// Create VPC (only if importing existing VPC)
-// -----------------------------------------------------------------------------
-
-let vpc: IVpc | undefined;
-if (deployment.networkConfig?.VPC_ID) {
-  // Import existing VPC
-  vpc = Vpc.fromLookup(app, "SharedVPC", {
-    vpcId: deployment.networkConfig.VPC_ID
-  });
-}
-
-// -----------------------------------------------------------------------------
 // Deploy the network stack.
 // -----------------------------------------------------------------------------
 
@@ -84,8 +71,7 @@ const networkStack = new NetworkStack(
       account: deployment.account.id,
       region: deployment.account.region
     },
-    deployment: deployment,
-    vpc: vpc
+    deployment: deployment
   }
 );
 
@@ -104,7 +90,7 @@ if (sagemakerRoleStack) {
 
 const modelRunnerStack = new ModelRunnerStack(
   app,
-  `${deployment.projectName}-ModelRunner`,
+  `${deployment.projectName}-Dataplane`,
   {
     env: {
       account: deployment.account.id,

@@ -414,7 +414,7 @@ export function loadDeploymentConfig(): DeploymentConfig {
   const globalObj = global as { __deploymentConfigLoaded?: boolean };
   if (!globalObj.__deploymentConfigLoaded) {
     console.log(
-      `🚀 Using environment from deployment.json: projectName=${validatedConfig.projectName}, region=${validatedConfig.account.region}`
+      `Using environment from deployment.json: projectName=${validatedConfig.projectName}, region=${validatedConfig.account.region}`
     );
     globalObj.__deploymentConfigLoaded = true;
   }
