@@ -10,7 +10,7 @@
  *   - S3 bucket for storing test imagery
  *   - Deployment of test images from local assets
  * - TestModels construct which includes:
- *   - SageMaker endpoints for centerpoint, flood, and multi-container models
+ *   - SageMaker endpoints for centerpoint, flood, failure, and multi-container models
  *   - HTTP endpoints for testing
  *   - Container resources and IAM roles
  */

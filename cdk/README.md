@@ -125,6 +125,7 @@ The **IntegrationTestStack** deploys test infrastructure for development and int
 - **SageMaker Endpoints**:
   - **Centerpoint Endpoint**: Object detection model endpoint
   - **Flood Endpoint**: Flood detection model endpoint
+  - **Failure Endpoint**: Error scenario testing model endpoint
   - **Multi-Container Endpoint**: Multi-model inference endpoint
 - **HTTP Endpoint**: Container-based HTTP endpoint for testing HTTP model integration
 - **Container Resources**: ECS task definitions and services for HTTP endpoint

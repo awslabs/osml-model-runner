@@ -95,5 +95,12 @@
     "endpoint_type": "SM_ENDPOINT",
     "target_container": "flood-container",
     "timeout_minutes": 15
+  },
+  {
+    "name": "Failure - Normal Success",
+    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/tile.tif",
+    "model_name": "failure",
+    "endpoint_type": "SM_ENDPOINT",
+    "timeout_minutes": 10
   }
 ]
