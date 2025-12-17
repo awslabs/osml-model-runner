@@ -204,7 +204,7 @@ describe("loadDeploymentConfig", () => {
         region: "us-west-2"
       },
       networkConfig: {
-        vpcId: "invalid-vpc-id"
+        VPC_ID: "invalid-vpc-id"
       }
     };
 
@@ -223,9 +223,9 @@ describe("loadDeploymentConfig", () => {
         region: "us-west-2"
       },
       networkConfig: {
-        vpcId: "vpc-12345678",
-        targetSubnets: ["subnet-12345"],
-        securityGroupId: "invalid-sg-id"
+        VPC_ID: "vpc-12345678",
+        TARGET_SUBNETS: ["subnet-12345"],
+        SECURITY_GROUP_ID: "invalid-sg-id"
       }
     };
 
@@ -236,7 +236,7 @@ describe("loadDeploymentConfig", () => {
     }).toThrow(/Invalid security group ID format/);
   });
 
-  test("requires targetSubnets when vpcId is provided", () => {
+  test("requires TARGET_SUBNETS when VPC_ID is provided", () => {
     const config = {
       projectName: "test-project",
       account: {
@@ -244,7 +244,7 @@ describe("loadDeploymentConfig", () => {
         region: "us-west-2"
       },
       networkConfig: {
-        vpcId: "vpc-12345678"
+        VPC_ID: "vpc-12345678"
       }
     };
 
@@ -252,10 +252,10 @@ describe("loadDeploymentConfig", () => {
 
     expect(() => {
       loadDeploymentConfig();
-    }).toThrow(/targetSubnets must also be specified/);
+    }).toThrow(/TARGET_SUBNETS must also be specified/);
   });
 
-  test("validates targetSubnets is array when provided", () => {
+  test("validates TARGET_SUBNETS is array when provided", () => {
     const config = {
       projectName: "test-project",
       account: {
@@ -263,8 +263,8 @@ describe("loadDeploymentConfig", () => {
         region: "us-west-2"
       },
       networkConfig: {
-        vpcId: "vpc-12345678",
-        targetSubnets: "not-an-array"
+        VPC_ID: "vpc-12345678",
+        TARGET_SUBNETS: "not-an-array"
       }
     };
 
@@ -283,9 +283,9 @@ describe("loadDeploymentConfig", () => {
         region: "us-west-2"
       },
       networkConfig: {
-        vpcId: "vpc-12345678",
-        targetSubnets: ["subnet-12345", "subnet-67890"],
-        securityGroupId: "sg-1234567890abcdef0"
+        VPC_ID: "vpc-12345678",
+        TARGET_SUBNETS: ["subnet-12345", "subnet-67890"],
+        SECURITY_GROUP_ID: "sg-1234567890abcdef0"
       }
     };
 

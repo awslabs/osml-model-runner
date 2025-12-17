@@ -19,9 +19,10 @@
  *     "isAdc": false      // Optional: defaults to false if not specified
  *   },
  *   "networkConfig": {
- *     "vpcId": "vpc-abc123",  // Optional: if not provided, a new VPC will be created
- *     "targetSubnets": ["subnet-12345", "subnet-67890"],  // Required when vpcId is provided: specific subnets to use
- *     "securityGroupId": "sg-1234567890abcdef0"  // Optional: security group for test endpoints
+ *     "VPC_ID": "vpc-abc123",  // Optional: if not provided, a new VPC will be created
+ *     "TARGET_SUBNETS": ["subnet-12345", "subnet-67890"],  // Required when VPC_ID is provided
+ *     "SECURITY_GROUP_ID": "sg-1234567890abcdef0",  // Optional: import existing security group
+ *     "SECURITY_GROUP_NAME": "my-security-group"  // Optional: name for new security group
  *   },
  *   "dataplaneConfig": {
  *     "CONTAINER_URI": "awsosml/osml-model-runner:latest",
@@ -278,61 +279,41 @@ export function loadDeploymentConfig(): DeploymentConfig {
     validateStringField(accountObj.region, "account.region")
   );
 
-  // Parse and validate networking configuration
+  // Parse optional Network configuration
   let networkConfig: DeploymentConfig["networkConfig"] = undefined;
   if (
-    "networkConfig" in parsedObj &&
     parsedObj.networkConfig &&
-    typeof parsedObj.networkConfig === "object"
+    typeof parsedObj.networkConfig === "object" &&
+    parsedObj.networkConfig !== null
   ) {
-    // Convert the parsed networkConfig to the format expected by NetworkConfig
-    const networkConfigData: Record<string, unknown> = {};
-    const parsedNetworkConfig = parsedObj.networkConfig as Record<
+    const networkConfigData = parsedObj.networkConfig as Record<
       string,
       unknown
     >;
 
-    // Map vpcId to VPC_ID
-    if (
-      parsedNetworkConfig.vpcId !== undefined &&
-      parsedNetworkConfig.vpcId !== null
-    ) {
-      networkConfigData.VPC_ID = validateVpcId(
-        validateStringField(parsedNetworkConfig.vpcId, "networkConfig.vpcId")
+    // Validate VPC_ID format if provided
+    if (networkConfigData.VPC_ID !== undefined) {
+      validateVpcId(
+        validateStringField(networkConfigData.VPC_ID, "networkConfig.VPC_ID")
       );
     }
 
-    // Map targetSubnets to TARGET_SUBNETS
-    if (
-      parsedNetworkConfig.targetSubnets !== undefined &&
-      parsedNetworkConfig.targetSubnets !== null
-    ) {
-      if (Array.isArray(parsedNetworkConfig.targetSubnets)) {
-        networkConfigData.TARGET_SUBNETS =
-          parsedNetworkConfig.targetSubnets.map(
-            (subnetId: unknown, index: number) =>
-              validateStringField(
-                subnetId,
-                `networkConfig.targetSubnets[${index}]`
-              )
-          );
-      } else {
+    // Validate TARGET_SUBNETS is an array if provided
+    if (networkConfigData.TARGET_SUBNETS !== undefined) {
+      if (!Array.isArray(networkConfigData.TARGET_SUBNETS)) {
         throw new DeploymentConfigError(
-          "Field 'networkConfig.targetSubnets' must be an array",
-          "networkConfig.targetSubnets"
+          "Field 'networkConfig.TARGET_SUBNETS' must be an array",
+          "networkConfig.TARGET_SUBNETS"
         );
       }
     }
 
-    // Map securityGroupId to SECURITY_GROUP_ID
-    if (
-      parsedNetworkConfig.securityGroupId !== undefined &&
-      parsedNetworkConfig.securityGroupId !== null
-    ) {
-      networkConfigData.SECURITY_GROUP_ID = validateSecurityGroupId(
+    // Validate SECURITY_GROUP_ID format if provided
+    if (networkConfigData.SECURITY_GROUP_ID !== undefined) {
+      validateSecurityGroupId(
         validateStringField(
-          parsedNetworkConfig.securityGroupId,
-          "networkConfig.securityGroupId"
+          networkConfigData.SECURITY_GROUP_ID,
+          "networkConfig.SECURITY_GROUP_ID"
         )
       );
     }
@@ -345,12 +326,12 @@ export function loadDeploymentConfig(): DeploymentConfig {
         networkConfigData.TARGET_SUBNETS.length === 0)
     ) {
       throw new DeploymentConfigError(
-        "When vpcId is provided, targetSubnets must also be specified with at least one subnet ID",
-        "networkConfig.targetSubnets"
+        "When VPC_ID is provided, TARGET_SUBNETS must also be specified with at least one subnet ID",
+        "networkConfig.TARGET_SUBNETS"
       );
     }
 
-    // Create NetworkConfig instance
+    // Create NetworkConfig instance with all properties passed through
     networkConfig = new NetworkConfig(networkConfigData);
   }
 

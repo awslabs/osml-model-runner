@@ -178,9 +178,9 @@ Update the contents:
     "isAdc": <true/false>
   },
   "networkConfig": {
-    "vpcId": "<YOUR-VPC-ID>",
-    "targetSubnets": ["subnet-12345", "subnet-67890"],
-    "securityGroupId": "sg-1234567890abcdef0"
+    "VPC_ID": "<YOUR-VPC-ID>",
+    "TARGET_SUBNETS": ["subnet-12345", "subnet-67890"],
+    "SECURITY_GROUP_ID": "sg-1234567890abcdef0"
   },
   "deployIntegrationTests": <true/false>
 }
@@ -210,18 +210,19 @@ The `deployIntegrationTests` flag controls whether to deploy additional stacks c
 
 The CDK application creates a shared VPC that is used by both the main model runner stack and the test models stack (when enabled). VPC configuration is handled through the `networkConfig` section in your deployment.json:
 
-- **If `networkConfig.vpcId` is provided**: Uses the existing VPC with the specified ID
-- **If `networkConfig.vpcId` is not provided**: Creates a new VPC using `Network` with sensible defaults:
+- **If `networkConfig.VPC_ID` is provided**: Uses the existing VPC with the specified ID
+- **If `networkConfig.VPC_ID` is not provided**: Creates a new VPC using `Network` with sensible defaults:
   - Public and private subnets across 2 availability zones
   - NAT Gateway for private subnet internet access
   - CIDR block: `10.0.0.0/16`
 
 **VPC Configuration Options:**
 
-When using an existing VPC (`networkConfig.vpcId` provided), you can also specify:
+When using an existing VPC (`networkConfig.VPC_ID` provided), you can also specify:
 
-- **`targetSubnets`**: Array of specific subnet IDs to use for test endpoints
-- **`securityGroupId`**: Security group ID to use for test endpoints
+- **`TARGET_SUBNETS`**: Array of specific subnet IDs to use for test endpoints
+- **`SECURITY_GROUP_ID`**: Security group ID to use for test endpoints
+- **`SECURITY_GROUP_NAME`**: Name for a new security group (when not importing an existing one)
 
 **Example configurations:**
 
@@ -251,9 +252,9 @@ Import an existing VPC with specific subnets and security group:
     "isAdc": false
   },
   "networkConfig": {
-    "vpcId": "vpc-abc123",
-    "targetSubnets": ["subnet-12345", "subnet-67890"],
-    "securityGroupId": "sg-1234567890abcdef0"
+    "VPC_ID": "vpc-abc123",
+    "TARGET_SUBNETS": ["subnet-12345", "subnet-67890"],
+    "SECURITY_GROUP_ID": "sg-1234567890abcdef0"
   },
   "deployIntegrationTests": true
 }
