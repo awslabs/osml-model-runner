@@ -6,11 +6,6 @@
     "prodLike": false,
     "isAdc": false
   },
-  "networkConfig": {
-    "vpcId": "vpc-abc123def",
-    "targetSubnets": ["subnet-12345", "subnet-67890"],
-    "securityGroupId": "sg-1234567890abcdef0"
-  },
   "dataplaneConfig": {
     "BUILD_FROM_SOURCE": true
   },
