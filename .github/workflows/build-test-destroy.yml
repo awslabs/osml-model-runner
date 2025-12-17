@@ -41,7 +41,6 @@ jobs:
     uses: ./.github/workflows/deploy.yml
     with:
       aws_region: ${{ needs.get-aws-region.outputs.aws_region }}
-      build_from_source: true
     secrets: inherit
 
   test:

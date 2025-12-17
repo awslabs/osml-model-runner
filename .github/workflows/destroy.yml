@@ -41,7 +41,7 @@ jobs:
         uses: ./.github/actions/generate-deployment-json
         with:
           account_id: ${{ secrets.MODEL_RUNNER_ACCOUNT_ID }}
-          build_from_source: 'false'
+          region: ${{ inputs.aws_region }}
       - name: Build CDK
         working-directory: cdk
         run: npm run build
