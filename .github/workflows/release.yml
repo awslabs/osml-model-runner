@@ -20,11 +20,7 @@ jobs:
     needs: [test]
     uses: ./.github/workflows/pypi.yml
     secrets: inherit
-  docker:
-    needs: [test]
-    uses: ./.github/workflows/docker.yml
-    secrets: inherit
   docs:
-    needs: [pypi, docker]
+    needs: [pypi]
     uses: ./.github/workflows/docs.yml
     secrets: inherit
