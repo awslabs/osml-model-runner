@@ -16,11 +16,7 @@ jobs:
   test:
     uses: ./.github/workflows/tox.yml
     secrets: inherit
-  pypi:
-    needs: [test]
-    uses: ./.github/workflows/pypi.yml
-    secrets: inherit
   docs:
-    needs: [pypi]
+    needs: [test]
     uses: ./.github/workflows/docs.yml
     secrets: inherit
