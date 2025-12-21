@@ -4,7 +4,7 @@ This CDK project deploys the core infrastructure for running **OSML Model Runner
 
 ---
 
-## 📋 Prerequisites
+## Prerequisites
 
 Before deploying, ensure the following tools and resources are available:
 
@@ -16,7 +16,7 @@ Before deploying, ensure the following tools and resources are available:
 
 ---
 
-## 🏗️ Stacks Overview
+## Stacks Overview
 
 This CDK application deploys multiple stacks that work together to provide the complete Model Runner infrastructure. Understanding what each stack creates will help you plan your deployment and manage resources effectively.
 
@@ -186,7 +186,7 @@ Update the contents:
 }
 ```
 
-💡 This file is validated at runtime to ensure all required fields are provided. Deployment will fail if any required fields are missing or invalid.
+Note: This file is validated at runtime to ensure all required fields are provided. Deployment will fail if any required fields are missing or invalid.
 
 ### Integration Tests Configuration
 
@@ -354,7 +354,7 @@ This command will:
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 This CDK project uses a **modular construct architecture** that separates concerns into focused, reusable classes:
 
@@ -405,7 +405,7 @@ const sinks = dataplane.sinks;
 
 ---
 
-## 🧪 Development & Testing
+## Development & Testing
 
 ### Useful Commands
 
@@ -423,7 +423,7 @@ const sinks = dataplane.sinks;
 
 ---
 
-## 🔐 Security & Best Practices
+## Security & Best Practices
 
 This project integrates **cdk-nag** to validate infrastructure against AWS security best practices. Running `npm run test` will:
 
@@ -431,7 +431,7 @@ This project integrates **cdk-nag** to validate infrastructure against AWS secur
 - Ensure encryption is enabled where applicable
 - Warn about missing logging or compliance settings
 
-📄 **Review the cdk-nag report** to maintain compliance and security posture before production deployments.
+**Review the cdk-nag report** to maintain compliance and security posture before production deployments.
 
 ### CDK-NAG Report Generation
 
@@ -490,7 +490,7 @@ For deeper hardening guidance, refer to:
 
 ---
 
-## 🧠 Summary
+## Summary
 
 This CDK project provides infrastructure-as-code for deploying geospatial inference capabilities using AWS native services. It includes security validations via cdk-nag and supports deployment across multiple environments through configuration files.
 
