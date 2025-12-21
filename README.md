@@ -194,4 +194,4 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 
 ## License
 
-MIT No Attribution Licensed. See [LICENSE](LICENSE).
+This library is licensed under the Apache 2.0 License. See [LICENSE](LICENSE).

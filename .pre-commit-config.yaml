@@ -55,6 +55,7 @@ repos:
             .+\.json|
             test/data/.*|
             LICENSE|
+            NOTICE|
             tox.ini|
             pyproject.toml|
             setup.cfg|
@@ -87,6 +88,7 @@ repos:
             .+\.json|
             test/data/.*|
             LICENSE|
+            NOTICE|
             tox.ini|
             pyproject.toml|
             setup.cfg|
