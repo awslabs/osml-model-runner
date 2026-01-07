@@ -13,6 +13,7 @@ The application outputs common metrics to capture the processing time, invocatio
 |                  |   Errors    | Number of times the operation failed                  |
 |                  |  Throttles  | Number of times the operation had to wait             |
 |                  |   Retries   | Number of times the operation had to be retried       |
+|                  | Utilization | Percentage of capacity currently in use (0-100%)      |
 
 These metrics are emitted for different portions of each image processing job and we expect those
 timelines to be heavily influenced by details of the imagery and computer vision models provided with each request.
@@ -21,7 +22,7 @@ to provide more detailed context for each metric value.
 
 | Dimension   |                      Sample Values                      | Notes                                                                                                                                                                                                                            |
 |:------------|:-------------------------------------------------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Operation   | ImageProcessing, RegionProcessing, TileGeneration, ...  | This will let us track latency, errors, etc. for various subsections of the dataflow. For now this will primairly decompose to the image, region, and tile distributed computing but it can be expanded in the future as needed. |
+| Operation   | ImageProcessing, RegionProcessing, TileGeneration, Scheduling, ...  | This will let us track latency, errors, etc. for various subsections of the dataflow. For now this will primairly decompose to the image, region, and tile distributed computing but it can be expanded in the future as needed. |
 | ModelName   | maritime-vessel-detector, urban-building-extractor, ... | The overall time to process an image is highly dependent on the model complexity and endpoint configuration. This dimension allows us to break out metrics on a per model basis.                                                 |
 | InputFormat |                       NITF, TIFF                        | The format of the input image is another factor that can greatly impact processing time since it drives our IO and tile cutting timelines.                                                                                       |
 
@@ -37,10 +38,10 @@ requests are currently being buffered by the job scheduler. These metrics can be
 the input SQS queue to track how many jobs are currently waiting to be processed. These values are often used to
 auto-scale the ModelRunner cluster or computer vision endpoints.
 
-| Namespace        |   Metric                              | Notes                                                 |
-|:-----------------|:-------------------------------------:|:------------------------------------------------------|
-| OSML/ModelRunner | ApproximateNumberOfRequestsBuffered   | Total number of requests pulled from SQS not complete |
-|                  | ApproximateNumberOfRequestsVisible    | Total number of requests waiting to be processed      |
+| Namespace        |   Operation | Metric                              | Notes                                                 |
+|:-----------------|:------------:|:-------------------------------------:|:------------------------------------------------------|
+| OSML/ModelRunner | Scheduling | ApproximateNumberOfRequestsBuffered   | Total number of requests pulled from SQS not complete |
+| OSML/ModelRunner | Scheduling |ApproximateNumberOfRequestsVisible    | Total number of requests waiting to be processed      |
 
 ## Dashboards
 
