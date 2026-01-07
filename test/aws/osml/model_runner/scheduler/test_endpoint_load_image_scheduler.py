@@ -3,7 +3,7 @@
 import time
 import unittest
 from typing import List, Optional
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import boto3
 from moto import mock_aws
@@ -339,9 +339,13 @@ class TestEndpointLoadImageScheduler(unittest.TestCase):
         # max_capacity = 100, target = 0.8, so target_capacity = 80
         # current_load = 10*4 + 2*4 = 40 + 8 = 48
         # available = 80 - 48 = 32
-        available_capacity = scheduler._calculate_available_capacity("endpoint1-model", None, outstanding_requests)
+        available_capacity, max_capacity, current_utilization = scheduler._calculate_available_capacity(
+            "endpoint1-model", None, outstanding_requests
+        )
 
         self.assertEqual(available_capacity, 32)
+        self.assertEqual(max_capacity, 100)
+        self.assertEqual(current_utilization, 48)
 
     def test_calculate_available_capacity_with_target_100_percent(self):
         """Test _calculate_available_capacity with max_capacity=50, target=1.0, current_load=30 returns 20"""
@@ -376,9 +380,13 @@ class TestEndpointLoadImageScheduler(unittest.TestCase):
         # max_capacity = 50, target = 1.0, so target_capacity = 50
         # current_load = 7*4 = 28
         # available = 50 - 28 = 22
-        available_capacity = scheduler._calculate_available_capacity("endpoint1-model", None, outstanding_requests)
+        available_capacity, max_capacity, current_utilization = scheduler._calculate_available_capacity(
+            "endpoint1-model", None, outstanding_requests
+        )
 
         self.assertEqual(available_capacity, 22)
+        self.assertEqual(max_capacity, 50)
+        self.assertEqual(current_utilization, 28)
 
     def test_calculate_available_capacity_with_target_120_percent(self):
         """Test _calculate_available_capacity with max_capacity=200, target=1.2, current_load=100 returns 140"""
@@ -412,9 +420,13 @@ class TestEndpointLoadImageScheduler(unittest.TestCase):
         # max_capacity = 200, target = 1.2, so target_capacity = 240
         # current_load = 25*4 = 100
         # available = 240 - 100 = 140
-        available_capacity = scheduler._calculate_available_capacity("endpoint1-model", None, outstanding_requests)
+        available_capacity, max_capacity, current_utilization = scheduler._calculate_available_capacity(
+            "endpoint1-model", None, outstanding_requests
+        )
 
         self.assertEqual(available_capacity, 140)
+        self.assertEqual(max_capacity, 200)
+        self.assertEqual(current_utilization, 100)
 
     def test_calculate_available_capacity_filters_by_endpoint_and_variant(self):
         """Test _calculate_available_capacity filters requests by endpoint and variant correctly"""
@@ -466,20 +478,32 @@ class TestEndpointLoadImageScheduler(unittest.TestCase):
         # Should only count request1 (40) and request4 (12) = 52 total load
         # max_capacity = 100, target = 1.0, so target_capacity = 100
         # available = 100 - 52 = 48
-        available_capacity = scheduler._calculate_available_capacity("endpoint1-model", "variant-1", outstanding_requests)
+        available_capacity, max_capacity, current_utilization = scheduler._calculate_available_capacity(
+            "endpoint1-model", "variant-1", outstanding_requests
+        )
         self.assertEqual(available_capacity, 48)
+        self.assertEqual(max_capacity, 100)
+        self.assertEqual(current_utilization, 52)
 
         # Calculate available capacity for endpoint1-model, variant-2
         # Should only count request2 (20) = 20 total load
         # available = 100 - 20 = 80
-        available_capacity = scheduler._calculate_available_capacity("endpoint1-model", "variant-2", outstanding_requests)
+        available_capacity, max_capacity, current_utilization = scheduler._calculate_available_capacity(
+            "endpoint1-model", "variant-2", outstanding_requests
+        )
         self.assertEqual(available_capacity, 80)
+        self.assertEqual(max_capacity, 100)
+        self.assertEqual(current_utilization, 20)
 
         # Calculate available capacity for endpoint2-model, variant-1
         # Should only count request3 (32) = 32 total load
         # available = 100 - 32 = 68
-        available_capacity = scheduler._calculate_available_capacity("endpoint2-model", "variant-1", outstanding_requests)
+        available_capacity, max_capacity, current_utilization = scheduler._calculate_available_capacity(
+            "endpoint2-model", "variant-1", outstanding_requests
+        )
         self.assertEqual(available_capacity, 68)
+        self.assertEqual(max_capacity, 100)
+        self.assertEqual(current_utilization, 32)
 
     def test_get_next_scheduled_request_throttling_disabled(self):
         """Test throttling_enabled=False schedules without capacity checks"""
@@ -876,3 +900,316 @@ class TestEndpointLoadImageScheduler(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@mock_aws
+class TestEndpointLoadImageSchedulerMetricsEmission(unittest.TestCase):
+    """Test cases for metrics emission in EndpointLoadImageScheduler"""
+
+    def setUp(self):
+        """Set up test fixtures before each test method."""
+        self.sagemaker = boto3.client("sagemaker", region_name="us-west-2")
+
+        # Create mock endpoints in SageMaker
+        self.endpoints = {
+            "endpoint1": {"InstanceCount": 2},
+            "endpoint2": {"InstanceCount": 1},
+        }
+
+        for endpoint_id, config in self.endpoints.items():
+            self.sagemaker.create_model(
+                ModelName=f"{endpoint_id}-model", PrimaryContainer={"Image": "test-model-container-image"}
+            )
+            self.sagemaker.create_endpoint_config(
+                EndpointConfigName=f"{endpoint_id}-config",
+                ProductionVariants=[
+                    {
+                        "InstanceType": "ml.m5.xlarge",
+                        "InitialInstanceCount": config["InstanceCount"],
+                        "VariantName": "AllTraffic",
+                        "ModelName": f"{endpoint_id}-model",
+                    }
+                ],
+            )
+            self.sagemaker.create_endpoint(EndpointName=f"{endpoint_id}-model", EndpointConfigName=f"{endpoint_id}-config")
+
+        # Create mock BufferedImageRequestQueue
+        self.mock_queue = Mock()
+        self.mock_queue.retry_time = 600
+
+    def create_mock_metrics_logger(self):
+        """Create a mock MetricsLogger that passes isinstance checks"""
+        from unittest.mock import MagicMock
+
+        from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+
+        mock_metrics = MagicMock(spec=MetricsLogger)
+        mock_metrics.put_dimensions = Mock()
+        mock_metrics.put_metric = Mock()
+        return mock_metrics
+
+    def create_sample_image_request(self, job_name: str = "test-job", model_name: str = "endpoint1-model") -> ImageRequest:
+        """Helper method to create a sample ImageRequest"""
+        return ImageRequest.from_external_message(
+            {
+                "jobName": job_name,
+                "jobId": f"{job_name}-id",
+                "imageUrls": ["s3://test-bucket/test.nitf"],
+                "outputs": [
+                    {"type": "S3", "bucket": "test-bucket", "prefix": "results"},
+                    {"type": "Kinesis", "stream": "test-stream", "batchSize": 1000},
+                ],
+                "imageProcessor": {"name": model_name, "type": "SM_ENDPOINT"},
+                "imageProcessorTileSize": 2048,
+                "imageProcessorTileOverlap": 50,
+            }
+        )
+
+    def create_status_record(
+        self,
+        job_name: str,
+        model_name: str,
+        request_time: Optional[int] = None,
+        last_attempt: Optional[int] = None,
+        num_attempts: Optional[int] = None,
+        regions_complete: Optional[List[str]] = None,
+        region_count: Optional[int] = None,
+    ) -> ImageRequestStatusRecord:
+        """Helper method to create a status record"""
+        image_request = self.create_sample_image_request(job_name, model_name)
+        image_status_record = ImageRequestStatusRecord.new_from_request(image_request)
+        if request_time is not None:
+            image_status_record.request_time = request_time
+        if last_attempt is not None:
+            image_status_record.last_attempt = last_attempt
+        if num_attempts is not None:
+            image_status_record.num_attempts = num_attempts
+        if regions_complete is not None:
+            image_status_record.regions_complete = regions_complete
+        if region_count is not None:
+            image_status_record.region_count = region_count
+        return image_status_record
+
+    def test_throttles_metric_increments_when_throttling_occurs(self):
+        """Test Throttles metric (Operation=Scheduling, ModelName=<endpoint>) increments when throttling occurs"""
+        from aws_embedded_metrics.unit import Unit
+
+        from aws.osml.model_runner.app_config import MetricLabels
+
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        mock_metrics = self.create_mock_metrics_logger()
+
+        # Call the underlying method without the decorator
+        scheduler._emit_throttle_metric.__wrapped__(scheduler, "endpoint1-model", metrics=mock_metrics)
+
+        mock_metrics.put_dimensions.assert_called_once_with(
+            {
+                MetricLabels.OPERATION_DIMENSION: MetricLabels.SCHEDULING_OPERATION,
+                MetricLabels.MODEL_NAME_DIMENSION: "endpoint1-model",
+            }
+        )
+        mock_metrics.put_metric.assert_called_once_with(MetricLabels.THROTTLES, 1, str(Unit.COUNT.value))
+
+    def test_utilization_metric_shows_correct_percentage(self):
+        """Test Utilization metric (Operation=Scheduling, ModelName=<endpoint>) shows correct percentage (0-100%)"""
+        from aws_embedded_metrics.unit import Unit
+
+        from aws.osml.model_runner.app_config import MetricLabels
+
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        mock_metrics = self.create_mock_metrics_logger()
+
+        # Test 50% utilization
+        scheduler._emit_utilization_metric.__wrapped__(
+            scheduler, "endpoint1-model", max_capacity=100, current_utilization=50, metrics=mock_metrics
+        )
+        mock_metrics.put_metric.assert_called_with(MetricLabels.UTILIZATION, 50.0, str(Unit.PERCENT.value))
+
+        mock_metrics.reset_mock()
+
+        # Test 100% utilization
+        scheduler._emit_utilization_metric.__wrapped__(
+            scheduler, "endpoint1-model", max_capacity=100, current_utilization=100, metrics=mock_metrics
+        )
+        mock_metrics.put_metric.assert_called_with(MetricLabels.UTILIZATION, 100.0, str(Unit.PERCENT.value))
+
+    def test_utilization_metric_clamps_to_valid_range(self):
+        """Test Utilization metric clamps values to 0-100% range"""
+        from aws_embedded_metrics.unit import Unit
+
+        from aws.osml.model_runner.app_config import MetricLabels
+
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        mock_metrics = self.create_mock_metrics_logger()
+
+        # Over 100% should be clamped to 100%
+        scheduler._emit_utilization_metric.__wrapped__(
+            scheduler, "endpoint1-model", max_capacity=100, current_utilization=150, metrics=mock_metrics
+        )
+        mock_metrics.put_metric.assert_called_with(MetricLabels.UTILIZATION, 100.0, str(Unit.PERCENT.value))
+
+    def test_utilization_metric_handles_zero_max_capacity(self):
+        """Test Utilization metric handles zero max_capacity gracefully"""
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        mock_metrics = self.create_mock_metrics_logger()
+
+        # Zero max_capacity should not emit metric
+        scheduler._emit_utilization_metric.__wrapped__(
+            scheduler, "endpoint1-model", max_capacity=0, current_utilization=50, metrics=mock_metrics
+        )
+        mock_metrics.put_metric.assert_not_called()
+
+    def test_duration_metric_records_scheduling_latency(self):
+        """Test Duration metric (Operation=Scheduling) records scheduling decision latency"""
+        from aws_embedded_metrics.unit import Unit
+
+        from aws.osml.model_runner.app_config import MetricLabels
+        from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
+
+        mock_capacity_estimator = Mock(spec=EndpointCapacityEstimator)
+        mock_capacity_estimator.estimate_capacity.return_value = 200
+
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=mock_capacity_estimator,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        time_in_past = int(time.time() - 5)
+        request = self.create_status_record("job1", "endpoint1-model", request_time=time_in_past, region_count=5)
+
+        self.mock_queue.get_outstanding_requests.return_value = [request]
+        self.mock_queue.requested_jobs_table.start_next_attempt.return_value = True
+
+        mock_metrics = self.create_mock_metrics_logger()
+
+        # Call the helper method directly to test metric emission
+        scheduler._emit_scheduling_metrics.__wrapped__(scheduler, duration_ms=100.0, metrics=mock_metrics)
+
+        duration_calls = [
+            call
+            for call in mock_metrics.put_metric.call_args_list
+            if call[0][0] == MetricLabels.DURATION and call[0][2] == str(Unit.MILLISECONDS.value)
+        ]
+        self.assertEqual(len(duration_calls), 1)
+        self.assertGreaterEqual(duration_calls[0][0][1], 0)
+
+    def test_invocations_metric_increments_when_evaluating_images(self):
+        """Test Invocations metric (Operation=Scheduling) increments when evaluating images"""
+        from aws_embedded_metrics.unit import Unit
+
+        from aws.osml.model_runner.app_config import MetricLabels
+        from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
+
+        mock_capacity_estimator = Mock(spec=EndpointCapacityEstimator)
+        mock_capacity_estimator.estimate_capacity.return_value = 200
+
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            capacity_estimator=mock_capacity_estimator,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        time_in_past = int(time.time() - 5)
+        request = self.create_status_record("job1", "endpoint1-model", request_time=time_in_past, region_count=5)
+
+        self.mock_queue.get_outstanding_requests.return_value = [request]
+        self.mock_queue.requested_jobs_table.start_next_attempt.return_value = True
+
+        mock_metrics = self.create_mock_metrics_logger()
+
+        # Call the helper method directly to test metric emission
+        scheduler._emit_scheduling_metrics.__wrapped__(scheduler, duration_ms=100.0, metrics=mock_metrics)
+
+        invocations_calls = [
+            call
+            for call in mock_metrics.put_metric.call_args_list
+            if call[0][0] == MetricLabels.INVOCATIONS and call[0][2] == str(Unit.COUNT.value)
+        ]
+        self.assertEqual(len(invocations_calls), 1)
+        self.assertEqual(invocations_calls[0][0][1], 1)
+
+    def test_invocations_metric_not_emitted_when_no_requests(self):
+        """Test Invocations metric is not emitted when there are no outstanding requests"""
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        self.mock_queue.get_outstanding_requests.return_value = []
+
+        # Mock _emit_scheduling_metrics to verify it's not called when no requests
+        with patch.object(scheduler, "_emit_scheduling_metrics") as mock_emit:
+            scheduler.get_next_scheduled_request()
+            mock_emit.assert_not_called()
+
+    def test_metrics_follow_standard_modelrunner_pattern(self):
+        """Test metrics follow standard ModelRunner pattern with correct namespace and dimensions"""
+        from aws_embedded_metrics.unit import Unit
+
+        from aws.osml.model_runner.app_config import MetricLabels
+
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        mock_metrics = self.create_mock_metrics_logger()
+
+        scheduler._emit_throttle_metric.__wrapped__(scheduler, "test-endpoint", metrics=mock_metrics)
+
+        mock_metrics.put_dimensions.assert_called_with(
+            {
+                MetricLabels.OPERATION_DIMENSION: MetricLabels.SCHEDULING_OPERATION,
+                MetricLabels.MODEL_NAME_DIMENSION: "test-endpoint",
+            }
+        )
+        mock_metrics.put_metric.assert_called_with(MetricLabels.THROTTLES, 1, str(Unit.COUNT.value))
+
+    def test_throttle_metric_handles_none_metrics_logger(self):
+        """Test _emit_throttle_metric handles None metrics logger gracefully"""
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        # Should not raise exception when metrics is None
+        scheduler._emit_throttle_metric.__wrapped__(scheduler, "test-endpoint", metrics=None)
+
+    def test_utilization_metric_handles_none_metrics_logger(self):
+        """Test _emit_utilization_metric handles None metrics logger gracefully"""
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            throttling_enabled=True,
+            capacity_target_percentage=1.0,
+        )
+
+        # Should not raise exception when metrics is None
+        scheduler._emit_utilization_metric.__wrapped__(
+            scheduler, "test-endpoint", max_capacity=100, current_utilization=50, metrics=None
+        )
