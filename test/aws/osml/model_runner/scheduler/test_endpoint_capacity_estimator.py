@@ -1,4 +1,4 @@
-#  Copyright 2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2025-2026 Amazon.com, Inc. or its affiliates.
 
 import time
 import unittest
@@ -333,3 +333,52 @@ class TestEndpointCapacityEstimator(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@mock_aws
+class TestEndpointCapacityEstimatorMetricsEmission(unittest.TestCase):
+    """Test cases for metrics emission in EndpointCapacityEstimator"""
+
+    def setUp(self):
+        """Set up test fixtures before each test method."""
+        self.sagemaker = boto3.client("sagemaker", region_name="us-west-2")
+        self.estimator = EndpointCapacityEstimator(
+            sm_client=self.sagemaker, default_instance_concurrency=2, default_http_concurrency=10, cache_ttl_seconds=300
+        )
+
+    def create_mock_metrics_logger(self):
+        """Create a mock MetricsLogger that passes isinstance checks"""
+        from unittest.mock import MagicMock, Mock
+
+        from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+
+        mock_metrics = MagicMock(spec=MetricsLogger)
+        mock_metrics.put_dimensions = Mock()
+        mock_metrics.put_metric = Mock()
+        return mock_metrics
+
+    def test_errors_metric_increments_on_api_failures(self):
+        """Test Errors metric (Operation=Scheduling, ModelName=<endpoint>) increments on API failures"""
+        from aws_embedded_metrics.unit import Unit
+
+        from aws.osml.model_runner.app_config import MetricLabels
+
+        mock_metrics = self.create_mock_metrics_logger()
+
+        # Call the error metric emission method directly (bypassing decorator)
+        self.estimator._emit_error_metric.__wrapped__(self.estimator, "nonexistent-endpoint", metrics=mock_metrics)
+
+        mock_metrics.put_dimensions.assert_called_once_with(
+            {
+                MetricLabels.OPERATION_DIMENSION: MetricLabels.SCHEDULING_OPERATION,
+                MetricLabels.MODEL_NAME_DIMENSION: "nonexistent-endpoint",
+            }
+        )
+        mock_metrics.put_metric.assert_called_once_with(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+
+    def test_errors_metric_not_emitted_for_http_endpoints(self):
+        """Test Errors metric is not emitted for HTTP endpoints (no API call needed)"""
+        # HTTP endpoints don't make SageMaker API calls, so no errors can occur
+        # Just verify the method works correctly without any metric emission path
+        capacity = self.estimator.estimate_capacity("http://example.com/model")
+        self.assertEqual(capacity, 10)

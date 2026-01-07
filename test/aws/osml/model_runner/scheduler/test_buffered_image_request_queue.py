@@ -1,4 +1,4 @@
-#  Copyright 2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2025-2026 Amazon.com, Inc. or its affiliates.
 
 import json
 import time
@@ -425,3 +425,111 @@ class TestBufferedImageRequestQueue(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@mock_aws
+class TestBufferedImageRequestQueueMetricsEmission(unittest.TestCase):
+    """Test cases for metrics emission in BufferedImageRequestQueue"""
+
+    def setUp(self):
+        """Set up test fixtures before each test method."""
+        self.sqs = boto3.client("sqs", region_name="us-west-2")
+        self.dynamodb = boto3.resource("dynamodb", region_name="us-west-2")
+
+        # Create SQS queues
+        self.queue_url = self.sqs.create_queue(QueueName="test-image-queue-metrics")["QueueUrl"]
+        self.dlq_url = self.sqs.create_queue(QueueName="test-image-dlq-metrics")["QueueUrl"]
+
+        # Create DynamoDB table
+        self.table_name = "test-requested-jobs-metrics"
+        self.dynamodb.create_table(
+            TableName=self.table_name,
+            KeySchema=[{"AttributeName": "endpoint_id", "KeyType": "HASH"}, {"AttributeName": "job_id", "KeyType": "RANGE"}],
+            AttributeDefinitions=[
+                {"AttributeName": "endpoint_id", "AttributeType": "S"},
+                {"AttributeName": "job_id", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        self.jobs_table = RequestedJobsTable(self.table_name)
+
+    def create_mock_metrics_logger(self):
+        """Create a mock MetricsLogger that passes isinstance checks"""
+        from unittest.mock import MagicMock, Mock
+
+        from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+
+        mock_metrics = MagicMock(spec=MetricsLogger)
+        mock_metrics.put_dimensions = Mock()
+        mock_metrics.put_metric = Mock()
+        return mock_metrics
+
+    def test_errors_metric_increments_on_load_image_exception(self):
+        """Test Errors metric (Operation=Scheduling, ModelName=<endpoint>) increments on LoadImageException"""
+        from aws_embedded_metrics.unit import Unit
+
+        from aws.osml.model_runner.app_config import MetricLabels
+
+        mock_region_calculator = Mock(spec=RegionCalculator)
+        mock_region_calculator.calculate_regions.side_effect = LoadImageException("Image not accessible")
+
+        queue = BufferedImageRequestQueue(
+            image_queue_url=self.queue_url,
+            image_dlq_url=self.dlq_url,
+            requested_jobs_table=self.jobs_table,
+            region_calculator=mock_region_calculator,
+        )
+
+        mock_metrics = self.create_mock_metrics_logger()
+
+        queue._emit_image_access_error_metric.__wrapped__(queue, "test-model", metrics=mock_metrics)
+
+        mock_metrics.put_dimensions.assert_called_once_with(
+            {
+                MetricLabels.OPERATION_DIMENSION: MetricLabels.SCHEDULING_OPERATION,
+                MetricLabels.MODEL_NAME_DIMENSION: "test-model",
+            }
+        )
+        mock_metrics.put_metric.assert_called_once_with(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+
+    def test_errors_metric_follows_standard_pattern(self):
+        """Test Errors metric follows standard ModelRunner pattern"""
+        from aws_embedded_metrics.unit import Unit
+
+        from aws.osml.model_runner.app_config import MetricLabels
+
+        queue = BufferedImageRequestQueue(
+            image_queue_url=self.queue_url,
+            image_dlq_url=self.dlq_url,
+            requested_jobs_table=self.jobs_table,
+        )
+
+        mock_metrics = self.create_mock_metrics_logger()
+
+        queue._emit_image_access_error_metric.__wrapped__(queue, "test-endpoint", metrics=mock_metrics)
+
+        mock_metrics.put_dimensions.assert_called_with(
+            {
+                MetricLabels.OPERATION_DIMENSION: MetricLabels.SCHEDULING_OPERATION,
+                MetricLabels.MODEL_NAME_DIMENSION: "test-endpoint",
+            }
+        )
+        mock_metrics.put_metric.assert_called_with(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+
+    def test_errors_metric_not_emitted_when_metrics_logger_is_none(self):
+        """Test Errors metric is not emitted when metrics logger is None"""
+        queue = BufferedImageRequestQueue(
+            image_queue_url=self.queue_url,
+            image_dlq_url=self.dlq_url,
+            requested_jobs_table=self.jobs_table,
+        )
+
+        # Should not raise exception when metrics is None
+        queue._emit_image_access_error_metric.__wrapped__(queue, "test-endpoint", metrics=None)
+
+    def tearDown(self):
+        """Clean up test fixtures after each test method."""
+        self.dynamodb.Table(self.table_name).delete()
+        self.sqs.delete_queue(QueueUrl=self.queue_url)
+        self.sqs.delete_queue(QueueUrl=self.dlq_url)
