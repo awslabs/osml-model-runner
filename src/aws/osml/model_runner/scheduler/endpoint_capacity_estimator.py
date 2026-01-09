@@ -1,4 +1,4 @@
-#  Copyright 2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2025-2026 Amazon.com, Inc. or its affiliates.
 
 """
 EndpointCapacityEstimator calculates the maximum concurrent inference requests
@@ -8,7 +8,11 @@ an endpoint can handle, supporting both SageMaker and HTTP endpoints.
 import logging
 from typing import Dict, Optional
 
+from aws_embedded_metrics.metric_scope import metric_scope
+from aws_embedded_metrics.unit import Unit
 from cachetools import TTLCache
+
+from aws.osml.model_runner.app_config import MetricLabels
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +75,10 @@ class EndpointCapacityEstimator:
         - For capacity-based throttling, variant_name should always be specified
           to get accurate capacity for the selected variant
 
+        When SageMaker API calls fail, an Errors metric is emitted with dimensions:
+        - Operation=Scheduling
+        - ModelName=<endpoint_name>
+
         :param endpoint_name: Name of SageMaker endpoint or HTTP URL
         :param variant_name: Specific variant to calculate capacity for.
                             If None, returns capacity for all variants combined.
@@ -80,6 +88,10 @@ class EndpointCapacityEstimator:
         """
         # Check if this is an HTTP endpoint
         if self._is_http_endpoint(endpoint_name):
+            logger.debug(
+                f"HTTP endpoint detected: endpoint={endpoint_name}, "
+                f"using default_http_concurrency={self.default_http_concurrency}"
+            )
             return self.default_http_concurrency
 
         # For SageMaker endpoints, query capacity
@@ -102,18 +114,29 @@ class EndpointCapacityEstimator:
         configuration and calculates capacity based on variant types.
         Results are cached with automatic TTL-based eviction.
 
+        When SageMaker API calls fail, an Errors metric is emitted with dimensions:
+        - Operation=Scheduling
+        - ModelName=<endpoint_name>
+
         :param endpoint_name: Name of SageMaker endpoint
         :param variant_name: Specific variant to calculate capacity for, or None for all variants
         :return: Capacity in concurrent inference requests
         """
         # Check cache first (TTLCache handles expiration automatically)
         if endpoint_name in self._endpoint_cache:
+            logger.debug(f"Cache hit for endpoint {endpoint_name}")
             cached_metadata = self._endpoint_cache[endpoint_name]
             endpoint_arn = cached_metadata.get("EndpointArn")
             variants = cached_metadata.get("ProductionVariants", [])
-            return self._calculate_capacity_from_variants(variants, variant_name, endpoint_arn)
+            capacity = self._calculate_capacity_from_variants(variants, variant_name, endpoint_arn)
+            logger.debug(
+                f"Capacity calculation from cache: endpoint={endpoint_name}, "
+                f"variant={variant_name}, num_variants={len(variants)}, capacity={capacity}"
+            )
+            return capacity
 
         # Cache miss or expired - query SageMaker
+        logger.debug(f"Cache miss for endpoint {endpoint_name}, querying SageMaker API")
         try:
             response = self.sm_client.describe_endpoint(EndpointName=endpoint_name)
 
@@ -123,21 +146,40 @@ class EndpointCapacityEstimator:
             # Calculate capacity from variants
             endpoint_arn = response.get("EndpointArn")
             variants = response.get("ProductionVariants", [])
-            return self._calculate_capacity_from_variants(variants, variant_name, endpoint_arn)
+            capacity = self._calculate_capacity_from_variants(variants, variant_name, endpoint_arn)
+
+            logger.debug(
+                f"Capacity calculation from SageMaker API: endpoint={endpoint_name}, "
+                f"variant={variant_name}, num_variants={len(variants)}, capacity={capacity}"
+            )
+            return capacity
 
         except Exception as e:
-            logger.error(f"Failed to describe endpoint {endpoint_name}: {e}")
+            logger.error(
+                f"SageMaker API call failed for endpoint {endpoint_name}: {e}. "
+                f"Unable to retrieve endpoint configuration."
+            )
+
+            # Emit Errors metric with endpoint-specific dimensions
+            self._emit_error_metric(endpoint_name)
+
             # If we have stale cached data, use it as fallback
             # Note: This won't work with TTLCache since expired items are auto-removed
             # But we can still check if the item exists (might have been evicted due to size, not TTL)
             if endpoint_name in self._endpoint_cache:
-                logger.warning(f"Using cached capacity for endpoint {endpoint_name} after API failure")
+                logger.warning(
+                    f"SageMaker API failed for endpoint {endpoint_name}, using cached capacity as fallback. " f"Error: {e}"
+                )
                 cached_metadata = self._endpoint_cache[endpoint_name]
                 endpoint_arn = cached_metadata.get("EndpointArn")
                 variants = cached_metadata.get("ProductionVariants", [])
                 return self._calculate_capacity_from_variants(variants, variant_name, endpoint_arn)
+
             # No cache available, return default
-            logger.warning(f"No cached data available for endpoint {endpoint_name}, using default capacity")
+            logger.error(
+                f"SageMaker API failed and no cached data available for endpoint {endpoint_name}. "
+                f"Falling back to default capacity: {self.default_instance_concurrency}. Error: {e}"
+            )
             return self.default_instance_concurrency
 
     def _calculate_capacity_from_variants(
@@ -158,15 +200,28 @@ class EndpointCapacityEstimator:
             # Calculate capacity for specific variant only
             for variant in variants:
                 if variant.get("VariantName") == variant_name:
-                    return self._get_variant_capacity(variant, tags_dict)
+                    capacity = self._get_variant_capacity(variant, tags_dict)
+                    logger.debug(f"Calculated capacity for specific variant: variant={variant_name}, capacity={capacity}")
+                    return capacity
             # Variant not found, log warning and return 0
-            logger.warning(f"Variant {variant_name} not found in endpoint variants")
+            logger.warning(
+                f"Variant {variant_name} not found in endpoint variants. "
+                f"Available variants: {[v.get('VariantName') for v in variants]}"
+            )
             return 0
         else:
             # Calculate combined capacity for all variants
             total_capacity = 0
+            variant_capacities = []
             for variant in variants:
-                total_capacity += self._get_variant_capacity(variant, tags_dict)
+                variant_capacity = self._get_variant_capacity(variant, tags_dict)
+                variant_capacities.append(f"{variant.get('VariantName')}={variant_capacity}")
+                total_capacity += variant_capacity
+
+            logger.debug(
+                f"Calculated combined capacity for all variants: "
+                f"breakdown=[{', '.join(variant_capacities)}], total_capacity={total_capacity}"
+            )
             return total_capacity
 
     def _get_endpoint_tags(self, endpoint_arn: str) -> Dict[str, str]:
@@ -181,9 +236,11 @@ class EndpointCapacityEstimator:
 
         # Check cache first (TTLCache handles expiration automatically)
         if endpoint_arn in self._tags_cache:
+            logger.debug(f"Tags cache hit for endpoint ARN: {endpoint_arn}")
             return self._tags_cache[endpoint_arn]
 
         # Cache miss or expired - query tags
+        logger.debug(f"Tags cache miss for endpoint ARN: {endpoint_arn}, querying SageMaker ListTags API")
         try:
             response = self.sm_client.list_tags(ResourceArn=endpoint_arn)
             tags_list = response.get("Tags", [])
@@ -194,13 +251,19 @@ class EndpointCapacityEstimator:
             # Cache the tags (TTLCache handles eviction automatically)
             self._tags_cache[endpoint_arn] = tags_dict
 
+            logger.debug(f"Retrieved tags for endpoint: arn={endpoint_arn}, tags={tags_dict}")
+
             return tags_dict
 
         except Exception as e:
-            logger.warning(f"Failed to list tags for endpoint {endpoint_arn}: {e}")
+            logger.warning(
+                f"SageMaker ListTags API failed for endpoint ARN {endpoint_arn}: {e}. "
+                f"Proceeding without tags (will use default concurrency values)."
+            )
             # If we have cached data, use it as fallback
             # Note: With TTLCache, expired items are auto-removed, but size-evicted items might still be accessible
             if endpoint_arn in self._tags_cache:
+                logger.warning(f"Using cached tags for endpoint ARN {endpoint_arn} after ListTags API failure")
                 return self._tags_cache[endpoint_arn]
             return {}
 
@@ -249,3 +312,33 @@ class EndpointCapacityEstimator:
             f"{instance_count} instances × {per_instance_concurrency} concurrency = {capacity}"
         )
         return capacity
+
+    @metric_scope
+    def _emit_error_metric(self, endpoint_name: str, metrics=None) -> None:
+        """
+        Emit the Errors metric when SageMaker API fails.
+
+        The metric is emitted with dimensions:
+        - Operation=Scheduling
+        - ModelName=<endpoint_name>
+
+        This allows operators to monitor SageMaker API failures per endpoint
+        and identify connectivity or permission issues.
+
+        :param endpoint_name: Name of the endpoint (SageMaker endpoint name)
+        :param metrics: MetricsLogger injected by @metric_scope decorator
+        """
+        try:
+            metrics.reset_dimensions(False)
+            metrics.put_dimensions(
+                {
+                    MetricLabels.OPERATION_DIMENSION: MetricLabels.SCHEDULING_OPERATION,
+                    MetricLabels.MODEL_NAME_DIMENSION: endpoint_name,
+                }
+            )
+            metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+
+            logger.debug(f"Emitted error metric for endpoint {endpoint_name}")
+
+        except Exception as e:
+            logger.error(f"Error emitting error metric for {endpoint_name}: {e}", exc_info=True)

@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import logging
 import os
@@ -169,6 +169,7 @@ class MetricLabels(str, Enum):
     ERRORS = "Errors"
     THROTTLES = "Throttles"
     RETRIES = "Retries"
+    UTILIZATION = "Utilization"
 
     # These dimensions allow us to limit the scope of a metric value to a particular portion of the
     # ModelRunner application, a data type, or input format.
@@ -188,3 +189,4 @@ class MetricLabels(str, Enum):
     FEATURE_AGG_OPERATION = "FeatureAggregation"
     FEATURE_SELECTION_OPERATION = "FeatureSelection"
     FEATURE_DISSEMINATE_OPERATION = "FeatureDissemination"
+    SCHEDULING_OPERATION = "Scheduling"

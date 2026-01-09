@@ -13,7 +13,7 @@ from aws_embedded_metrics.unit import Unit
 from botocore.exceptions import ClientError
 
 from aws.osml.model_runner.api import ImageRequest
-from aws.osml.model_runner.app_config import BotoConfig
+from aws.osml.model_runner.app_config import BotoConfig, MetricLabels
 from aws.osml.model_runner.database.requested_jobs_table import ImageRequestStatusRecord, RequestedJobsTable
 from aws.osml.model_runner.exceptions import LoadImageException
 from aws.osml.model_runner.scheduler.endpoint_variant_selector import EndpointVariantSelector
@@ -186,6 +186,10 @@ class BufferedImageRequestQueue:
                                     f"Moving to DLQ. Error: {e}"
                                 )
                                 logger.info(f"Moving inaccessible image {image_request.image_id} to DLQ")
+
+                                # Emit Errors metric for image access failure
+                                self._emit_image_access_error_metric(image_request.model_name)
+
                                 self._handle_invalid_message(message)
                                 continue
                         else:
@@ -264,10 +268,7 @@ class BufferedImageRequestQueue:
 
         return current_outstanding_requests
 
-    @metric_scope
-    def _emit_buffered_queue_metrics(
-        self, num_buffered_requests: int, num_visible_requests: int, metrics: MetricsLogger = None
-    ) -> None:
+    def _emit_buffered_queue_metrics(self, num_buffered_requests: int, num_visible_requests: int) -> None:
         """
         Emit metrics about the number of buffered requests to CloudWatch.
 
@@ -277,9 +278,60 @@ class BufferedImageRequestQueue:
         :param num_buffered_requests: The current number of requests in the buffer
         :param num_visible_requests: The current number of requests that are waiting to be processed
         """
+        current_time = time.time()
+        if current_time - self._last_metric_emission_time >= self.METRIC_EMISSION_INTERVAL_SECONDS:
+            self._last_metric_emission_time = current_time
+            self._do_emit_buffered_queue_metrics(num_buffered_requests, num_visible_requests)
+
+    @metric_scope
+    def _do_emit_buffered_queue_metrics(
+        self, num_buffered_requests: int, num_visible_requests: int, metrics: MetricsLogger = None
+    ) -> None:
+        """
+        Internal method that actually emits the buffered queue metrics.
+
+        :param num_buffered_requests: The current number of requests in the buffer
+        :param num_visible_requests: The current number of requests that are waiting to be processed
+        :param metrics: MetricsLogger injected by @metric_scope decorator
+        """
         if isinstance(metrics, MetricsLogger):
-            current_time = time.time()
-            if current_time - self._last_metric_emission_time >= self.METRIC_EMISSION_INTERVAL_SECONDS:
-                self._last_metric_emission_time = current_time
-                metrics.put_metric(self.APPROX_NUMBER_OF_REQUESTS_BUFFERED, num_buffered_requests, str(Unit.COUNT.value))
-                metrics.put_metric(self.APPROX_NUMBER_OF_REQUESTS_VISIBLE, num_visible_requests, str(Unit.COUNT.value))
+            metrics.reset_dimensions(False)
+            metrics.put_dimensions({MetricLabels.OPERATION_DIMENSION: MetricLabels.SCHEDULING_OPERATION})
+            metrics.put_metric(self.APPROX_NUMBER_OF_REQUESTS_BUFFERED, num_buffered_requests, str(Unit.COUNT.value))
+            metrics.put_metric(self.APPROX_NUMBER_OF_REQUESTS_VISIBLE, num_visible_requests, str(Unit.COUNT.value))
+
+    @metric_scope
+    def _emit_image_access_error_metric(self, endpoint_name: str, metrics: MetricsLogger = None) -> None:
+        """
+        Emit the Errors metric when a LoadImageException is raised during image access.
+
+        This metric is emitted when an image cannot be accessed during the buffering phase,
+        indicating that the image is inaccessible (e.g., missing, permission denied, corrupt).
+        The image is moved to the DLQ and this metric helps operators monitor image access failures.
+
+        The metric is emitted with dimensions:
+        - Operation=Scheduling
+        - ModelName=<endpoint_name>
+
+        This follows the standard ModelRunner metrics pattern from METRICS_AND_DASHBOARDS.md.
+
+        :param endpoint_name: Name of the endpoint (SageMaker endpoint name or HTTP URL)
+        :param metrics: MetricsLogger for emitting CloudWatch metrics
+        """
+        if not isinstance(metrics, MetricsLogger):
+            return
+
+        try:
+            metrics.reset_dimensions(False)
+            metrics.put_dimensions(
+                {
+                    MetricLabels.OPERATION_DIMENSION: MetricLabels.SCHEDULING_OPERATION,
+                    MetricLabels.MODEL_NAME_DIMENSION: endpoint_name,
+                }
+            )
+            metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+
+            logger.debug(f"Emitted image access error metric for endpoint {endpoint_name}")
+
+        except Exception as e:
+            logger.error(f"Error emitting image access error metric for {endpoint_name}: {e}", exc_info=True)

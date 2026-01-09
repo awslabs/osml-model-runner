@@ -8,10 +8,13 @@ from operator import attrgetter
 from typing import Dict, List, Optional
 
 import boto3
+from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+from aws_embedded_metrics.metric_scope import metric_scope
+from aws_embedded_metrics.unit import Unit
 from botocore.exceptions import ClientError
 
 from aws.osml.model_runner.api import ImageRequest
-from aws.osml.model_runner.app_config import BotoConfig
+from aws.osml.model_runner.app_config import BotoConfig, MetricLabels
 from aws.osml.model_runner.database import ImageRequestStatusRecord
 from aws.osml.model_runner.scheduler.buffered_image_request_queue import BufferedImageRequestQueue
 from aws.osml.model_runner.scheduler.endpoint_capacity_estimator import EndpointCapacityEstimator
@@ -118,6 +121,7 @@ class EndpointLoadImageScheduler(ImageScheduler):
         # at the end of each cycle.
         schedule_cycle_start_time = time.time()
         schedule_cycle_log_message = None
+        outstanding_requests = None
 
         try:
             logger.debug("Starting image processing request selection process")
@@ -165,9 +169,13 @@ class EndpointLoadImageScheduler(ImageScheduler):
 
                 # Calculate available capacity for the specific variant
                 # Pass current job_id to exclude it from utilization calculation
-                available_capacity = self._calculate_available_capacity(
+                available_capacity, max_capacity, current_utilization = self._calculate_available_capacity(
                     endpoint_name, variant_name, outstanding_requests, current_job_id=next_request.job_id
                 )
+
+                # Emit Utilization metric for this endpoint (0-100%)
+                # This is done in a separate method with its own metric scope to set endpoint-specific dimensions
+                self._emit_utilization_metric(endpoint_name, max_capacity, current_utilization)
 
                 # Check if sufficient capacity exists for this image
                 capacity_available = self._check_capacity_available(next_request, available_capacity, outstanding_requests)
@@ -178,9 +186,15 @@ class EndpointLoadImageScheduler(ImageScheduler):
                     schedule_cycle_log_message = (
                         f"Throttling job {next_request.job_id} due to insufficient capacity. "
                         f"Endpoint: {endpoint_name}, Variant: {variant_name}, "
-                        f"Required load: {image_load} tiles, Available capacity: {available_capacity} tiles. "
+                        f"Required load: {image_load} tiles, Available capacity: {available_capacity} tiles, "
+                        f"Target percentage: {self.capacity_target_percentage:.1%}. "
                         f"Image will be delayed until capacity becomes available."
                     )
+
+                    # Emit Throttles metric with endpoint-specific dimensions
+                    # This is done in a separate method with its own metric scope
+                    self._emit_throttle_metric(endpoint_name)
+
                     return None
 
                 # Capacity is available - log scheduling decision with details
@@ -213,8 +227,27 @@ class EndpointLoadImageScheduler(ImageScheduler):
             return None
         finally:
             elapsed_ms = (time.time() - schedule_cycle_start_time) * 1000
+
+            # Emit scheduling metrics only when there were requests to process
+            if outstanding_requests:
+                self._emit_scheduling_metrics(elapsed_ms)
+
             if schedule_cycle_log_message:
                 logger.info(f"{schedule_cycle_log_message}, elapsed_ms={elapsed_ms:.2f}", extra={"tag": "SCHEDULER EVENT"})
+
+    @metric_scope
+    def _emit_scheduling_metrics(self, duration_ms: float, metrics: MetricsLogger = None) -> None:
+        """
+        Emit metrics for a scheduling cycle.
+
+        :param duration_ms: Duration of the scheduling cycle in milliseconds
+        :param metrics: MetricsLogger injected by @metric_scope decorator
+        """
+        if isinstance(metrics, MetricsLogger):
+            metrics.reset_dimensions(False)
+            metrics.put_dimensions({MetricLabels.OPERATION_DIMENSION: MetricLabels.SCHEDULING_OPERATION})
+            metrics.put_metric(MetricLabels.INVOCATIONS, 1, str(Unit.COUNT.value))
+            metrics.put_metric(MetricLabels.DURATION, duration_ms, str(Unit.MILLISECONDS.value))
 
     def finish_request(self, image_request: ImageRequest, should_retry: bool = False) -> None:
         """
@@ -304,7 +337,7 @@ class EndpointLoadImageScheduler(ImageScheduler):
         variant_name: Optional[str],
         outstanding_requests: List[ImageRequestStatusRecord],
         current_job_id: Optional[str] = None,
-    ) -> int:
+    ) -> tuple:
         """
         Calculate available capacity for a specific endpoint variant.
 
@@ -333,14 +366,16 @@ class EndpointLoadImageScheduler(ImageScheduler):
         :param current_job_id: Optional job ID to exclude from utilization calculation. This prevents
                               counting the current job's capacity against itself when checking if it
                               can be scheduled.
-        :return: Available capacity in concurrent inference requests. Returns 0 if capacity_estimator
-                is not configured or if current utilization exceeds target capacity.
-        :raises: No exceptions raised - returns 0 on errors to fail gracefully
+        :return: Tuple of (available_capacity, max_capacity, current_utilization) where:
+                - available_capacity: Available capacity in concurrent inference requests (min 0)
+                - max_capacity: Maximum endpoint capacity
+                - current_utilization: Current utilization in concurrent inference requests
+                Returns (0, 0, 0) if capacity_estimator is not configured or on errors.
         """
         # If no capacity estimator is configured, we can't calculate capacity
         if self.capacity_estimator is None:
             logger.debug(f"Capacity estimator not configured. Cannot calculate available capacity for {endpoint_name}.")
-            return 0
+            return (0, 0, 0)
 
         try:
             # Get maximum capacity for the specific variant
@@ -366,16 +401,16 @@ class EndpointLoadImageScheduler(ImageScheduler):
                 f"current={current_utilization}, available={available_capacity}"
             )
 
-            # Return available capacity (minimum of 0 to avoid negative values)
-            return max(0, available_capacity)
+            # Return tuple with available capacity (minimum of 0), max_capacity, and current_utilization
+            return (max(0, available_capacity), max_capacity, current_utilization)
 
         except Exception as e:
             logger.error(
                 f"Error calculating available capacity for {endpoint_name} (variant={variant_name}): {e}",
                 exc_info=True,
             )
-            # Return 0 on error to fail gracefully - scheduler will delay the image
-            return 0
+            # Return zeros on error to fail gracefully - scheduler will delay the image
+            return (0, 0, 0)
 
     def _check_capacity_available(
         self,
@@ -565,3 +600,98 @@ class EndpointLoadImageScheduler(ImageScheduler):
                         last_load = endpoint_load.load_factor
 
         return oldest_request
+
+    @metric_scope
+    def _emit_utilization_metric(
+        self,
+        endpoint_name: str,
+        max_capacity: int,
+        current_utilization: int,
+        metrics: MetricsLogger = None,
+    ) -> None:
+        """
+        Emit the Utilization metric for an endpoint showing current capacity utilization percentage.
+
+        The utilization percentage is calculated as:
+        utilization = (current_load / max_capacity) × 100
+
+        Where:
+        - current_load = sum of estimated loads for all running jobs on this endpoint/variant
+        - max_capacity = maximum concurrent requests the endpoint/variant can handle
+
+        The metric is emitted with dimensions:
+        - Operation=Scheduling
+        - ModelName=<endpoint_name>
+
+        This allows operators to monitor how close endpoints are to their capacity limits
+        and trigger autoscaling or alerts based on utilization thresholds.
+
+        :param endpoint_name: Name of the endpoint (SageMaker endpoint name or HTTP URL)
+        :param max_capacity: Maximum capacity in concurrent inference requests
+        :param current_utilization: Current utilization in concurrent inference requests
+        :param metrics: MetricsLogger for emitting CloudWatch metrics
+        """
+        if not isinstance(metrics, MetricsLogger):
+            return
+
+        try:
+            if max_capacity <= 0:
+                logger.debug(f"Cannot calculate utilization for {endpoint_name}: max_capacity={max_capacity}")
+                return
+
+            # Calculate utilization percentage (0-100%)
+            utilization_percentage = (current_utilization / max_capacity) * 100.0
+
+            # Clamp to 0-100% range (should not exceed 100% but handle edge cases)
+            utilization_percentage = max(0.0, min(100.0, utilization_percentage))
+
+            # Emit metric with endpoint-specific dimensions
+            metrics.reset_dimensions(False)
+            metrics.put_dimensions(
+                {
+                    MetricLabels.OPERATION_DIMENSION: MetricLabels.SCHEDULING_OPERATION,
+                    MetricLabels.MODEL_NAME_DIMENSION: endpoint_name,
+                }
+            )
+            metrics.put_metric(MetricLabels.UTILIZATION, utilization_percentage, str(Unit.PERCENT.value))
+
+            logger.debug(
+                f"Emitted utilization metric for {endpoint_name}: "
+                f"{utilization_percentage:.1f}% (current={current_utilization}, max={max_capacity})"
+            )
+
+        except Exception as e:
+            logger.error(f"Error emitting utilization metric for {endpoint_name}: {e}", exc_info=True)
+
+    @metric_scope
+    def _emit_throttle_metric(self, endpoint_name: str, metrics: MetricsLogger = None) -> None:
+        """
+        Emit the Throttles metric when an image is delayed due to insufficient capacity.
+
+        The metric is emitted with dimensions:
+        - Operation=Scheduling
+        - ModelName=<endpoint_name>
+
+        This allows operators to monitor how often images are being throttled per endpoint
+        and identify endpoints that may need additional capacity.
+
+        :param endpoint_name: Name of the endpoint (SageMaker endpoint name or HTTP URL)
+        :param metrics: MetricsLogger for emitting CloudWatch metrics
+        """
+        if not isinstance(metrics, MetricsLogger):
+            return
+
+        try:
+            metrics.reset_dimensions(False)
+            metrics.put_dimensions(
+                {
+                    MetricLabels.OPERATION_DIMENSION: MetricLabels.SCHEDULING_OPERATION,
+                    MetricLabels.MODEL_NAME_DIMENSION: endpoint_name,
+                }
+            )
+            metrics.put_metric(MetricLabels.THROTTLES, 1, str(Unit.COUNT.value))
+
+            logger.debug(f"Emitted throttle metric for {endpoint_name}")
+
+        except Exception as e:
+            logger.error(f"Error emitting throttle metric for {endpoint_name}: {e}", exc_info=True)

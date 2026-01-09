@@ -420,61 +420,56 @@
   - _Requirements: 4.1, 7.2_
 
 - [ ]* 9. Add monitoring and metrics
-- [ ]* 9.1 Add CloudWatch metrics to EndpointLoadImageScheduler
+- [x] 9.1 Add CloudWatch metrics to EndpointLoadImageScheduler
   - Use @metric_scope decorator for get_next_scheduled_request()
-  - Emit scheduler.images_throttled counter when image is delayed due to capacity
-  - Emit scheduler.capacity_utilization gauge showing current utilization percentage
-  - Emit scheduler.scheduling_decision_time histogram for decision latency
-  - Add endpoint_name as dimension for all metrics
+  - Emit Throttles metric with dimensions: Operation=Scheduling, ModelName=<endpoint> when image is delayed due to capacity
+  - Emit Utilization metric with dimensions: Operation=Scheduling, ModelName=<endpoint> showing current capacity utilization percentage (0-100%)
+  - Emit Duration metric with dimension: Operation=Scheduling (no ModelName - multi-endpoint operation) for scheduling decision latency
+  - Emit Invocations metric with dimensions: Operation=Scheduling (no ModelName - multi-endpoint operation) 
+  - Follow standard ModelRunner metrics pattern from METRICS_AND_DASHBOARDS.md
+  - Review code at https://github.com/awslabs/aws-embedded-metrics-python to understand how metrics are emitted
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ]* 9.2 Add CloudWatch metrics to EndpointCapacityEstimator
+- [x] 9.2 Add CloudWatch metrics to EndpointCapacityEstimator
   - Use @metric_scope decorator for estimate_capacity()
-  - Emit scheduler.endpoint_api_errors counter when SageMaker API fails
-  - Add endpoint_name as dimension
+  - Emit Errors metric with dimensions: Operation=Scheduling, ModelName=<endpoint> when SageMaker API fails
+  - Follow standard ModelRunner metrics pattern from METRICS_AND_DASHBOARDS.md
   - _Requirements: 2.6_
 
-- [ ]* 9.3 Add CloudWatch metrics to BufferedImageRequestQueue
+- [x] 9.3 Add CloudWatch metrics to BufferedImageRequestQueue
   - Use @metric_scope decorator for _fetch_new_requests()
-  - Emit scheduler.image_access_errors counter when LoadImageException raised
-  - Add endpoint_name as dimension
+  - Emit Errors metric with dimensions: Operation=Scheduling, ModelName=<endpoint> when LoadImageException raised (image access errors)
+  - Follow standard ModelRunner metrics pattern from METRICS_AND_DASHBOARDS.md
   - _Requirements: 3.4_
 
-- [ ]* 9.4 Add comprehensive logging to EndpointLoadImageScheduler
+- [x] 9.4 Add comprehensive logging to EndpointLoadImageScheduler
   - Log INFO when scheduling image with capacity details (available, required, target percentage)
   - Log WARN when image is throttled due to insufficient capacity
   - Log WARN when capacity_estimator is not provided but throttling is enabled
   - Log ERROR for unexpected exceptions during scheduling
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ]* 9.5 Add comprehensive logging to EndpointCapacityEstimator
+- [x] 9.5 Add comprehensive logging to EndpointCapacityEstimator
   - Log DEBUG for capacity calculations with breakdown (instances, concurrency, variants)
   - Log WARN when SageMaker API fails and using cached capacity
   - Log ERROR when all retries fail for SageMaker API
   - _Requirements: 2.6_
 
-- [ ]* 9.6 Add comprehensive logging to BufferedImageRequestQueue
+- [x] 9.6 Add comprehensive logging to BufferedImageRequestQueue
   - Log INFO when region calculation succeeds with region count
   - Log WARN when region_calculator is not provided
   - Log ERROR when LoadImageException raised (image inaccessible)
   - Log INFO when moving inaccessible image to DLQ
   - _Requirements: 3.4_
 
-- [ ]* 9.7 Write unit tests for metrics emission
-  - Test scheduler.images_throttled counter increments when throttling occurs
-  - Test scheduler.capacity_utilization gauge shows correct percentage
-  - Test scheduler.scheduling_decision_time histogram records latency
-  - Test scheduler.endpoint_api_errors counter increments on API failures
-  - Test scheduler.image_access_errors counter increments on LoadImageException
-  - Test metrics include correct dimensions (endpoint_name)
-  - _Requirements: 1.1, 1.2, 1.3, 2.6, 3.4_
-
-- [ ]* 9.8 Write unit tests for logging
-  - Test INFO logs contain capacity details (available, required, target)
-  - Test WARN logs for throttled images include reason
-  - Test WARN logs for API failures include error details
-  - Test ERROR logs for image access failures include image URL
-  - Test log levels are appropriate for each scenario
+- [x] 9.7 Write unit tests for metrics emission ✓
+  - Test Throttles metric (Operation=Scheduling, ModelName=<endpoint>) increments when throttling occurs
+  - Test Utilization metric (Operation=Scheduling, ModelName=<endpoint>) shows correct percentage (0-100%)
+  - Test Duration metric (Operation=Scheduling) records scheduling decision latency
+  - Test Invocations metric (Operation=Scheduling) increments when evaluating images
+  - Test Errors metric (Operation=Scheduling, ModelName=<endpoint>) increments on API failures
+  - Test Errors metric (Operation=Scheduling, ModelName=<endpoint>) increments on LoadImageException
+  - Test metrics follow standard ModelRunner pattern with correct namespace (OSML/ModelRunner) and dimensions
   - _Requirements: 1.1, 1.2, 1.3, 2.6, 3.4_
 
 - [ ] 10. Update dependency wiring in model_runner.py
@@ -574,65 +569,7 @@
   - Test that SelfThrottledRegionException is not raised during region processing
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7_
 
-- [ ] 12. Add monitoring and metrics
-- [ ] 12.1 Add CloudWatch metrics to EndpointLoadImageScheduler
-  - Use @metric_scope decorator for get_next_scheduled_request()
-  - Emit scheduler.images_throttled counter when image is delayed due to capacity
-  - Emit scheduler.capacity_utilization gauge showing current utilization percentage
-  - Emit scheduler.scheduling_decision_time histogram for decision latency
-  - Add endpoint_name as dimension for all metrics
-  - _Requirements: 1.1, 1.2, 1.3_
-
-- [ ] 12.2 Add CloudWatch metrics to EndpointCapacityEstimator
-  - Use @metric_scope decorator for estimate_capacity()
-  - Emit scheduler.endpoint_api_errors counter when SageMaker API fails
-  - Add endpoint_name as dimension
-  - _Requirements: 2.6_
-
-- [ ] 12.3 Add CloudWatch metrics to BufferedImageRequestQueue
-  - Use @metric_scope decorator for _fetch_new_requests()
-  - Emit scheduler.image_access_errors counter when LoadImageException raised
-  - Add endpoint_name as dimension
-  - _Requirements: 3.4_
-
-- [ ] 12.4 Add comprehensive logging to EndpointLoadImageScheduler
-  - Log INFO when scheduling image with capacity details (available, required, target percentage)
-  - Log WARN when image is throttled due to insufficient capacity
-  - Log WARN when capacity_estimator is not provided but throttling is enabled
-  - Log ERROR for unexpected exceptions during scheduling
-  - _Requirements: 1.1, 1.2, 1.3_
-
-- [ ] 12.5 Add comprehensive logging to EndpointCapacityEstimator
-  - Log DEBUG for capacity calculations with breakdown (instances, concurrency, variants)
-  - Log WARN when SageMaker API fails and using cached capacity
-  - Log ERROR when all retries fail for SageMaker API
-  - _Requirements: 2.6_
-
-- [ ] 12.6 Add comprehensive logging to BufferedImageRequestQueue
-  - Log INFO when region calculation succeeds with region count
-  - Log WARN when region_calculator is not provided
-  - Log ERROR when LoadImageException raised (image inaccessible)
-  - Log INFO when moving inaccessible image to DLQ
-  - _Requirements: 3.4_
-
-- [ ]* 12.7 Write unit tests for metrics emission
-  - Test scheduler.images_throttled counter increments when throttling occurs
-  - Test scheduler.capacity_utilization gauge shows correct percentage
-  - Test scheduler.scheduling_decision_time histogram records latency
-  - Test scheduler.endpoint_api_errors counter increments on API failures
-  - Test scheduler.image_access_errors counter increments on LoadImageException
-  - Test metrics include correct dimensions (endpoint_name)
-  - _Requirements: 1.1, 1.2, 1.3, 2.6, 3.4_
-
-- [ ]* 12.8 Write unit tests for logging
-  - Test INFO logs contain capacity details (available, required, target)
-  - Test WARN logs for throttled images include reason
-  - Test WARN logs for API failures include error details
-  - Test ERROR logs for image access failures include image URL
-  - Test log levels are appropriate for each scenario
-  - _Requirements: 1.1, 1.2, 1.3, 2.6, 3.4_
-
-- [ ] 13. Final checkpoint - Ensure all tests pass
+- [ ] 12. Final checkpoint - Ensure all tests pass
   - Run full test suite with tox
   - Verify all unit tests pass
   - Verify all property-based tests pass (minimum 100 iterations each)

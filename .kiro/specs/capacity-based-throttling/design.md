@@ -1390,25 +1390,193 @@ If issues arise:
 
 ## Monitoring and Metrics
 
-### Key Metrics
+The capacity-based throttling feature will emit metrics using the standard ModelRunner metrics pattern defined in `METRICS_AND_DASHBOARDS.md`. All metrics use the `OSML/ModelRunner` namespace with consistent dimensions.
 
-- `scheduler.images_throttled`: Count of images delayed due to capacity per endpoint
-- `scheduler.capacity_utilization`: Gauge of current utilization percentage per endpoint
-- `scheduler.scheduling_decision_time`: Histogram of decision latency
-- `scheduler.endpoint_api_errors`: Count of DescribeEndpoint failures
-- `scheduler.image_access_errors`: Count of images that failed to read
+### Standard Metrics with Operation=Scheduling
 
-### Alarms
+The following standard ModelRunner metrics will be emitted with `Operation=Scheduling`:
 
-- High throttling rate (>50% of images delayed)
-- Endpoint API error rate >1%
-- Scheduling decision time >500ms (p99)
+| Metric | Dimensions | Unit | Description |
+|:-------|:-----------|:-----|:------------|
+| Duration | Operation=Scheduling | Seconds | Time spent making scheduling decisions (multi-endpoint operation, no ModelName dimension) |
+| Invocations | Operation=Scheduling | Count | Number of times scheduler was invoked |
+| Errors | Operation=Scheduling, ModelName=\<endpoint\> | Count | Number of scheduling errors (includes endpoint API errors and image access errors) |
+| Throttles | Operation=Scheduling, ModelName=\<endpoint\> | Count | Number of images delayed due to insufficient capacity on a specific endpoint |
+
+### New Utilization Metric
+
+A new standard metric is introduced to track capacity utilization:
+
+| Metric | Dimensions | Unit | Description |
+|:-------|:-----------|:-----|:------------|
+| Utilization | Operation=Scheduling, ModelName=\<endpoint\> | Percent | Current endpoint capacity utilization (0-100%) |
+
+**Note**: The `Utilization` metric is a new addition to the standard ModelRunner metrics and can be extended to other operations in the future (e.g., tracking worker utilization during tile processing).
+
+### Metric Emission Details
+
+**Duration (Operation=Scheduling)**:
+- Emitted once per scheduling cycle
+- Measures the time to evaluate all pending images and make scheduling decisions
+- Does NOT include ModelName dimension (scheduling evaluates multiple endpoints)
+- Used to monitor scheduling overhead and performance
+
+**Invocations (Operation=Scheduling)**:
+- Emitted each time an image is evaluated for scheduling on a specific endpoint
+- Incremented when capacity calculation is performed for an image
+- Used to track scheduling activity per endpoint
+
+**Errors (Operation=Scheduling, ModelName=\<endpoint\>)**:
+- Emitted when scheduling encounters errors:
+  - SageMaker DescribeEndpoint API failures
+  - Image access failures during region calculation
+  - Configuration validation errors
+- Used to monitor scheduling reliability
+
+**Throttles (Operation=Scheduling, ModelName=\<endpoint\>)**:
+- Emitted when an image is delayed due to insufficient capacity
+- Incremented when available capacity < estimated image load
+- NOT incremented when image is allowed despite exceeding capacity (single image exception)
+- Used to monitor capacity constraints and autoscaling triggers
+
+**Utilization (Operation=Scheduling, ModelName=\<endpoint\>)**:
+- Emitted periodically (e.g., every scheduling cycle or every minute)
+- Calculated as: (current load / target capacity) × 100
+- Where current load = Σ(region_count × TILE_WORKERS_PER_INSTANCE) for all in-progress jobs
+- Where target capacity = max_capacity × capacity_target_percentage
+- Used to monitor endpoint load and capacity planning
+
+### CloudWatch Alarms
+
+Recommended alarms for capacity-based throttling:
+
+**High Throttling Rate**:
+```
+Metric: Throttles (Operation=Scheduling, ModelName=*)
+Threshold: > 50% of Invocations over 5 minutes
+Action: Alert operators, trigger endpoint autoscaling
+```
+
+**Scheduling Errors**:
+```
+Metric: Errors (Operation=Scheduling, ModelName=*)
+Threshold: > 1% of Invocations over 5 minutes
+Action: Alert operators to investigate endpoint or image access issues
+```
+
+**Scheduling Performance Degradation**:
+```
+Metric: Duration (Operation=Scheduling)
+Statistic: p99
+Threshold: > 500ms
+Action: Alert operators to investigate scheduling overhead
+```
+
+**High Capacity Utilization**:
+```
+Metric: Utilization (Operation=Scheduling, ModelName=*)
+Threshold: > 90% for 5 minutes
+Action: Trigger endpoint autoscaling, alert operators
+```
+
+### Dashboard Widgets
+
+**Scheduling Throttles by Endpoint**:
+```json
+{
+    "metrics": [
+        [ { "expression": "SEARCH('{OSML/ModelRunner, ModelName, Operation} Scheduling Throttles', 'Sum', 300)", "region": "us-west-2" } ]
+    ],
+    "view": "timeSeries",
+    "title": "Scheduling Throttles by Endpoint",
+    "region": "us-west-2",
+    "stat": "Sum",
+    "period": 300
+}
+```
+
+**Endpoint Capacity Utilization**:
+```json
+{
+    "metrics": [
+        [ { "expression": "SEARCH('{OSML/ModelRunner, ModelName, Operation} Scheduling Utilization', 'Average', 300)", "region": "us-west-2" } ]
+    ],
+    "view": "timeSeries",
+    "title": "Endpoint Capacity Utilization",
+    "region": "us-west-2",
+    "yAxis": {
+        "left": {
+            "min": 0,
+            "max": 100,
+            "label": "Percent"
+        }
+    },
+    "annotations": {
+        "horizontal": [
+            {
+                "color": "#ff7f0e",
+                "label": "High Utilization",
+                "value": 80
+            },
+            {
+                "color": "#d62728",
+                "label": "Critical",
+                "value": 90
+            }
+        ]
+    },
+    "stat": "Average",
+    "period": 300
+}
+```
+
+**Scheduling Performance**:
+```json
+{
+    "metrics": [
+        [ "OSML/ModelRunner", "Duration", { "stat": "Average", "label": "Avg Duration" } ],
+        [ "...", { "stat": "p99", "label": "p99 Duration" } ]
+    ],
+    "view": "timeSeries",
+    "title": "Scheduling Decision Time",
+    "region": "us-west-2",
+    "yAxis": {
+        "left": {
+            "label": "Seconds"
+        }
+    },
+    "stat": "Average",
+    "period": 300
+}
+```
 
 ### Logging
 
-- INFO: Scheduling decisions with capacity details
-- WARN: Endpoint API failures, invalid configurations
-- ERROR: Image access failures, unexpected exceptions
+Structured logging will provide detailed context for troubleshooting:
+
+**INFO Level**:
+- Scheduling decisions with capacity details:
+  ```
+  {
+    "message": "SchedulingDecision",
+    "image_id": "abc-123",
+    "endpoint": "maritime-vessel-detector",
+    "variant": "AllTraffic",
+    "estimated_load": 16,
+    "available_capacity": 24,
+    "decision": "scheduled"
+  }
+  ```
+
+**WARN Level**:
+- Endpoint API failures (with retry information)
+- Invalid configuration values (with defaults applied)
+- Images delayed due to capacity constraints
+
+**ERROR Level**:
+- Image access failures during region calculation
+- Unexpected exceptions during scheduling
+- Configuration validation failures that prevent scheduling
 
 ## Future Enhancements
 
