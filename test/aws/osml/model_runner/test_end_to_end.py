@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import os
 import sys
@@ -41,7 +41,6 @@ class TestModelRunnerEndToEnd(TestCase):
         from aws.osml.model_runner.api import RegionRequest
         from aws.osml.model_runner.api.image_request import ImageRequest
         from aws.osml.model_runner.app_config import BotoConfig
-        from aws.osml.model_runner.database.endpoint_statistics_table import EndpointStatisticsTable
         from aws.osml.model_runner.database.feature_table import FeatureTable
         from aws.osml.model_runner.database.image_request_table import ImageRequestTable
         from aws.osml.model_runner.database.region_request_table import RegionRequestTable
@@ -136,14 +135,6 @@ class TestModelRunnerEndToEnd(TestCase):
         )
         self.region_request_table = RegionRequestTable(os.environ["REGION_REQUEST_TABLE"])
 
-        self.endpoint_statistics_ddb = self.ddb.create_table(
-            TableName=os.environ["ENDPOINT_TABLE"],
-            KeySchema=TEST_CONFIG["ENDPOINT_TABLE_KEY_SCHEMA"],
-            AttributeDefinitions=TEST_CONFIG["ENDPOINT_TABLE_ATTRIBUTE_DEFINITIONS"],
-            BillingMode="PAY_PER_REQUEST",
-        )
-        self.endpoint_statistics_table = EndpointStatisticsTable(os.environ["ENDPOINT_TABLE"])
-
         self.feature_ddb = self.ddb.create_table(
             TableName=os.environ["FEATURE_TABLE"],
             KeySchema=TEST_CONFIG["FEATURE_TABLE_KEY_SCHEMA"],
@@ -222,17 +213,14 @@ class TestModelRunnerEndToEnd(TestCase):
         self.model_runner.requested_jobs_table = self.outstanding_jobs_table
         self.model_runner.image_job_scheduler.image_request_queue.requested_jobs_table = self.outstanding_jobs_table
         self.model_runner.region_request_table = self.region_request_table
-        self.model_runner.endpoint_statistics_table = self.endpoint_statistics_table
         self.model_runner.image_status_monitor = self.image_status_monitor
         self.model_runner.region_status_monitor = self.region_status_monitor
         self.model_runner.region_request_handler.image_request_table = self.image_request_table
         self.model_runner.region_request_handler.region_request_table = self.region_request_table
-        self.model_runner.region_request_handler.endpoint_statistics_table = self.endpoint_statistics_table
         self.model_runner.region_request_handler.region_status_monitor = self.region_status_monitor
         self.model_runner.region_request_handler.image_request_table = self.image_request_table
         self.model_runner.image_request_handler.region_request_table = self.region_request_table
         self.model_runner.image_request_handler.region_request_handler = self.model_runner.region_request_handler
-        self.model_runner.image_request_handler.endpoint_statistics_table = self.endpoint_statistics_table
         self.model_runner.image_request_handler.image_request_table = self.image_request_table
         self.model_runner.image_request_handler.image_status_monitor = self.image_status_monitor
 
@@ -241,7 +229,6 @@ class TestModelRunnerEndToEnd(TestCase):
         Delete virtual AWS resources after each test.
         """
         self.image_request_ddb.delete()
-        self.endpoint_statistics_ddb.delete()
         self.feature_ddb.delete()
         self.feature_table = None
         self.s3 = None
@@ -313,10 +300,6 @@ class TestModelRunnerEndToEnd(TestCase):
         actual_source_metadata = results_features[0]["properties"]["sourceMetadata"]
         expected_source_metadata = self.test_feature_source_property
         assert actual_source_metadata == expected_source_metadata
-
-        # Default scale factor set to 10 and workers per cpu is 1 so: floor((10 * 1 * 48) / 1) = 480
-        regions = self.model_runner.endpoint_utils.calculate_max_regions(endpoint_name=TEST_CONFIG["MODEL_ENDPOINT"])
-        assert 480 == regions
 
     @patch.dict("os.environ", values={"ELEVATION_DATA_LOCATION": TEST_CONFIG["ELEVATION_DATA_LOCATION"]})
     def test_create_elevation_model(self) -> None:

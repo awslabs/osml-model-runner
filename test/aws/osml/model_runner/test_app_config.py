@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import logging
 import os
@@ -25,12 +25,10 @@ class TestServiceConfigValidation:
             "IMAGE_REQUEST_TABLE": "test-image-request-table",
             "OUTSTANDING_IMAGE_REQUEST_TABLE": "test-outstanding-table",
             "REGION_REQUEST_TABLE": "test-region-request-table",
-            "ENDPOINT_TABLE": "test-endpoint-table",
             "FEATURE_TABLE": "test-feature-table",
             "IMAGE_QUEUE": "test-image-queue",
             "IMAGE_DLQ": "test-image-dlq",
             "REGION_QUEUE": "test-region-queue",
-            "WORKERS_PER_CPU": "2",
             "WORKERS": "4",
         }
         with patch.dict(os.environ, env_vars, clear=False):

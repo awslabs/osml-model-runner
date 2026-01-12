@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Amazon.com, Inc. or its affiliates.
+ * Copyright 2025-2026 Amazon.com, Inc. or its affiliates.
  */
 
 /**
@@ -92,8 +92,8 @@ describe("ModelRunnerStack", () => {
     const template = Template.fromStack(stack);
 
     // Stack should have resources (the dataplane creates various resources)
-    // Check for DynamoDB tables which are always created (5 tables total)
-    template.resourceCountIs("AWS::DynamoDB::Table", 5);
+    // Check for DynamoDB tables which are always created (4 tables total)
+    template.resourceCountIs("AWS::DynamoDB::Table", 4);
   });
 
   test("uses provided VPC from network stack", () => {
