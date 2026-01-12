@@ -1,11 +1,10 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 # Telling flake8 to not flag errors in this file. It is normal that these classes are imported but not used in an
 # __init__.py file.
 # flake8: noqa
 
 from .ddb_helper import DDBHelper, DDBItem, DDBKey
-from .endpoint_statistics_table import EndpointStatisticsTable
 from .exceptions import (
     AddFeaturesException,
     CompleteRegionException,

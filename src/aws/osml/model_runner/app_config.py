@@ -29,12 +29,10 @@ class ServiceConfig:
     image_request_table: str = os.environ["IMAGE_REQUEST_TABLE"]
     outstanding_jobs_table: str = os.environ["OUTSTANDING_IMAGE_REQUEST_TABLE"]
     region_request_table: str = os.environ["REGION_REQUEST_TABLE"]
-    endpoint_statistics_table = os.environ["ENDPOINT_TABLE"]
     feature_table: str = os.environ["FEATURE_TABLE"]
     image_queue: str = os.environ["IMAGE_QUEUE"]
     image_dlq: str = os.environ["IMAGE_DLQ"]
     region_queue: str = os.environ["REGION_QUEUE"]
-    workers_per_cpu: str = os.environ["WORKERS_PER_CPU"]
     workers: str = os.environ["WORKERS"]
 
     # Optional elevation data
@@ -47,15 +45,10 @@ class ServiceConfig:
     image_status_topic: Optional[str] = os.getenv("IMAGE_STATUS_TOPIC")
     region_status_topic: Optional[str] = os.getenv("REGION_STATUS_TOPIC")
     cp_api_endpoint: Optional[str] = os.getenv("API_ENDPOINT")
-    self_throttling: bool = (
-        os.getenv("SM_SELF_THROTTLING", "False") == "True" or os.getenv("SM_SELF_THROTTLING", "False") == "true"
-    )
 
     # Optional + defaulted configuration
     ddb_ttl_in_days: int = int(os.getenv("DDB_TTL_IN_DAYS", "1"))
     region_size: str = os.getenv("REGION_SIZE", "(10240, 10240)")
-    throttling_vcpu_scale_factor: str = os.getenv("THROTTLING_SCALE_FACTOR", "10")
-    throttling_retry_timeout: str = os.getenv("THROTTLING_RETRY_TIMEOUT", "10")
 
     # Capacity-based throttling configuration
     scheduler_throttling_enabled: bool = os.getenv("SCHEDULER_THROTTLING_ENABLED", "True") in ["True", "true"]

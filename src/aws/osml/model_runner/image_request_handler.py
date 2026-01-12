@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import ast
 import json
@@ -24,7 +24,6 @@ from aws.osml.photogrammetry import SensorModel
 from .api import VALID_MODEL_HOSTING_OPTIONS, ImageRequest, RegionRequest
 from .app_config import MetricLabels, ServiceConfig
 from .common import (
-    EndpointUtils,
     ImageDimensions,
     ImageRegion,
     ObservableEvent,
@@ -34,7 +33,6 @@ from .common import (
     mr_post_processing_options_factory,
 )
 from .database import (
-    EndpointStatisticsTable,
     FeatureTable,
     ImageRequestItem,
     ImageRequestTable,
@@ -73,11 +71,9 @@ class ImageRequestHandler:
         self,
         image_request_table: ImageRequestTable,
         image_status_monitor: ImageStatusMonitor,
-        endpoint_statistics_table: EndpointStatisticsTable,
         tiling_strategy: TilingStrategy,
         region_request_queue: RequestQueue,
         region_request_table: RegionRequestTable,
-        endpoint_utils: EndpointUtils,
         config: ServiceConfig,
         region_request_handler: RegionRequestHandler,
     ) -> None:
@@ -86,22 +82,18 @@ class ImageRequestHandler:
 
         :param image_request_table: The image request table for managing image processing jobs.
         :param image_status_monitor: A monitor to track image request statuses.
-        :param endpoint_statistics_table: Table for tracking endpoint statistics.
         :param tiling_strategy: The strategy for handling image tiling into regions.
         :param region_request_queue: Queue to send region requests for processing.
         :param region_request_table: Table to track region request progress and results.
-        :param endpoint_utils: Utility class for handling endpoint-related operations.
         :param config: Configuration settings for the service.
         :param region_request_handler: Handler for processing individual region requests.
         """
 
         self.image_request_table = image_request_table
         self.image_status_monitor = image_status_monitor
-        self.endpoint_statistics_table = endpoint_statistics_table
         self.tiling_strategy = tiling_strategy
         self.region_request_queue = region_request_queue
         self.region_request_table = region_request_table
-        self.endpoint_utils = endpoint_utils
         self.config = config
         self.region_request_handler = region_request_handler
         self.on_image_update = ObservableEvent()
@@ -121,12 +113,6 @@ class ImageRequestHandler:
         image_request_item = None
         try:
             image_request = self.set_default_model_endpoint_variant(image_request)
-            if self.config.self_throttling:
-                max_regions = self.endpoint_utils.calculate_max_regions(
-                    image_request.model_name, image_request.model_invocation_role
-                )
-                # Add entry to the endpoint statistics table
-                self.endpoint_statistics_table.upsert_endpoint(image_request.model_name, max_regions)
 
             # Update the image status to started and include relevant image meta-data
             logger.debug(f"Starting processing of {image_request.image_url}")

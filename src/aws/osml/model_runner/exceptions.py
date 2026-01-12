@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 
 # ModelRunner Exceptions
@@ -27,10 +27,6 @@ class UnsupportedModelException(Exception):
 
 
 class InvalidImageURLException(Exception):
-    pass
-
-
-class SelfThrottledRegionException(Exception):
     pass
 
 

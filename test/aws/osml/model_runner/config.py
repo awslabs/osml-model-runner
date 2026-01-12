@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 import io
 import json
 from unittest.mock import Mock
@@ -36,8 +36,6 @@ TEST_CONFIG = {
     "ENDPOINT_PRODUCTION_VARIANTS": [
         {"VariantName": "Primary", "ModelName": "TestModel", "InitialInstanceCount": 1, "InstanceType": "ml.m5.12xlarge"}
     ],
-    "ENDPOINT_TABLE_ATTRIBUTE_DEFINITIONS": [{"AttributeName": "endpoint", "AttributeType": "S"}],
-    "ENDPOINT_TABLE_KEY_SCHEMA": [{"AttributeName": "endpoint", "KeyType": "HASH"}],
     "FEATURE_TABLE_ATTRIBUTE_DEFINITIONS": [
         {"AttributeName": "hash_key", "AttributeType": "S"},
         {"AttributeName": "range_key", "AttributeType": "S"},
