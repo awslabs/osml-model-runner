@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 from collections import Counter
 from datetime import datetime, timezone
 from unittest import TestCase, main
@@ -9,8 +9,8 @@ from botocore.stub import Stubber
 
 from aws.osml.model_runner.api import ImageRequest, ModelInvokeMode
 from aws.osml.model_runner.app_config import ServiceConfig
-from aws.osml.model_runner.common import EndpointUtils, RequestStatus
-from aws.osml.model_runner.database import EndpointStatisticsTable, ImageRequestItem, ImageRequestTable, RegionRequestTable
+from aws.osml.model_runner.common import RequestStatus
+from aws.osml.model_runner.database import ImageRequestItem, ImageRequestTable, RegionRequestTable
 from aws.osml.model_runner.exceptions import ProcessImageException
 from aws.osml.model_runner.image_request_handler import ImageRequestHandler
 from aws.osml.model_runner.scheduler import RequestQueue
@@ -33,25 +33,20 @@ class TestImageRequestHandler(TestCase):
         # Mock dependencies
         self.mock_image_request_table = MagicMock(spec=ImageRequestTable)
         self.mock_image_status_monitor = MagicMock(spec=ImageStatusMonitor)
-        self.mock_endpoint_statistics_table = MagicMock(spec=EndpointStatisticsTable)
         self.mock_tiling_strategy = MagicMock(spec=TilingStrategy)
         self.mock_region_request_queue = MagicMock(spec=RequestQueue)
         self.mock_region_request_table = MagicMock(spec=RegionRequestTable)
-        self.mock_endpoint_utils = MagicMock(spec=EndpointUtils)
         self.mock_config = MagicMock(spec=ServiceConfig)
 
         # Set up config properties
-        self.mock_config.self_throttling = False
 
         # Instantiate the handler with mocked dependencies
         self.handler = ImageRequestHandler(
             image_request_table=self.mock_image_request_table,
             image_status_monitor=self.mock_image_status_monitor,
-            endpoint_statistics_table=self.mock_endpoint_statistics_table,
             tiling_strategy=self.mock_tiling_strategy,
             region_request_queue=self.mock_region_request_queue,
             region_request_table=self.mock_region_request_table,
-            endpoint_utils=self.mock_endpoint_utils,
             config=self.mock_config,
             region_request_handler=MagicMock(),
         )
@@ -110,25 +105,6 @@ class TestImageRequestHandler(TestCase):
         self.handler.queue_region_request.assert_called_once()
 
         # Ensure processing events were emitted
-        self.assertEqual(self.mock_image_status_monitor.process_event.call_count, 2)
-
-    def test_process_image_request_throttling(self):
-        """
-        Test image request processing when throttling is enabled.
-        """
-        # Enable throttling in config
-        self.mock_config.self_throttling = True
-
-        # Mock internal methods
-        self.mock_endpoint_utils.calculate_max_regions.return_value = 5
-        self.mock_endpoint_statistics_table.current_in_progress_regions.return_value = 5
-        self.handler.set_default_model_endpoint_variant = MagicMock(return_value=self.mock_image_request)
-
-        # Call process_image_request with throttling enabled
-        with self.assertRaises(ProcessImageException):
-            self.handler.process_image_request(self.mock_image_request)
-
-        # Ensure processing continued after throttling
         self.assertEqual(self.mock_image_status_monitor.process_event.call_count, 2)
 
     def test_process_image_request_failure(self):

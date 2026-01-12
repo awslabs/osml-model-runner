@@ -527,14 +527,14 @@
 ## Phase 3: Remove Old Implementation
 
 - [ ] 11. Remove old throttling implementation
-- [ ] 11.1 Remove deprecated configuration variables
+- [x] 11.1 Remove deprecated configuration variables
   - Remove self_throttling field (SM_SELF_THROTTLING)
   - Remove workers_per_cpu field (WORKERS_PER_CPU)
   - Remove throttling_vcpu_scale_factor field (THROTTLING_SCALE_FACTOR)
   - Remove throttling_retry_timeout field (THROTTLING_RETRY_TIMEOUT)
   - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
-- [ ] 11.2 Remove EndpointStatisticsTable usage from ImageRequestHandler
+- [x] 11.2 Remove EndpointStatisticsTable usage from ImageRequestHandler
   - Remove endpoint_statistics_table parameter from ImageRequestHandler.__init__()
   - Remove self_throttling checks in process_image_request()
   - Remove calls to endpoint_statistics_table.upsert_endpoint()
@@ -542,41 +542,34 @@
   - Update docstring to remove references to endpoint statistics
   - _Requirements: 6.5, 6.7_
 
-- [ ] 11.3 Remove EndpointStatisticsTable class file
+- [x] 11.3 Remove EndpointStatisticsTable class file
   - Delete src/aws/osml/model_runner/database/endpoint_statistics_table.py
   - Remove EndpointStatisticsTable import from database/__init__.py
   - Remove any other imports of EndpointStatisticsTable throughout codebase
   - _Requirements: 6.5, 6.7_
 
-- [ ] 11.4 Remove SelfThrottledRegionException
+- [x] 11.4 Remove SelfThrottledRegionException
   - Delete SelfThrottledRegionException class from exceptions.py
   - Remove any handling of this exception in region_request_handler.py
   - Remove any imports of this exception
   - _Requirements: 6.6_
 
-- [ ] 11.5 Update model_runner.py to remove old throttling wiring
+- [x] 11.5 Update model_runner.py to remove old throttling wiring
   - Remove EndpointStatisticsTable instantiation
   - Remove endpoint_statistics_table parameter from ImageRequestHandler
   - Remove ENDPOINT_TABLE environment variable usage
   - _Requirements: 6.5, 6.7_
 
-- [ ]* 11.6 Write tests to verify old throttling is removed
-  - Test that SM_SELF_THROTTLING environment variable is not used
-  - Test that THROTTLING_SCALE_FACTOR environment variable is not used
-  - Test that WORKERS_PER_CPU environment variable is not used
-  - Test that THROTTLING_RETRY_TIMEOUT environment variable is not used
-  - Test that EndpointStatisticsTable is not instantiated
-  - Test that SelfThrottledRegionException is not raised during region processing
-  - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7_
+- [x] 11.6 Remove EndpointStatisticsTable from CDK infrastructure
+  - Remove `endpointStatisticsTable` property from DatabaseTables class in cdk/lib/constructs/model-runner/database-tables.ts
+  - Remove `createEndpointStatisticsTable()` method from DatabaseTables class
+  - Remove `endpointStatisticsTable` from backup configuration in `createBackupConfiguration()`
+  - Remove `DDB_ENDPOINT_PROCESSING_TABLE` config property from DataplaneConfig class in cdk/lib/constructs/model-runner/dataplane.ts
+  - Remove `endpointStatisticsTable` property from ECSServiceProps interface in cdk/lib/constructs/model-runner/ecs-service.ts
+  - Remove `endpointStatisticsTable` from IAM permissions array in ECSService
+  - Remove `ENDPOINT_TABLE` environment variable from ECS task definition
+  - Remove `endpointStatisticsTable` parameter from ECSService instantiation in dataplane.ts
+  - Update any CDK tests that reference the endpoint statistics table
+  - _Requirements: 6.5, 6.7_
 
-- [ ] 12. Final checkpoint - Ensure all tests pass
-  - Run full test suite with tox
-  - Verify all unit tests pass
-  - Verify all property-based tests pass (minimum 100 iterations each)
-  - Verify integration tests pass
-  - Fix any failing tests
-  - Ensure code coverage meets project standards
-  - Run linting with tox -e lint
-  - Fix any linting issues
-  - Ensure all tests pass, ask the user if questions arise
-  - _Requirements: All_
+

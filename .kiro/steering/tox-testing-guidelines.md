@@ -32,7 +32,6 @@ This project uses **tox** for running tests across multiple Python versions and 
 Tests use mocked AWS services with the following environment variables (automatically set by tox):
 - `AWS_DEFAULT_REGION=us-west-2`
 - `IMAGE_REQUEST_TABLE=TEST-IMAGE-REQUEST-TABLE`
-- `ENDPOINT_TABLE=TEST-ENDPOINT-STATS-TABLE`
 - `FEATURE_TABLE=TEST-FEATURE-TABLE`
 - And other test-specific AWS resource names
 

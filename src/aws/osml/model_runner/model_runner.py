@@ -11,16 +11,15 @@ from aws.osml.model_runner.api import get_image_path
 
 from .api import ImageRequest, RegionRequest
 from .app_config import BotoConfig, ServiceConfig
-from .common import EndpointUtils, ImageDimensions, ThreadingLocalContextFilter
+from .common import ImageDimensions, ThreadingLocalContextFilter
 from .database import (
-    EndpointStatisticsTable,
     ImageRequestItem,
     ImageRequestTable,
     RegionRequestItem,
     RegionRequestTable,
     RequestedJobsTable,
 )
-from .exceptions import RetryableJobException, SelfThrottledRegionException
+from .exceptions import RetryableJobException
 from .image_request_handler import ImageRequestHandler
 from .region_request_handler import RegionRequestHandler
 from .scheduler import (
@@ -63,10 +62,8 @@ class ModelRunner:
         # Set up tables and status monitors
         self.image_request_table = ImageRequestTable(self.config.image_request_table)
         self.region_request_table = RegionRequestTable(self.config.region_request_table)
-        self.endpoint_statistics_table = EndpointStatisticsTable(self.config.endpoint_statistics_table)
         self.image_status_monitor = ImageStatusMonitor(self.config.image_status_topic)
         self.region_status_monitor = RegionStatusMonitor(self.config.region_status_topic)
-        self.endpoint_utils = EndpointUtils()
 
         # Create RegionCalculator for consistent region calculation
         region_size: ImageDimensions = ast.literal_eval(self.config.region_size)
@@ -79,19 +76,15 @@ class ModelRunner:
             region_request_table=self.region_request_table,
             image_request_table=self.image_request_table,
             region_status_monitor=self.region_status_monitor,
-            endpoint_statistics_table=self.endpoint_statistics_table,
             tiling_strategy=self.tiling_strategy,
-            endpoint_utils=self.endpoint_utils,
             config=self.config,
         )
         self.image_request_handler = ImageRequestHandler(
             image_request_table=self.image_request_table,
             image_status_monitor=self.image_status_monitor,
-            endpoint_statistics_table=self.endpoint_statistics_table,
             tiling_strategy=self.tiling_strategy,
             region_request_queue=self.region_request_queue,
             region_request_table=self.region_request_table,
-            endpoint_utils=self.endpoint_utils,
             config=self.config,
             region_request_handler=self.region_request_handler,
         )
@@ -208,11 +201,6 @@ class ModelRunner:
             except RetryableJobException as err:
                 logger.warning(f"Retrying region request due to: {err}")
                 self.region_request_queue.reset_request(receipt_handle, visibility_timeout=0)
-            except SelfThrottledRegionException as err:
-                logger.warning(f"Retrying region request due to: {err}")
-                self.region_request_queue.reset_request(
-                    receipt_handle, visibility_timeout=int(self.config.throttling_retry_timeout)
-                )
             except Exception as err:
                 logger.exception(f"Error processing region request: {err}")
                 self.region_request_queue.finish_request(receipt_handle)

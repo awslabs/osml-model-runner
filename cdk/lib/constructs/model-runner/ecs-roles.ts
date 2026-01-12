@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+ * Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
  */
 
 import { region_info } from "aws-cdk-lib";

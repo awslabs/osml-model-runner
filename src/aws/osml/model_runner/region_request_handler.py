@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import logging
 from typing import Optional
@@ -12,9 +12,9 @@ from aws.osml.photogrammetry import SensorModel
 
 from .api import RegionRequest
 from .app_config import MetricLabels, ServiceConfig
-from .common import EndpointUtils, ObservableEvent, RequestStatus, Timer
-from .database import EndpointStatisticsTable, ImageRequestItem, ImageRequestTable, RegionRequestItem, RegionRequestTable
-from .exceptions import ProcessRegionException, SelfThrottledRegionException
+from .common import ObservableEvent, RequestStatus, Timer
+from .database import ImageRequestItem, ImageRequestTable, RegionRequestItem, RegionRequestTable
+from .exceptions import ProcessRegionException
 from .status import RegionStatusMonitor
 from .tile_worker import TilingStrategy, process_tiles, setup_tile_workers
 
@@ -32,9 +32,7 @@ class RegionRequestHandler:
         region_request_table: RegionRequestTable,
         image_request_table: ImageRequestTable,
         region_status_monitor: RegionStatusMonitor,
-        endpoint_statistics_table: EndpointStatisticsTable,
         tiling_strategy: TilingStrategy,
-        endpoint_utils: EndpointUtils,
         config: ServiceConfig,
     ) -> None:
         """
@@ -43,17 +41,13 @@ class RegionRequestHandler:
         :param region_request_table: The table that handles region requests.
         :param image_request_table: The image request table for image/region processing.
         :param region_status_monitor: A monitor to track region request status.
-        :param endpoint_statistics_table: Table for tracking endpoint statistics.
         :param tiling_strategy: The strategy for handling image tiling.
-        :param endpoint_utils: Utility class for handling endpoint-related operations.
         :param config: Configuration settings for the service.
         """
         self.region_request_table = region_request_table
         self.image_request_table = image_request_table
         self.region_status_monitor = region_status_monitor
-        self.endpoint_statistics_table = endpoint_statistics_table
         self.tiling_strategy = tiling_strategy
-        self.endpoint_utils = endpoint_utils
         self.config = config
         self.on_region_complete = ObservableEvent()
 
@@ -99,23 +93,6 @@ class RegionRequestHandler:
                     MetricLabels.INPUT_FORMAT_DIMENSION: image_format,
                 }
             )
-
-        if self.config.self_throttling:
-            max_regions = self.endpoint_utils.calculate_max_regions(
-                region_request.model_name, region_request.model_invocation_role
-            )
-            # Add entry to the endpoint statistics table
-            self.endpoint_statistics_table.upsert_endpoint(region_request.model_name, max_regions)
-            in_progress = self.endpoint_statistics_table.current_in_progress_regions(region_request.model_name)
-
-            if in_progress >= max_regions:
-                if isinstance(metrics, MetricsLogger):
-                    metrics.put_metric(MetricLabels.THROTTLES, 1, str(Unit.COUNT.value))
-                logger.warning(f"Throttling region request. (Max: {max_regions} In-progress: {in_progress}")
-                raise SelfThrottledRegionException
-
-            # Increment the endpoint region counter
-            self.endpoint_statistics_table.increment_region_count(region_request.model_name)
 
         try:
             with Timer(
@@ -177,11 +154,6 @@ class RegionRequestHandler:
             image_request_item = self.fail_region_request(region_request_item)
             self.on_region_complete(image_request_item, region_request_item, RequestStatus.FAILED)
             return image_request_item
-
-        finally:
-            # Decrement the endpoint region counter
-            if self.config.self_throttling:
-                self.endpoint_statistics_table.decrement_region_count(region_request.model_name)
 
     @metric_scope
     def fail_region_request(

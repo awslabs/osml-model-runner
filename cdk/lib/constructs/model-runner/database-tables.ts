@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+ * Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
  */
 
 import { RemovalPolicy } from "aws-cdk-lib";
@@ -48,9 +48,6 @@ export class DatabaseTables extends Construct {
   /** The DynamoDB table for feature data. */
   public readonly featureTable: Table;
 
-  /** The DynamoDB table for endpoint statistics. */
-  public readonly endpointStatisticsTable: Table;
-
   /** The DynamoDB table for region request status. */
   public readonly regionRequestTable: Table;
 
@@ -69,7 +66,6 @@ export class DatabaseTables extends Construct {
       this.createOutstandingImageRequestsTable(props);
     this.imageRequestTable = this.createImageRequestTable(props);
     this.featureTable = this.createFeatureTable(props);
-    this.endpointStatisticsTable = this.createEndpointStatisticsTable(props);
     this.regionRequestTable = this.createRegionRequestTable(props);
 
     // Create backup configuration for production environments
@@ -152,27 +148,6 @@ export class DatabaseTables extends Construct {
   }
 
   /**
-   * Creates the endpoint statistics table.
-   *
-   * @param props - The database tables properties
-   * @returns The created OSMLTable
-   */
-  private createEndpointStatisticsTable(props: DatabaseTablesProps): Table {
-    return new Table(this, "EndpointProcessingTable", {
-      tableName: props.config.DDB_ENDPOINT_PROCESSING_TABLE,
-      partitionKey: {
-        name: "hash_key",
-        type: AttributeType.STRING
-      },
-      billingMode: BillingMode.PAY_PER_REQUEST,
-      removalPolicy: props.removalPolicy || RemovalPolicy.DESTROY,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      encryption: TableEncryption.AWS_MANAGED,
-      timeToLiveAttribute: props.config.DDB_TTL_ATTRIBUTE
-    });
-  }
-
-  /**
    * Creates the region request table.
    *
    * @param props - The database tables properties
@@ -213,7 +188,6 @@ export class DatabaseTables extends Construct {
       resources: [
         BackupResource.fromDynamoDbTable(this.featureTable),
         BackupResource.fromDynamoDbTable(this.regionRequestTable),
-        BackupResource.fromDynamoDbTable(this.endpointStatisticsTable),
         BackupResource.fromDynamoDbTable(this.imageRequestTable)
       ]
     });

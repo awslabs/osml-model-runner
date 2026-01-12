@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+ * Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
  */
 
 import { RemovalPolicy } from "aws-cdk-lib";
@@ -34,8 +34,6 @@ export class DataplaneConfig extends BaseConfig {
   public readonly CONTAINER_DOCKERFILE: string;
   /** The default container image to import when not building from source. */
   public readonly CONTAINER_URI: string;
-  /** The name of the DynamoDB table for endpoint processing statistics. */
-  public readonly DDB_ENDPOINT_PROCESSING_TABLE: string;
   /** The name of the DynamoDB table for image processing features. */
   public readonly DDB_FEATURES_TABLE: string;
   /** The name of the DynamoDB table for image request status. */
@@ -130,7 +128,6 @@ export class DataplaneConfig extends BaseConfig {
       CONTAINER_BUILD_TARGET: "model_runner",
       CONTAINER_DOCKERFILE: "docker/Dockerfile.model-runner",
       CONTAINER_URI: "awsosml/osml-model-runner:latest",
-      DDB_ENDPOINT_PROCESSING_TABLE: "EndpointProcessingStatistics",
       DDB_FEATURES_TABLE: "ImageProcessingFeatures",
       DDB_IMAGE_REQUEST_TABLE: "ImageRequestTable",
       DDB_OUTSTANDING_IMAGE_REQUESTS_TABLE: "OutstandingImageRequests",
@@ -420,7 +417,6 @@ export class Dataplane extends Construct {
       outstandingImageRequestsTable:
         this.databaseTables.outstandingImageRequestsTable,
       featureTable: this.databaseTables.featureTable,
-      endpointStatisticsTable: this.databaseTables.endpointStatisticsTable,
       regionRequestTable: this.databaseTables.regionRequestTable,
       imageRequestQueue: this.messaging.imageRequestQueue,
       imageRequestDlQueue: this.messaging.imageRequestDlQueue,

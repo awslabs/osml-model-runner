@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 from unittest import TestCase, main
 from unittest.mock import MagicMock, patch
@@ -7,15 +7,13 @@ from osgeo import gdal
 
 from aws.osml.model_runner.api import RegionRequest
 from aws.osml.model_runner.app_config import ServiceConfig
-from aws.osml.model_runner.common import EndpointUtils, RequestStatus
+from aws.osml.model_runner.common import RequestStatus
 from aws.osml.model_runner.database import (
-    EndpointStatisticsTable,
     ImageRequestItem,
     ImageRequestTable,
     RegionRequestItem,
     RegionRequestTable,
 )
-from aws.osml.model_runner.exceptions import SelfThrottledRegionException
 from aws.osml.model_runner.region_request_handler import RegionRequestHandler
 from aws.osml.model_runner.status import RegionStatusMonitor
 from aws.osml.model_runner.tile_worker import TilingStrategy
@@ -28,22 +26,17 @@ class TestRegionRequestHandler(TestCase):
         self.mock_region_request_table = MagicMock(spec=RegionRequestTable)
         self.mock_image_request_table = MagicMock(spec=ImageRequestTable)
         self.mock_region_status_monitor = MagicMock(spec=RegionStatusMonitor)
-        self.mock_endpoint_statistics_table = MagicMock(spec=EndpointStatisticsTable)
         self.mock_tiling_strategy = MagicMock(spec=TilingStrategy)
-        self.mock_endpoint_utils = MagicMock(spec=EndpointUtils)
         self.mock_config = MagicMock(spec=ServiceConfig)
 
         # Example config properties
-        self.mock_config.self_throttling = False
 
         # Instantiate the handler with mocked dependencies
         self.handler = RegionRequestHandler(
             region_request_table=self.mock_region_request_table,
             image_request_table=self.mock_image_request_table,
             region_status_monitor=self.mock_region_status_monitor,
-            endpoint_statistics_table=self.mock_endpoint_statistics_table,
             tiling_strategy=self.mock_tiling_strategy,
-            endpoint_utils=self.mock_endpoint_utils,
             config=self.mock_config,
         )
 
@@ -108,28 +101,6 @@ class TestRegionRequestHandler(TestCase):
         self.mock_region_status_monitor.process_event.assert_called()
         assert isinstance(result, ImageRequestItem)
 
-    def test_process_region_request_throttling(self):
-        """
-        Test region request processing when throttling is enabled.
-        """
-        self.mock_config.self_throttling = True
-
-        # Mock endpoint statistics behavior
-        self.mock_endpoint_utils.calculate_max_regions.return_value = 5
-        self.mock_endpoint_statistics_table.current_in_progress_regions.return_value = 5
-
-        # Assert that throttling is raised
-        with self.assertRaises(SelfThrottledRegionException):
-            self.handler.process_region_request(
-                region_request=self.mock_region_request,
-                region_request_item=self.mock_region_request_item,
-                raster_dataset=self.mock_raster_dataset,
-                sensor_model=self.mock_sensor_model,
-            )
-
-        self.mock_endpoint_statistics_table.increment_region_count.assert_not_called()
-        self.mock_endpoint_statistics_table.decrement_region_count.assert_not_called()
-
     def test_process_region_request_invalid_request(self):
         """
         Test processing with an invalid RegionRequest.
@@ -145,8 +116,6 @@ class TestRegionRequestHandler(TestCase):
                 raster_dataset=self.mock_raster_dataset,
                 sensor_model=self.mock_sensor_model,
             )
-        self.mock_endpoint_statistics_table.increment_region_count.assert_not_called()
-        self.mock_endpoint_statistics_table.decrement_region_count.assert_not_called()
 
     @patch("aws.osml.model_runner.region_request_handler.setup_tile_workers")
     @patch("aws.osml.model_runner.region_request_handler.process_tiles")

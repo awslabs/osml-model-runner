@@ -2,7 +2,7 @@
 
 This guide is intended for operators and advanced users who deploy ModelRunner and need to understand how image jobs are scheduled, throttled, and monitored.
 
-The OversightML ModelRunner has a scheduler that controls the start of new image jobs. The scheduler compares available endpoint capacity to estimated image load before starting new work. This allows ModelRunner to protect endpoints with fixed compute allocations or during burst events that exceed an exndpoints ability to autoscale. 
+The OversightML ModelRunner has a scheduler that controls the start of new image jobs. The scheduler compares available endpoint capacity to estimated image load before starting new work. This allows ModelRunner to protect endpoints with fixed compute allocations or during burst events that exceed an exndpoints ability to autoscale.
 
 Without capacity-based scheduling, a large number of image requests can overwhelm individual model endpoints. This can result in increased latency and compute resources wasted on retries. Our goal is to ensure predictable processing times, stable endpoint performance, and efficient resource utilization by only starting jobs when sufficient capacity exists to complete them. This proactive approach complements the reactive retry with exponential backoff protections we use when sending tiles to the endpoints.
 
@@ -54,7 +54,7 @@ Before checking capacity, the scheduler determines which job should be processed
 
 ### Capacity Check
 
-After selecting a candidate job, the scheduler checks to see if an endpoint has enough available capacity to run the job. 
+After selecting a candidate job, the scheduler checks to see if an endpoint has enough available capacity to run the job.
 
 #### Available Capacity Calculation
 

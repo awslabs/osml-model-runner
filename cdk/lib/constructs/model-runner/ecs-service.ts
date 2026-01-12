@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+ * Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
  */
 
 import { Duration, RemovalPolicy } from "aws-cdk-lib";
@@ -54,8 +54,6 @@ export interface ECSServiceProps {
   readonly outstandingImageRequestsTable: ITable;
   /** The DynamoDB table for feature data. */
   readonly featureTable: ITable;
-  /** The DynamoDB table for endpoint statistics. */
-  readonly endpointStatisticsTable: ITable;
   /** The DynamoDB table for region request status. */
   readonly regionRequestTable: ITable;
   /** The SQS queue for image processing requests. */
@@ -159,7 +157,6 @@ export class ECSService extends Construct {
       props.imageRequestTable.tableArn,
       props.outstandingImageRequestsTable.tableArn,
       props.featureTable.tableArn,
-      props.endpointStatisticsTable.tableArn,
       props.regionRequestTable.tableArn
     ];
 
@@ -337,13 +334,11 @@ export class ECSService extends Construct {
       OUTSTANDING_IMAGE_REQUEST_TABLE:
         props.outstandingImageRequestsTable.tableName,
       FEATURE_TABLE: props.featureTable.tableName,
-      ENDPOINT_TABLE: props.endpointStatisticsTable.tableName,
       REGION_REQUEST_TABLE: props.regionRequestTable.tableName,
       IMAGE_QUEUE: props.imageRequestQueue.queueUrl,
       IMAGE_DLQ: props.imageRequestDlQueue.queueUrl,
       REGION_QUEUE: props.regionRequestQueue.queueUrl,
       AWS_S3_ENDPOINT: props.regionalS3Endpoint,
-      WORKERS_PER_CPU: props.config.MR_WORKERS_PER_CPU.toString(),
       WORKERS: workers,
       REGION_SIZE: props.config.MR_REGION_SIZE
     };
