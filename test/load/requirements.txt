@@ -1,13 +1,9 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+# Requirements for OSML Model Runner Locust load tests
 #
-# Requirements for OSML Model Runner Load Tests
-#
-# These are the minimal dependencies needed to run the load test framework.
-# The load tests run independently of the main model runner package.
+# These tests are intentionally self-contained and can be run directly with:
+#   locust -f ./test/load --class-picker ...
 
-# AWS SDK
 boto3==1.40.70
 botocore==1.40.70
-
-# Locust for load testing
+jinja2>=3.1.0
 locust>=2.42.2
