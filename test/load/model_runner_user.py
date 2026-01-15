@@ -1,10 +1,10 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+# Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 """
-Base Locust user class for Model Runner load tests.
+Model Runner Locust user base classes.
 
-This module provides a base class for Locust users that interact with the model runner,
-including functionality for making image processing requests and checking status.
+This file uses flat imports (no package structure) so the directory can be passed
+directly to Locust via `-f ./test/load`.
 """
 
 import json
@@ -12,19 +12,22 @@ import logging
 import time
 from enum import Enum
 from secrets import token_hex
-from test.load.locust_job_tracker import get_job_tracker
 from typing import Any, Dict, Optional, Tuple
-from urllib.parse import urlparse
 
 import boto3
+from _load_utils import split_s3_path
 from botocore.exceptions import ClientError, ParamValidationError
+from job_tracker import get_job_tracker
 from locust import User
+from locust_setup import get_shared_status_monitor
 
 logger = logging.getLogger(__name__)
 
 
 class ImageRequestStatus(str, Enum):
-    """Enumeration of possible image request processing statuses."""
+    """
+    Job status values emitted by the Model Runner pipeline.
+    """
 
     STARTED = "STARTED"
     IN_PROGRESS = "IN_PROGRESS"
@@ -33,30 +36,27 @@ class ImageRequestStatus(str, Enum):
     FAILED = "FAILED"
 
     def __str__(self) -> str:
-        """
-        Convert enum value to string.
-
-        :return: String representation of the status
-        """
         return self.value
 
 
 class ModelRunnerUser(User):
     """
-    Base class for Locust users that interact with the model runner.
+    Base class for Locust users that interact with Model Runner.
 
-    Provides common functionality for making image processing requests and checking status.
-    This class waits for job completion, unlike ModelRunnerLoadTestUser which only submits jobs.
+    This class provides synchronous semantics (submit + wait).
     """
 
-    abstract = True  # This prevents Locust from creating this user directly
+    abstract = True
+    # Locust UI expects a host value for some workflows; our tests don't use HTTP,
+    # so set a harmless default to avoid the UI warning/prompt.
+    host = "http://localhost"
 
-    DEFAULT_TILE_SIZE = 4096
-    DEFAULT_TILE_OVERLAP = 50
-    DEFAULT_TILE_FORMAT = "NITF"
+    DEFAULT_TILE_SIZE = 512
+    DEFAULT_TILE_OVERLAP = 128
+    DEFAULT_TILE_FORMAT = "GTIFF"
     DEFAULT_TILE_COMPRESSION = "NONE"
     DEFAULT_POST_PROCESSING = (
-        '[{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold":  0.75}}]'
+        '[{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold":  0.1}}]'
     )
 
     def __init__(self, environment):
@@ -78,29 +78,25 @@ class ModelRunnerUser(User):
         feature_properties: Optional[list[dict[str, Any]]] = None,
     ) -> dict[str, Any]:
         """
-        Build an image processing request.
+        Build a Model Runner `ProcessImage` request payload.
 
-        :param endpoint: Name of the processing endpoint
-        :param endpoint_type: Type of endpoint (e.g., 'SM_ENDPOINT', 'DETECT', 'CLASSIFY')
-        :param image_url: S3 URL of the input image
-        :param result_url: S3 URL for storing results
-        :param tile_size: Size of image tiles in pixels
-        :param tile_overlap: Overlap between tiles in pixels
-        :param tile_format: Format for image tiles (e.g., 'NITF')
-        :param tile_compression: Compression type for tiles
-        :param post_processing: JSON string defining post-processing steps
-        :param region_of_interest: Optional GeoJSON defining region to process
-        :param feature_properties: Optional list of feature property specifications
-        :return: Dictionary containing the complete image processing request
+        :param endpoint: Image processor identifier (e.g. SageMaker endpoint name).
+        :param endpoint_type: Image processor type (e.g. `SM_ENDPOINT`).
+        :param image_url: Input image URL.
+        :param result_url: Base S3 URL where results should be written.
+        :param tile_size: Tile size to use for processing.
+        :param tile_overlap: Tile overlap to use for processing.
+        :param tile_format: Tile output format.
+        :param tile_compression: Tile compression setting.
+        :param post_processing: JSON string for post-processing pipeline configuration.
+        :param region_of_interest: Optional region-of-interest configuration.
+        :param feature_properties: Optional list of feature property configurations.
+        :returns: Request payload dictionary.
         """
-
         job_id = token_hex(16)
         job_name = f"test-{job_id}"
 
-        # Parse S3 URL: s3://bucket/key -> (bucket, key)
-        parsed = urlparse(result_url)
-        result_bucket = parsed.netloc or result_url.replace("s3://", "").split("/")[0]
-        result_prefix = parsed.path.lstrip("/")
+        result_bucket, result_prefix = split_s3_path(result_url)
         if result_prefix and not result_prefix.endswith("/"):
             result_prefix += "/"
         result_prefix += f"{job_name}/"
@@ -108,7 +104,7 @@ class ModelRunnerUser(User):
         if feature_properties is None:
             feature_properties = []
 
-        image_processing_request: Dict[str, Any] = {
+        return {
             "jobName": job_name,
             "jobId": job_id,
             "imageUrls": [image_url],
@@ -123,19 +119,10 @@ class ModelRunnerUser(User):
             "featureProperties": feature_properties,
         }
 
-        return image_processing_request
-
 
 class ModelRunnerClientException(Exception):
     """
-    Exception raised for errors that occur during model runner client operations.
-
-    Contains details about the specific request that failed.
-
-    :param message: Error message
-    :param status: ModelRunner job status if available
-    :param response_body: Response body if available
-    :param job_id: ModelRunner job ID if available
+    Exception raised for unsuccessful Model Runner jobs.
     """
 
     def __init__(
@@ -150,7 +137,6 @@ class ModelRunnerClientException(Exception):
         self.response_body = response_body
         self.job_id = job_id
 
-        # Build detailed error message
         detailed_message = [message]
         if status:
             detailed_message.append(f"Status: {status}")
@@ -164,98 +150,47 @@ class ModelRunnerClientException(Exception):
 
 class ModelRunnerClient:
     """
-    Client for interacting with the model runner service.
-
-    This implementation follows the design pattern setup by the Users implemented in
-    the Locust package. The abstract base User class contains a reference to the client
-    and any behavioral utility methods while the client itself encapsulates the protocol
-    used to communicate with the service.
+    Client for interacting with Model Runner via SQS + status polling.
     """
 
     def __init__(self, environment):
-        """
-        Initialize the model runner client.
-
-        :param environment: Locust environment containing test configuration
-        """
         self.environment = environment
-        self.sqs_service_resource = boto3.resource("sqs")
+        self.sqs_resource = boto3.resource("sqs")
         self.max_retry_attempts = 3
-        self.job_tracker = get_job_tracker()
 
     def process_image(self, image_processing_request: Dict[str, Any]) -> None:
         """
-        Submit an image processing request and wait for completion.
+        Submit a processing job and wait for a terminal status.
 
-        This is a convenience method that provides a synchronous call pattern for the
-        ModelRunner API. It wraps the asynchronous calls to queue_image_processing_job
-        and wait_for_image_complete that are non-blocking.
+        This emits a Locust request event named `Process Image` once the job is terminal.
 
-        :param image_processing_request: Dictionary containing the request parameters
-        :raises ModelRunnerClientException: If request submission or processing fails
+        :param image_processing_request: Request payload to submit.
+        :returns: None
         """
-
-        logger.debug(f"Starting ModelRunner image job for: {image_processing_request['imageUrls']}")
-        logger.debug(
-            f"Model: {image_processing_request['imageProcessor']['name']}, "
-            f"Type:{image_processing_request['imageProcessor']['type']}"
-        )
-
         job_id = image_processing_request["jobId"]
-        image_url = image_processing_request["imageUrls"][0]
-        image_id = f"{job_id}:{image_url}"
-
-        # Register job with tracker (if not already registered)
-        from datetime import datetime
-
-        from osgeo import gdal
-
+        image_url = ""
         try:
-            gdal_info = gdal.Open(image_url.replace("s3:/", "/vsis3", 1))
-            pixels = gdal_info.RasterXSize * gdal_info.RasterYSize if gdal_info else 0
+            image_url = image_processing_request.get("imageUrls", [""])[0]
         except Exception:
-            pixels = 0
+            image_url = ""
 
-        # Try to get image size from S3
-        try:
-            s3_client = boto3.client("s3")
-            # Parse S3 URL: s3://bucket/key -> (bucket, key)
-            parsed = urlparse(image_url)
-            bucket = parsed.netloc or image_url.replace("s3://", "").split("/")[0]
-            key = parsed.path.lstrip("/")
-            response = s3_client.head_object(Bucket=bucket, Key=key)
-            image_size = response.get("ContentLength", 0)
-        except Exception:
-            image_size = 0
+        # Register job for later job_status/job_summary output.
+        tracker = getattr(self.environment, "osml_job_tracker", None) or get_job_tracker()
+        tracker.register_job(job_id=job_id, image_url=image_url)
 
-        start_time_str = datetime.now().strftime("%m/%d/%Y/%H:%M:%S")
         start_perf_counter = time.perf_counter()
+
         final_job_status = None
-        processing_time = -1
-        attempt_number = 0
-        while attempt_number < self.max_retry_attempts:
-            attempt_number += 1
-            logger.info(f"Starting: {job_id} attempt {attempt_number}")
-            queued_message_id = self.queue_image_processing_job(image_processing_request)
-            logger.debug(f"SQS Message ID: {queued_message_id}")
+        processing_time = None
 
-            # Register job with tracker
-            self.job_tracker.register_job(
-                image_id=image_id,
-                job_id=job_id,
-                image_url=image_url,
-                message_id=queued_message_id or "",
-                size=image_size,
-                pixels=pixels,
-                start_time=start_time_str,
-            )
-
-            final_job_status, processing_time = self.wait_for_image_complete(job_id, image_id)
+        for attempt_number in range(1, self.max_retry_attempts + 1):
+            logger.info("Starting: %s attempt %s", job_id, attempt_number)
+            self.queue_image_processing_job(image_processing_request)
+            final_job_status, processing_time = self.wait_for_image_complete(job_id)
             if final_job_status != ImageRequestStatus.PARTIAL:
                 break
 
-        response_time = (time.perf_counter() - start_perf_counter) * 1000
-        logger.info(f"Complete: {job_id} {final_job_status} - {processing_time}")
+        response_time_ms = (time.perf_counter() - start_perf_counter) * 1000
 
         exception = None
         if final_job_status != ImageRequestStatus.SUCCESS:
@@ -265,111 +200,94 @@ class ModelRunnerClient:
                 response_body={"request": image_processing_request, "processing_time": processing_time},
                 job_id=job_id,
             )
+        # Update tracker with final status (even if unsuccessful).
+        tracker.complete_job(
+            job_id=job_id,
+            status=str(final_job_status) if final_job_status else "UNKNOWN",
+            processing_duration_s=processing_time,
+        )
 
         self.environment.events.request.fire(
             request_type="Process Image",
             name=self._build_event_name(image_processing_request),
             exception=exception,
-            response_time=response_time,
+            response_time=response_time_ms,
             response_length=0,
         )
 
     def _build_event_name(self, image_processing_request: Dict[str, Any]) -> str:
         """
-        Build a locust event name for tracking request metrics.
+        Build a human-readable Locust event name for the request.
 
-        :param image_processing_request: Dictionary containing the request parameters
-        :return: Event name string incorporating endpoint and request type
+        :param image_processing_request: Request payload.
+        :returns: Event name string.
         """
         try:
             image_url = image_processing_request["imageUrls"][0]
             filename = image_url.split("/")[-1]
             model_name = image_processing_request["imageProcessor"]["name"]
-
             return f"{filename}:{model_name}"
-
         except (KeyError, IndexError):
             return "invalid_request"
 
     def queue_image_processing_job(self, image_processing_request: Dict[str, Any]) -> Optional[str]:
         """
-        Submit job to the processing queue.
+        Send the job request to the configured Model Runner input queue.
 
-        :param image_processing_request: Dictionary containing the request parameters
-        :return: Message ID if successfully queued, None if failed
-        :raises ModelRunnerClientException: If request submission fails
+        :param image_processing_request: Request payload to submit.
+        :returns: SQS `MessageId` if available.
         """
-        logger.debug(f"Sending request: jobId={image_processing_request['jobId']}")
         try:
-            from test.config import LoadTestConfig
-
-            config = LoadTestConfig()
-            queue_name = getattr(self.environment.parsed_options, "mr_input_queue", None) or config.IMAGE_QUEUE_NAME
-            account_id = getattr(self.environment.parsed_options, "aws_account", None) or config.ACCOUNT
-
-            queue = self.sqs_service_resource.get_queue_by_name(
-                QueueName=queue_name,
-                QueueOwnerAWSAccountId=account_id,
+            queue = self.sqs_resource.get_queue_by_name(
+                QueueName=self.environment.parsed_options.mr_input_queue,
+                QueueOwnerAWSAccountId=self.environment.parsed_options.aws_account,
             )
             response = queue.send_message(MessageBody=json.dumps(image_processing_request))
-
-            message_id = response.get("MessageId")
-            logger.debug(f"Message queued to SQS with messageId={message_id}")
-
-            return message_id
+            return response.get("MessageId")
         except ClientError as error:
-            logger.error(f"Unable to send job request to SQS queue: {queue_name}")
-            logger.error(f"{error}")
-            raise error
-
+            logger.error(
+                "Unable to send job request to SQS queue: %s",
+                self.environment.parsed_options.mr_input_queue,
+            )
+            logger.error("%s", error)
+            raise
         except ParamValidationError as error:
             logger.error("Invalid SQS API request; validation failed")
-            logger.error(f"{error}")
-            raise error
+            logger.error("%s", error)
+            raise
 
-    def check_image_status(self, job_id: str, image_id: str) -> Tuple[Optional[str], Optional[int]]:
+    def check_image_status(self, job_id: str) -> Tuple[Optional[str], Optional[int]]:
         """
-        Check the current status of a processing job.
+        Check the current status for a job.
 
-        Uses the job tracker to look up job status by image_id.
-
-        :param job_id: ID of the job to check (for logging)
-        :param image_id: Image ID (job_id:image_url) used as key in tracker
-        :return: Tuple of (status, processing_duration) if found, (None, None) if not found
+        :param job_id: Job identifier.
+        :returns: Tuple of `(status, processing_duration)`; values may be `None`.
         """
-        with self.job_tracker.lock:
-            job_status = self.job_tracker.job_status_dict.get(image_id)
-            if job_status:
-                status_str = str(job_status.status) if job_status.status else None
-                duration = int(job_status.processing_duration) if job_status.processing_duration else None
-                return status_str, duration
-        return None, None
+        # Prefer environment-attached monitor (robust even if locust_setup is imported multiple times).
+        monitor = getattr(self.environment, "osml_status_monitor", None) or get_shared_status_monitor()
+        if monitor is None:
+            return None, None
+        return monitor.check_job_status(job_id)
 
     def wait_for_image_complete(
-        self, job_id: str, image_id: str, retry_interval: int = 5, timeout: int = 15 * 60 * 60
+        self,
+        job_id: str,
+        retry_interval: int = 5,
+        timeout: int = 15 * 60 * 60,
     ) -> Tuple[Optional[str], Optional[int]]:
         """
-        Wait for an image processing request to complete.
+        Wait until a job reaches a terminal status or times out.
 
-        Polls the job status until it reaches a terminal state or times out.
-
-        :param job_id: ID of the job to monitor (for logging)
-        :param image_id: Image ID (job_id:image_url) used as key in tracker
-        :param retry_interval: Seconds to wait between status checks
-        :param timeout: Maximum total seconds to wait
-        :return: Tuple of (final_status, processing_duration)
-        :raises RuntimeError: If job times out or enters invalid state
+        :param job_id: Job identifier.
+        :param retry_interval: Poll interval in seconds.
+        :param timeout: Maximum time to wait in seconds.
+        :returns: Tuple of `(status, processing_duration)` as last observed.
         """
-
         job_status, processing_duration = (None, None)
         total_wait_time = 0
         while total_wait_time < timeout:
-            job_status, processing_duration = self.check_image_status(job_id, image_id)
-            if job_status in [
-                ImageRequestStatus.SUCCESS,
-                ImageRequestStatus.FAILED,
-                ImageRequestStatus.PARTIAL,
-            ]:
+            job_status, processing_duration = self.check_image_status(job_id)
+            if job_status in [ImageRequestStatus.SUCCESS, ImageRequestStatus.FAILED, ImageRequestStatus.PARTIAL]:
                 return job_status, processing_duration
             time.sleep(retry_interval)
             total_wait_time += retry_interval

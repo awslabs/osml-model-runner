@@ -113,6 +113,10 @@ Note: Timeline Event logs like the example above are written at an INFO level.
 * **/bin**: The entry point for the containerized application.
 * **/scripts**: Utility scripts that are not part of the main application frequently used in development / testing.
 
+### Load testing
+
+Locust-based load tests live in `test/load/`. See `test/load/README.md` for how to run them.
+
 ### Prerequisites
 
 First, ensure you have installed the following tools locally
