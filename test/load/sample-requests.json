@@ -1,0 +1,233 @@
+[
+  {
+    "imageUrls": [
+      "{{test_imagery_location}}/small.tif"
+    ],
+    "imageProcessor": {
+      "name": "centerpoint",
+      "type": "SM_ENDPOINT"
+    },
+    "outputs": [
+      {
+        "type": "S3",
+        "bucket": "{{test_results_bucket}}",
+        "prefix": "{{test_results_prefix}}"
+      }
+    ],
+    "imageProcessorTileSize": 512,
+    "imageProcessorTileOverlap": 128,
+    "imageProcessorTileFormat": "GTIFF",
+    "imageProcessorTileCompression": "NONE",
+    "postProcessing": [{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold":  0.75}}]
+  },
+  {
+    "imageUrls": [
+      "{{test_imagery_location}}/meta.ntf"
+    ],
+    "imageProcessor": {
+      "name": "centerpoint",
+      "type": "SM_ENDPOINT"
+    },
+    "outputs": [
+      {
+        "type": "S3",
+        "bucket": "{{test_results_bucket}}",
+        "prefix": "{{test_results_prefix}}"
+      }
+    ],
+    "imageProcessorTileSize": 512,
+    "imageProcessorTileOverlap": 128,
+    "imageProcessorTileFormat": "GTIFF",
+    "imageProcessorTileCompression": "NONE",
+    "postProcessing": [{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold":  0.75}}]
+  },
+  {
+    "imageUrls": [
+      "{{test_imagery_location}}/sicd-capella-chip.ntf"
+    ],
+    "imageProcessor": {
+      "name": "centerpoint",
+      "type": "SM_ENDPOINT"
+    },
+    "outputs": [
+      {
+        "type": "S3",
+        "bucket": "{{test_results_bucket}}",
+        "prefix": "{{test_results_prefix}}"
+      }
+    ],
+    "imageProcessorTileSize": 512,
+    "imageProcessorTileOverlap": 128,
+    "imageProcessorTileFormat": "GTIFF",
+    "imageProcessorTileCompression": "NONE",
+    "postProcessing": [{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold":  0.75}}]
+  },
+  {
+    "imageUrls": [
+      "{{test_imagery_location}}/sicd-umbra-chip.ntf"
+    ],
+    "imageProcessor": {
+      "name": "centerpoint",
+      "type": "SM_ENDPOINT"
+    },
+    "outputs": [
+      {
+        "type": "S3",
+        "bucket": "{{test_results_bucket}}",
+        "prefix": "{{test_results_prefix}}"
+      }
+    ],
+    "imageProcessorTileSize": 512,
+    "imageProcessorTileOverlap": 128,
+    "imageProcessorTileFormat": "GTIFF",
+    "imageProcessorTileCompression": "NONE",
+    "postProcessing": [{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold":  0.75}}]
+  },
+  {
+    "imageUrls": [
+      "{{test_imagery_location}}/sicd-interferometric-hh.nitf"
+    ],
+    "imageProcessor": {
+      "name": "centerpoint",
+      "type": "SM_ENDPOINT"
+    },
+    "outputs": [
+      {
+        "type": "S3",
+        "bucket": "{{test_results_bucket}}",
+        "prefix": "{{test_results_prefix}}"
+      }
+    ],
+    "imageProcessorTileSize": 512,
+    "imageProcessorTileOverlap": 128,
+    "imageProcessorTileFormat": "GTIFF",
+    "imageProcessorTileCompression": "NONE",
+    "postProcessing": [{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold":  0.75}}]
+  },
+  {
+    "imageUrls": [
+      "{{test_imagery_location}}/wbid.ntf"
+    ],
+    "imageProcessor": {
+      "name": "centerpoint",
+      "type": "SM_ENDPOINT"
+    },
+    "outputs": [
+      {
+        "type": "S3",
+        "bucket": "{{test_results_bucket}}",
+        "prefix": "{{test_results_prefix}}"
+      }
+    ],
+    "imageProcessorTileSize": 512,
+    "imageProcessorTileOverlap": 128,
+    "imageProcessorTileFormat": "GTIFF",
+    "imageProcessorTileCompression": "NONE",
+    "postProcessing": [{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold":  0.75}}]
+  },
+  {
+    "imageUrls": [
+      "{{test_imagery_location}}/large.tif"
+    ],
+    "imageProcessor": {
+      "name": "flood",
+      "type": "SM_ENDPOINT"
+    },
+    "outputs": [
+      {
+        "type": "S3",
+        "bucket": "{{test_results_bucket}}",
+        "prefix": "{{test_results_prefix}}"
+      }
+    ],
+    "imageProcessorTileSize": 512,
+    "imageProcessorTileOverlap": 128,
+    "imageProcessorTileFormat": "GTIFF",
+    "imageProcessorTileCompression": "NONE",
+    "postProcessing": [{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold":  0.75}}]
+  },
+  {
+    "imageUrls": [
+      "{{test_imagery_location}}/tile.tif"
+    ],
+    "imageProcessor": {
+      "name": "aircraft",
+      "type": "SM_ENDPOINT"
+    },
+    "outputs": [
+      {
+        "type": "S3",
+        "bucket": "{{test_results_bucket}}",
+        "prefix": "{{test_results_prefix}}"
+      }
+    ],
+    "imageProcessorTileSize": 512,
+    "imageProcessorTileOverlap": 128,
+    "imageProcessorTileFormat": "GTIFF",
+    "imageProcessorTileCompression": "NONE",
+    "postProcessing": [{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold":  0.75}}]
+  },
+  {
+    "imageUrls": [
+      "{{test_imagery_location}}/tile.ntf"
+    ],
+    "imageProcessor": {
+      "name": "aircraft",
+      "type": "SM_ENDPOINT"
+    },
+    "outputs": [
+      {
+        "type": "S3",
+        "bucket": "{{test_results_bucket}}",
+        "prefix": "{{test_results_prefix}}"
+      }
+    ],
+    "imageProcessorTileSize": 512,
+    "imageProcessorTileOverlap": 128,
+    "imageProcessorTileFormat": "GTIFF",
+    "imageProcessorTileCompression": "NONE",
+    "postProcessing": [{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold":  0.75}}]
+  },
+  {
+    "imageUrls": [
+      "{{test_imagery_location}}/tile.jpeg"
+    ],
+    "imageProcessor": {
+      "name": "aircraft",
+      "type": "SM_ENDPOINT"
+    },
+    "outputs": [
+      {
+        "type": "S3",
+        "bucket": "{{test_results_bucket}}",
+        "prefix": "{{test_results_prefix}}"
+      }
+    ],
+    "imageProcessorTileSize": 512,
+    "imageProcessorTileOverlap": 128,
+    "imageProcessorTileFormat": "GTIFF",
+    "imageProcessorTileCompression": "NONE",
+    "postProcessing": [{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold":  0.75}}]
+  },
+  {
+    "imageUrls": [
+      "{{test_imagery_location}}/tile.png"
+    ],
+    "imageProcessor": {
+      "name": "aircraft",
+      "type": "SM_ENDPOINT"
+    },
+    "outputs": [
+      {
+        "type": "S3",
+        "bucket": "{{test_results_bucket}}",
+        "prefix": "{{test_results_prefix}}"
+      }
+    ],
+    "imageProcessorTileSize": 512,
+    "imageProcessorTileOverlap": 128,
+    "imageProcessorTileFormat": "GTIFF",
+    "imageProcessorTileCompression": "NONE",
+    "postProcessing": [{"step": "FEATURE_DISTILLATION", "algorithm": {"algorithmType": "NMS", "iouThreshold":  0.75}}]
+  }
+]

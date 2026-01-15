@@ -1,9 +1,7 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+# Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 """
 Locust user that makes requests based on predefined test cases.
-
-Reads request parameters from a JSON file and executes them sequentially.
 """
 
 import copy
@@ -12,104 +10,90 @@ import json
 import logging
 from pathlib import Path
 from secrets import token_hex
-from test.load.model_runner_user import ModelRunnerUser
 from typing import Any, Dict, List
-from urllib.parse import urlparse
 
+from _load_utils import resolve_path, split_s3_path
 from jinja2 import Template
+from load_context import get_load_test_context
 from locust import task
+from model_runner_user import ModelRunnerUser
 
 logger = logging.getLogger(__name__)
 
 
 class PredefinedRequestsUser(ModelRunnerUser):
     """
-    Locust user that makes requests based on predefined test cases.
+    Locust user that cycles through a predefined set of requests.
 
-    Reads request parameters from a JSON file and executes them sequentially.
+    Requests are loaded once per run (cached on the shared load-test context) and then
+    iterated in a round-robin fashion across tasks.
     """
 
-    def __init__(self, environment):
+    def on_start(self) -> None:
         """
-        Initialize the predefined requests user.
+        Load and cache request templates, then initialize the request cycle.
 
-        :param environment: Locust environment containing test configuration
+        :returns: None
         """
-        super().__init__(environment)
-        self.requests: List[Dict[str, Any]] = []
-        self._load_requests()
-        # Create an infinite cycle iterator through the requests
+        ctx = get_load_test_context(self.environment)
+        with ctx.lock:
+            if ctx.predefined_requests is None:
+                ctx.predefined_requests = self._load_requests()
+
+        self.requests = list(ctx.predefined_requests or [])
         self.request_cycle = itertools.cycle(self.requests)
 
-    def _load_requests(self, request_file_path: str = "./bin/locust/sample-requests.json") -> None:
+    def _load_requests(self, request_file_path: str = "./test/load/sample-requests.json") -> List[Dict[str, Any]]:
         """
-        Load test requests from a JSON file.
+        Load and render the request JSON file.
 
-        :param request_file_path: Path to JSON file containing request definitions
-        :raises RuntimeError: If request file cannot be loaded
-        :raises FileNotFoundError: If the request file doesn't exist
-        :raises json.JSONDecodeError: If the JSON file is invalid
+        The request file is treated as a Jinja2 template and rendered with values
+        derived from the configured imagery/results locations.
+
+        :param request_file_path: Default request-file path to use if no CLI option is provided.
+        :returns: A list of request objects suitable for `ModelRunnerClient.process_image`.
+        :raises FileNotFoundError: If the request file cannot be resolved.
+        :raises ValueError: If the rendered JSON is not a non-empty list.
         """
-        # Try to get request file path from environment options, or use default
         request_path_str = getattr(self.environment.parsed_options, "request_file", request_file_path)
-        request_path = Path(request_path_str)
-
-        # If relative path doesn't exist, try absolute path
+        request_path = resolve_path(request_path_str, relative_to=Path(__file__).parent)
         if not request_path.exists() and not request_path.is_absolute():
-            # Try in current directory or test/load directory
-            alt_paths = [
-                Path.cwd() / request_path_str,
-                Path(__file__).parent / request_path_str,
-                Path(__file__).parent.parent.parent / "bin" / "locust" / "sample-requests.json",
-            ]
-            for alt_path in alt_paths:
-                if alt_path.exists():
-                    request_path = alt_path
-                    break
+            # If a user passes something like "./test/load/sample-requests.json" but their cwd
+            # isn't the repo root, fall back to the basename in this directory.
+            request_path = Path(__file__).parent / Path(request_path_str).name
 
         if not request_path.exists():
             raise FileNotFoundError(f"Request file not found: {request_path}")
 
-        logger.info(f"Using sample requests file at: {request_path.absolute()}")
+        logger.info("Using sample requests file at: %s", request_path.absolute())
 
         with open(request_path, "r") as f:
             request_template = Template(f.read())
 
-        # The current structure of the image request requires separate output bucket and prefix parameters so
-        # test_results_location is likely unused. It is included in these template replacements for future
-        # compatibility if we ever decide to make the API more internally consistent.
-        test_results_location = getattr(
-            self.environment.parsed_options, "test_results_location", "s3://mr-bucket-sink-<account>"
-        )
-        test_imagery_location = getattr(
-            self.environment.parsed_options, "test_imagery_location", "s3://osml-test-images-<account>"
-        )
-
-        # Parse S3 URL: s3://bucket/key -> (bucket, key)
-        parsed = urlparse(test_results_location)
-        test_results_bucket = parsed.netloc or test_results_location.replace("s3://", "").split("/")[0]
-        test_results_prefix = parsed.path.lstrip("/")
+        test_results_bucket, test_results_prefix = split_s3_path(self.environment.parsed_options.test_results_location)
         template_parameters = {
-            "test_imagery_location": test_imagery_location,
-            "test_results_location": test_results_location,
+            "test_imagery_location": self.environment.parsed_options.test_imagery_location,
+            "test_results_location": self.environment.parsed_options.test_results_location,
             "test_results_bucket": test_results_bucket,
             "test_results_prefix": test_results_prefix,
         }
         rendered_requests = request_template.render(template_parameters)
 
-        self.requests = json.loads(rendered_requests)
-        logging.info(f"Found {len(self.requests)} sample requests in configuration file.")
+        requests = json.loads(rendered_requests)
+        logger.info("Loaded %s predefined requests", len(requests))
 
-        if not isinstance(self.requests, list) or not self.requests:
+        if not isinstance(requests, list) or not requests:
             raise ValueError("Request file must contain a non-empty list of requests")
+        return requests
 
     @task
     def run_next_image(self):
         """
-        Process the next image request from the predefined set.
+        Submit the next request from the predefined cycle.
 
-        Takes the next request from the list and submits it for processing.
-        Cycles back to the start when all requests have been used.
+        A new `jobId`/`jobName` is generated for each submission.
+
+        :returns: None
         """
         request = copy.deepcopy(next(self.request_cycle))
 
