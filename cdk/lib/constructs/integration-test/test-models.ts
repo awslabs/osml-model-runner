@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+ * Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
  */
 
 import { RemovalPolicy } from "aws-cdk-lib";
@@ -8,20 +8,10 @@ import { IRole } from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 
 import { BaseConfig, ConfigType, OSMLAccount } from "../types";
-import {
-  CenterpointEndpoint,
-  CenterpointEndpointConfig
-} from "./centerpoint-endpoint";
-import { FailureEndpoint, FailureEndpointConfig } from "./failure-endpoint";
-import { FloodEndpoint, FloodEndpointConfig } from "./flood-endpoint";
 import { HTTPEndpoint, HTTPEndpointConfig } from "./http-endpoint";
 import { ModelContainer, ModelContainerConfig } from "./model-container";
-import {
-  ContainerConfig,
-  MulticontainerEndpoint,
-  MulticontainerEndpointConfig
-} from "./multicontainer-endpoint";
 import { SageMakerRole, SageMakerRoleConfig } from "./sagemaker-role";
+import { TestEndpoint, TestEndpointConfig } from "./test-endpoint";
 
 /**
  * Configuration class for defining endpoints for OSML model endpoints.
@@ -71,28 +61,10 @@ export class TestModelsConfig extends BaseConfig {
   public ECR_REPOSITORY_TAG?: string;
 
   /**
-   * Whether to deploy the SageMaker centerpoint model endpoint.
+   * Whether to deploy the SageMaker unified test model endpoint.
    * @default true
    */
-  public DEPLOY_SM_CENTERPOINT_ENDPOINT: boolean;
-
-  /**
-   * Whether to deploy the SageMaker flood model endpoint.
-   * @default true
-   */
-  public DEPLOY_SM_FLOOD_ENDPOINT: boolean;
-
-  /**
-   * Whether to deploy the SageMaker failure model endpoint.
-   * @default true
-   */
-  public DEPLOY_SM_FAILURE_ENDPOINT: boolean;
-
-  /**
-   * Whether to deploy the SageMaker multi-container model endpoint.
-   * @default true
-   */
-  public DEPLOY_MULTI_CONTAINER_ENDPOINT: boolean;
+  public DEPLOY_SM_TEST_ENDPOINT: boolean;
 
   /**
    * Whether to deploy the HTTP model endpoint.
@@ -154,16 +126,16 @@ export class TestModelsConfig extends BaseConfig {
   public SECURITY_GROUP_ID?: string | undefined;
 
   /**
-   * The name of the SageMaker endpoint for the centerpoint model.
-   * @default "centerpoint"
+   * The name of the SageMaker endpoint for the unified test model.
+   * @default "test-models"
    */
-  public SM_CENTER_POINT_MODEL: string;
+  public SM_TEST_MODEL: string;
 
   /**
-   * The name of the multi-container SageMaker endpoint.
-   * @default "multi-container"
+   * The default model selection for the unified test model.
+   * @default "centerpoint"
    */
-  public SM_MULTI_CONTAINER_ENDPOINT: string;
+  public DEFAULT_MODEL_SELECTION: string;
 
   /**
    * The SageMaker CPU instance type.
@@ -172,28 +144,10 @@ export class TestModelsConfig extends BaseConfig {
   public SM_CPU_INSTANCE_TYPE: string;
 
   /**
-   * The name of the SageMaker endpoint for the flood model.
-   * @default "flood"
-   */
-  public SM_FLOOD_MODEL: string;
-
-  /**
-   * The name of the SageMaker endpoint for the failure model.
-   * @default "failure"
-   */
-  public SM_FAILURE_MODEL: string;
-
-  /**
    * The name of the SageMaker execution role.
    * @default undefined
    */
   public SM_ROLE_NAME?: string | undefined;
-
-  /**
-   * List of models to include in the multi-container endpoint.
-   * @default undefined (uses default: centerpoint and flood)
-   */
-  public MULTI_CONTAINER_MODELS?: ContainerConfig[];
 
   /**
    * Constructor for TestEndpointsConfig.
@@ -207,10 +161,7 @@ export class TestModelsConfig extends BaseConfig {
       CONTAINER_DOCKERFILE: "docker/Dockerfile.test-models",
       CONTAINER_URI: "awsosml/osml-models:latest",
       ECR_REPOSITORY_TAG: "latest",
-      DEPLOY_SM_CENTERPOINT_ENDPOINT: true,
-      DEPLOY_SM_FLOOD_ENDPOINT: true,
-      DEPLOY_SM_FAILURE_ENDPOINT: true,
-      DEPLOY_MULTI_CONTAINER_ENDPOINT: true,
+      DEPLOY_SM_TEST_ENDPOINT: true,
       DEPLOY_HTTP_ENDPOINT: true,
       HTTP_ENDPOINT_CPU: 4096,
       HTTP_ENDPOINT_CONTAINER_PORT: 8080,
@@ -219,10 +170,8 @@ export class TestModelsConfig extends BaseConfig {
       HTTP_ENDPOINT_HOST_PORT: 8080,
       HTTP_ENDPOINT_HEALTHCHECK_PATH: "/ping",
       HTTP_ENDPOINT_MEMORY: 16384,
-      SM_CENTER_POINT_MODEL: "centerpoint",
-      SM_FLOOD_MODEL: "flood",
-      SM_FAILURE_MODEL: "failure",
-      SM_MULTI_CONTAINER_ENDPOINT: "multi-container",
+      SM_TEST_MODEL: "test-models",
+      DEFAULT_MODEL_SELECTION: "centerpoint",
       SM_CPU_INSTANCE_TYPE: "ml.m5.xlarge",
       ...config
     });
@@ -302,16 +251,10 @@ export class TestModels extends Construct {
   public readonly container: ModelContainer;
   /** The SageMaker role. */
   public readonly smRole: SageMakerRole;
-  /** The centerpoint model endpoint. */
-  public readonly centerpointEndpoint?: CenterpointEndpoint;
-  /** The flood model endpoint. */
-  public readonly floodEndpoint?: FloodEndpoint;
-  /** The failure model endpoint. */
-  public readonly failureEndpoint?: FailureEndpoint;
+  /** The unified test model endpoint. */
+  public readonly testEndpoint?: TestEndpoint;
   /** The HTTP model endpoint. */
   public readonly httpEndpoint?: HTTPEndpoint;
-  /** The multi-container model endpoint. */
-  public readonly multicontainerEndpoint?: MulticontainerEndpoint;
 
   /**
    * Creates an TestEndpoints construct.
@@ -332,11 +275,8 @@ export class TestModels extends Construct {
     // Create resource classes
     this.container = this.createContainer(props);
     this.smRole = this.createSageMakerRole(props);
-    this.centerpointEndpoint = this.createCenterpointEndpoint(props);
-    this.floodEndpoint = this.createFloodEndpoint(props);
-    this.failureEndpoint = this.createFailureEndpoint(props);
+    this.testEndpoint = this.createTestEndpoint(props);
     this.httpEndpoint = this.createHTTPEndpoint(props);
-    this.multicontainerEndpoint = this.createMulticontainerEndpoint(props);
   }
 
   /**
@@ -378,81 +318,23 @@ export class TestModels extends Construct {
   }
 
   /**
-   * Creates the centerpoint model endpoint.
+   * Creates the unified test model endpoint.
    *
-   * @param props - The TestEndpoints properties
-   * @returns The centerpoint model endpoint
+   * @param props - The TestModels properties
+   * @returns The unified test model endpoint
    */
-  private createCenterpointEndpoint(
-    props: TestModelsProps
-  ): CenterpointEndpoint | undefined {
-    return new CenterpointEndpoint(this, "CenterpointEndpoint", {
+  private createTestEndpoint(props: TestModelsProps): TestEndpoint | undefined {
+    return new TestEndpoint(this, "TestEndpoint", {
       account: props.account,
       vpc: props.vpc,
       selectedSubnets: props.selectedSubnets,
       securityGroup: props.securityGroup,
       smRole: this.smRole.role,
       container: this.container,
-      config: new CenterpointEndpointConfig({
-        DEPLOY_SM_CENTERPOINT_ENDPOINT:
-          this.config.DEPLOY_SM_CENTERPOINT_ENDPOINT,
-        SM_CENTER_POINT_MODEL: this.config.SM_CENTER_POINT_MODEL,
-        SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
-        SECURITY_GROUP_ID:
-          this.config.SECURITY_GROUP_ID ??
-          props.securityGroup?.securityGroupId ??
-          ""
-      })
-    });
-  }
-
-  /**
-   * Creates the flood model endpoint.
-   *
-   * @param props - The TestEndpoints properties
-   * @returns The flood model endpoint
-   */
-  private createFloodEndpoint(
-    props: TestModelsProps
-  ): FloodEndpoint | undefined {
-    return new FloodEndpoint(this, "FloodEndpoint", {
-      account: props.account,
-      vpc: props.vpc,
-      selectedSubnets: props.selectedSubnets,
-      securityGroup: props.securityGroup,
-      smRole: this.smRole.role,
-      container: this.container,
-      config: new FloodEndpointConfig({
-        DEPLOY_SM_FLOOD_ENDPOINT: this.config.DEPLOY_SM_FLOOD_ENDPOINT,
-        SM_FLOOD_MODEL: this.config.SM_FLOOD_MODEL,
-        SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
-        SECURITY_GROUP_ID:
-          this.config.SECURITY_GROUP_ID ??
-          props.securityGroup?.securityGroupId ??
-          ""
-      })
-    });
-  }
-
-  /**
-   * Creates the failure model endpoint.
-   *
-   * @param props - The TestEndpoints properties
-   * @returns The failure model endpoint
-   */
-  private createFailureEndpoint(
-    props: TestModelsProps
-  ): FailureEndpoint | undefined {
-    return new FailureEndpoint(this, "FailureEndpoint", {
-      account: props.account,
-      vpc: props.vpc,
-      selectedSubnets: props.selectedSubnets,
-      securityGroup: props.securityGroup,
-      smRole: this.smRole.role,
-      container: this.container,
-      config: new FailureEndpointConfig({
-        DEPLOY_SM_FAILURE_ENDPOINT: this.config.DEPLOY_SM_FAILURE_ENDPOINT,
-        SM_FAILURE_MODEL: this.config.SM_FAILURE_MODEL,
+      config: new TestEndpointConfig({
+        DEPLOY_SM_TEST_ENDPOINT: this.config.DEPLOY_SM_TEST_ENDPOINT,
+        SM_TEST_MODEL: this.config.SM_TEST_MODEL,
+        DEFAULT_MODEL_SELECTION: this.config.DEFAULT_MODEL_SELECTION,
         SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
         SECURITY_GROUP_ID:
           this.config.SECURITY_GROUP_ID ??
@@ -490,38 +372,6 @@ export class TestModels extends Construct {
           this.config.SECURITY_GROUP_ID ??
           props.securityGroup?.securityGroupId ??
           ""
-      })
-    });
-  }
-
-  /**
-   * Creates the multi-container model endpoint.
-   *
-   * @param props - The TestModels properties
-   * @returns The multi-container model endpoint
-   */
-  private createMulticontainerEndpoint(
-    props: TestModelsProps
-  ): MulticontainerEndpoint | undefined {
-    return new MulticontainerEndpoint(this, "MulticontainerEndpoint", {
-      account: props.account,
-      vpc: props.vpc,
-      selectedSubnets: props.selectedSubnets,
-      securityGroup: props.securityGroup,
-      smRole: this.smRole.role,
-      container: this.container,
-      config: new MulticontainerEndpointConfig({
-        DEPLOY_MULTI_CONTAINER_ENDPOINT:
-          this.config.DEPLOY_MULTI_CONTAINER_ENDPOINT,
-        SM_MULTI_CONTAINER_ENDPOINT: this.config.SM_MULTI_CONTAINER_ENDPOINT,
-        SM_CPU_INSTANCE_TYPE: this.config.SM_CPU_INSTANCE_TYPE,
-        SECURITY_GROUP_ID:
-          this.config.SECURITY_GROUP_ID ??
-          props.securityGroup?.securityGroupId ??
-          "",
-        ...(this.config.MULTI_CONTAINER_MODELS && {
-          MODELS: this.config.MULTI_CONTAINER_MODELS
-        })
       })
     });
   }

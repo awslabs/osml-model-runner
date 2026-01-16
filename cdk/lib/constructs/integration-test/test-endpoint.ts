@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+ * Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
  */
 
 import { ISecurityGroup, IVpc, SubnetSelection } from "aws-cdk-lib/aws-ec2";
@@ -14,20 +14,26 @@ import {
 } from "./sagemaker-inference";
 
 /**
- * Configuration class for CenterpointEndpoint Construct.
+ * Configuration class for TestEndpoint Construct.
  */
-export class CenterpointEndpointConfig extends BaseConfig {
+export class TestEndpointConfig extends BaseConfig {
   /**
-   * Whether to deploy the SageMaker centerpoint model endpoint.
+   * Whether to deploy the SageMaker test model endpoint.
    * @default true
    */
-  public DEPLOY_SM_CENTERPOINT_ENDPOINT: boolean;
+  public DEPLOY_SM_TEST_ENDPOINT: boolean;
 
   /**
-   * The name of the SageMaker endpoint for the centerpoint model.
+   * The name of the SageMaker endpoint for the test model.
+   * @default "test-models"
+   */
+  public SM_TEST_MODEL: string;
+
+  /**
+   * Default model selection for the test endpoint.
    * @default "centerpoint"
    */
-  public SM_CENTER_POINT_MODEL: string;
+  public DEFAULT_MODEL_SELECTION: string;
 
   /**
    * The SageMaker CPU instance type.
@@ -41,13 +47,14 @@ export class CenterpointEndpointConfig extends BaseConfig {
   public SECURITY_GROUP_ID?: string | undefined;
 
   /**
-   * Constructor for CenterpointEndpointConfig.
-   * @param config - The configuration object for CenterpointEndpoint
+   * Constructor for TestEndpointConfig.
+   * @param config - The configuration object for TestEndpoint
    */
   constructor(config: ConfigType = {}) {
     super({
-      DEPLOY_SM_CENTERPOINT_ENDPOINT: true,
-      SM_CENTER_POINT_MODEL: "centerpoint",
+      DEPLOY_SM_TEST_ENDPOINT: true,
+      SM_TEST_MODEL: "test-models",
+      DEFAULT_MODEL_SELECTION: "centerpoint",
       SM_CPU_INSTANCE_TYPE: "ml.m5.xlarge",
       ...config
     });
@@ -55,9 +62,9 @@ export class CenterpointEndpointConfig extends BaseConfig {
 }
 
 /**
- * Interface representing properties for configuring the CenterpointEndpoint Construct.
+ * Interface representing properties for configuring the TestEndpoint Construct.
  */
-export interface CenterpointEndpointProps {
+export interface TestEndpointProps {
   /** The OSML deployment account. */
   readonly account: OSMLAccount;
   /** The VPC where the model will be deployed. */
@@ -70,39 +77,39 @@ export interface CenterpointEndpointProps {
   readonly smRole: IRole;
   /** The OSML container. */
   readonly container: ModelContainer;
-  /** Custom configuration for the CenterpointEndpoint Construct (optional). */
-  readonly config?: CenterpointEndpointConfig;
+  /** Custom configuration for the TestEndpoint Construct (optional). */
+  readonly config?: TestEndpointConfig;
 }
 
 /**
- * Represents a CenterpointEndpoint construct responsible for managing the
- * centerpoint model SageMaker endpoint.
+ * Represents a TestEndpoint construct responsible for managing the
+ * unified test model SageMaker endpoint.
  */
-export class CenterpointEndpoint extends Construct {
-  /** The configuration for the CenterpointEndpoint. */
-  public readonly config: CenterpointEndpointConfig;
-  /** The centerpoint model endpoint. */
+export class TestEndpoint extends Construct {
+  /** The configuration for the TestEndpoint. */
+  public readonly config: TestEndpointConfig;
+  /** The test model endpoint. */
   public readonly endpoint?: SageMakerInference;
 
   /**
-   * Constructs an instance of CenterpointEndpoint.
+   * Constructs an instance of TestEndpoint.
    *
    * @param scope - The scope/stack in which to define this construct
    * @param id - The id of this construct within the current scope
    * @param props - The properties of this construct
    */
-  constructor(scope: Construct, id: string, props: CenterpointEndpointProps) {
+  constructor(scope: Construct, id: string, props: TestEndpointProps) {
     super(scope, id);
 
     // Initialize configuration
-    this.config = props.config ?? new CenterpointEndpointConfig();
+    this.config = props.config ?? new TestEndpointConfig();
 
     // Only create the endpoint if deployment is enabled
-    if (this.config.DEPLOY_SM_CENTERPOINT_ENDPOINT) {
-      // Create the centerpoint model endpoint
-      this.endpoint = new SageMakerInference(this, "CenterpointModelEndpoint", {
+    if (this.config.DEPLOY_SM_TEST_ENDPOINT) {
+      // Create the test model endpoint
+      this.endpoint = new SageMakerInference(this, "TestModelEndpoint", {
         containerImageUri: props.container.containerUri,
-        modelName: this.config.SM_CENTER_POINT_MODEL,
+        modelName: this.config.SM_TEST_MODEL,
         roleArn: props.smRole.roleArn,
         instanceType: this.config.SM_CPU_INSTANCE_TYPE,
         subnetIds:
@@ -110,8 +117,8 @@ export class CenterpointEndpoint extends Construct {
         config: [
           new SageMakerInferenceConfig({
             CONTAINER_ENV: {
-              MODEL_SELECTION: this.config.SM_CENTER_POINT_MODEL,
-              ENABLE_SEGMENTATION: true
+              DEFAULT_MODEL_SELECTION: this.config.DEFAULT_MODEL_SELECTION,
+              ENABLE_SEGMENTATION: "true"
             },
             SECURITY_GROUP_ID:
               this.config.SECURITY_GROUP_ID ??

@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import json
 import time
@@ -104,7 +104,11 @@ def trigger_behavior_by_color(color: Tuple[int, int, int]) -> Response:
     # Fallback - Successful processing (2_planes.tiff)
     else:
         app.logger.debug("Normal color detected - returning standard detection")
-        normal_detection = detect_to_feature([100, 100, 200, 200], detection_type="test_object")
+        normal_detection = detect_to_feature(
+            [100, 100, 200, 200],
+            detection_type="test_object",
+            model_name="failure",
+        )
         return Response(response=json.dumps({"type": "FeatureCollection", "features": [normal_detection]}), status=200)
 
 
@@ -115,10 +119,9 @@ def healthcheck() -> Response:
     return Response(response="\n", status=200)
 
 
-@app.route("/invocations", methods=["POST"])
-def predict() -> Response:
+def predict_from_bytes(payload: bytes) -> Response:
     """
-    Model invocation endpoint that triggers different behaviors based on image color.
+    Invoke the failure model using a provided payload.
 
     :return: Response with behavior determined by dominant color in image
     """
@@ -128,7 +131,7 @@ def predict() -> Response:
 
     try:
         # Load image from request
-        gdal.FileFromMemBuffer(temp_ds_name, request.get_data())
+        gdal.FileFromMemBuffer(temp_ds_name, payload)
         gdal_dataset = gdal.Open(temp_ds_name)
 
         if gdal_dataset is None:
@@ -153,6 +156,16 @@ def predict() -> Response:
             if temp_ds_name is not None:
                 gdal.Unlink(temp_ds_name)
             del gdal_dataset
+
+
+@app.route("/invocations", methods=["POST"])
+def predict() -> Response:
+    """
+    Model invocation endpoint that triggers different behaviors based on image color.
+
+    :return: Response with behavior determined by dominant color in image
+    """
+    return predict_from_bytes(request.get_data())
 
 
 if __name__ == "__main__":

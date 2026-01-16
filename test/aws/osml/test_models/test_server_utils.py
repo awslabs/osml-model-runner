@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import logging
 import unittest
@@ -11,6 +11,7 @@ from aws.osml.test_models.server_utils import (
     build_logger,
     detect_to_feature,
     parse_custom_attributes,
+    parse_custom_attributes_header,
     setup_server,
     simulate_model_latency,
 )
@@ -88,6 +89,11 @@ class TestServerUtils(unittest.TestCase):
             self.assertEqual(attributes["mock_latency_mean"], "500")
             self.assertEqual(attributes["mock_latency_std"], "50")
             self.assertEqual(attributes["trace_id"], "abc123")
+
+    def test_parse_custom_attributes_header(self):
+        attributes = parse_custom_attributes_header("key1=value1,key2=value2")
+        self.assertEqual(attributes["key1"], "value1")
+        self.assertEqual(attributes["key2"], "value2")
 
     def test_parse_custom_attributes_empty_header(self):
         """Test parsing custom attributes when header is not present"""
