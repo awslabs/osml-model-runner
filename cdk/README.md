@@ -122,11 +122,8 @@ The **IntegrationTestStack** deploys test infrastructure for development and int
 
 #### **Test Models**
 
-- **SageMaker Endpoints**:
-  - **Centerpoint Endpoint**: Object detection model endpoint
-  - **Flood Endpoint**: Flood detection model endpoint
-  - **Failure Endpoint**: Error scenario testing model endpoint
-  - **Multi-Container Endpoint**: Multi-model inference endpoint
+- **SageMaker Endpoint**:
+  - **TestEndpoint**: Single endpoint that routes to centerpoint, flood, or failure per request
 - **HTTP Endpoint**: Container-based HTTP endpoint for testing HTTP model integration
 - **Container Resources**: ECS task definitions and services for HTTP endpoint
 - **IAM Roles**: SageMaker execution roles with necessary permissions
@@ -377,7 +374,8 @@ When `deployTestModels` is enabled, additional constructs are deployed:
 - **`TestModels`** - Main orchestrator for test model endpoints
 - **`ModelContainer`** - Container resources for test models
 - **`SageMakerRole`** - IAM roles for SageMaker endpoints
-- **`CenterpointEndpoint`** - SageMaker endpoint for centerpoint model
+- **`TestEndpoint`** - SageMaker endpoint for the unified test model
+- **`HTTPEndpoint`** - HTTP endpoint for the unified test model
 
 When `deployTestImagery` is enabled, additional constructs are deployed:
 

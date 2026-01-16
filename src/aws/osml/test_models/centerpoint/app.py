@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import json
 import os
@@ -87,7 +87,11 @@ def gen_center_detect(width: int, height: int, bbox_percentage: float) -> Dict:
     if ENABLE_SEGMENTATION:
         center_polygon = gen_center_polygon(width, height, bbox_percentage)
 
-    geojson_feature = detect_to_feature(gen_center_bbox(width, height, bbox_percentage), center_polygon)
+    geojson_feature = detect_to_feature(
+        gen_center_bbox(width, height, bbox_percentage),
+        center_polygon,
+        model_name="centerpoint",
+    )
     return {"type": "FeatureCollection", "features": [geojson_feature]}
 
 
@@ -102,13 +106,9 @@ def healthcheck() -> Response:
     return Response(response="\n", status=200)
 
 
-@app.route("/invocations", methods=["POST"])
-def predict() -> Response:
+def predict_from_bytes(payload: bytes) -> Response:
     """
-    This is the model invocation endpoint for the model container's REST
-    API. The binary payload, in this case an image, is taken from the request
-    parsed to ensure it is a valid image. This is a stub implementation that
-    will always return the fixed set of detections for a valid input image.
+    Invoke the centerpoint model using a provided payload.
 
     :return: Response: Contains the GeoJSON results or an error status
     """
@@ -121,7 +121,7 @@ def predict() -> Response:
     gdal_dataset = None
     try:
         # Load the file from the request memory buffer
-        gdal.FileFromMemBuffer(temp_ds_name, request.get_data())
+        gdal.FileFromMemBuffer(temp_ds_name, payload)
         try:
             gdal_dataset = gdal.Open(temp_ds_name)
         # If it failed to load return the failed Response
@@ -141,6 +141,19 @@ def predict() -> Response:
             if temp_ds_name is not None:
                 gdal.Unlink(temp_ds_name)
             del gdal_dataset
+
+
+@app.route("/invocations", methods=["POST"])
+def predict() -> Response:
+    """
+    This is the model invocation endpoint for the model container's REST
+    API. The binary payload, in this case an image, is taken from the request
+    parsed to ensure it is a valid image. This is a stub implementation that
+    will always return the fixed set of detections for a valid input image.
+
+    :return: Response: Contains the GeoJSON results or an error status
+    """
+    return predict_from_bytes(request.get_data())
 
 
 # pragma: no cover

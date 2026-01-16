@@ -55,26 +55,24 @@ INTEG_TEST_DELAY=10 pytest test/integ/test_integration.py::TestIntegrationSuite:
 You can also use the original CLI script for backward compatibility:
 
 ```bash
-# Test with your image and model
-python bin/run-integration-tests.py s3://mr-test-imagery-${ACCOUNT}/small.tif centerpoint
+# Test with your image and model selection (SageMaker)
+# Note: single-test CLI does not support CustomAttributes directly; use a suite for per-request selection.
+python bin/run-integration-tests.py s3://mr-test-imagery-${ACCOUNT}/small.tif test-models
 
 # Test with expected output validation
-python bin/run-integration-tests.py s3://mr-test-imagery-${ACCOUNT}/small.tif centerpoint expected.json
+python bin/run-integration-tests.py s3://mr-test-imagery-${ACCOUNT}/small.tif test-models expected.json
 
 # Test HTTP endpoint
-python bin/run-integration-tests.py s3://my-bucket/image.tif my-model expected.json --http
+python bin/run-integration-tests.py s3://my-bucket/image.tif test-models expected.json --http
 
-# Test with SageMaker model variant
-python bin/run-integration-tests.py s3://my-bucket/image.tif flood expected.json --model-variant flood-50
-
-# Test with multi-container endpoint
-python bin/run-integration-tests.py s3://my-bucket/image.tif multi-container expected.json --target-container centerpoint-container
+# Test flood with CustomAttributes (via suite)
+python bin/run-integration-tests.py --suite suites/default.json
 
 # Run with verbose logging
-python bin/run-integration-tests.py s3://my-bucket/image.tif centerpoint --verbose
+python bin/run-integration-tests.py s3://my-bucket/image.tif test-models --verbose
 
 # Save results to JSON file
-python bin/run-integration-tests.py s3://my-bucket/image.tif centerpoint --output results.json
+python bin/run-integration-tests.py s3://my-bucket/image.tif test-models --output results.json
 ```
 
 **Note**: For test suites, you can use the `${ACCOUNT}` placeholder in JSON configuration files to automatically use your current AWS account ID.
@@ -123,35 +121,34 @@ Test suites are defined in JSON format as an array of test case objects:
   {
     "name": "Centerpoint Basic Test",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
-    "model_name": "centerpoint",
+    "model_name": "test-models",
     "endpoint_type": "SM_ENDPOINT",
+    "model_endpoint_parameters": {
+      "CustomAttributes": "model_selection=centerpoint"
+    },
     "expected_output": "suites/results/centerpoint.geojson",
     "timeout_minutes": 30
   },
   {
     "name": "Centerpoint HTTP Test",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
-    "model_name": "centerpoint",
+    "model_name": "test-models",
     "endpoint_type": "HTTP_ENDPOINT",
+    "model_endpoint_parameters": {
+      "CustomAttributes": "model_selection=centerpoint"
+    },
     "expected_output": "suites/results/centerpoint_http_small.geojson",
     "timeout_minutes": 10
   },
   {
-    "name": "Flood Detection Test (flood-50 variant)",
+    "name": "Flood Detection Test (volume 50)",
     "image_uri": "s3://mr-test-imagery-${ACCOUNT}/large.tif",
-    "model_name": "flood",
+    "model_name": "test-models",
     "endpoint_type": "SM_ENDPOINT",
-    "model_variant": "flood-50",
+    "model_endpoint_parameters": {
+      "CustomAttributes": "model_selection=flood,flood_volume=50"
+    },
     "timeout_minutes": 15
-  },
-  {
-    "name": "Multi-Container Test",
-    "image_uri": "s3://mr-test-imagery-${ACCOUNT}/small.tif",
-    "model_name": "multi-container",
-    "endpoint_type": "SM_ENDPOINT",
-    "target_container": "centerpoint-container",
-    "expected_output": "suites/results/centerpoint_small.geojson",
-    "timeout_minutes": 10
   }
 ]
 ```
@@ -160,14 +157,15 @@ Test suites are defined in JSON format as an array of test case objects:
 
 - **`name`** (required): Descriptive name for the test case
 - **`image_uri`** (required): S3 URI to the test image (supports `${ACCOUNT}` placeholder)
-- **`model_name`** (required): Name of the model to test
+- **`model_name`** (required): Name of the model endpoint to test (default: `test-models`)
 - **`endpoint_type`** (required): Either `"SM_ENDPOINT"` or `"HTTP_ENDPOINT"` (default: `"SM_ENDPOINT"`)
 - **`expected_output`** (optional): Path to expected GeoJSON output file for validation
   - Can be absolute path, relative to current directory, or relative to `test/integ/` directory
   - Not required for models that use count-based validation (e.g., flood model)
 - **`timeout_minutes`** (optional): Maximum time to wait for test completion (default: 30)
-- **`model_variant`** (optional): SageMaker model variant name (e.g., `"flood-50"`, `"flood-100"`, `"AllTraffic"`)
-- **`target_container`** (optional): Target container hostname for multi-container endpoints (e.g., `"centerpoint-container"`, `"flood-container"`)
+- **`model_endpoint_parameters`** (optional): Parameters passed to the endpoint invocation
+  - Use `CustomAttributes` to select a model (`model_selection=centerpoint|flood|failure`)
+  - For flood variants, add `flood_volume=50|100`
 
 ### Placeholder Support
 
@@ -209,8 +207,8 @@ The integration test framework supports two types of validation:
 2. **Count-based validation**: Used automatically for certain models (e.g., `flood`)
    - Validates feature counts and region request counts
    - Does not require `expected_output` file
-   - Expected counts are determined based on image type and model variant
-   - Models using this approach: `flood` (and models with `target_container` set to `flood-container`)
+- Expected counts are determined based on image type and `flood_volume`
+- Models using this approach: `flood` (when `model_selection=flood` in CustomAttributes)
 
 For flood model tests, validation is automatically performed using count-based validation regardless of whether `expected_output` is specified.
 
@@ -225,8 +223,11 @@ For flood model tests, validation is automatically performed using count-based v
 - `--timeout MINUTES`: Maximum time to wait for test completion (default: 30)
 - `--verbose`: Enable verbose logging (debug level)
 - `--output FILE`: Save test results to JSON file
-- `--model-variant VARIANT`: SageMaker model variant (e.g., `flood-50`, `AllTraffic`)
-- `--target-container CONTAINER`: Target container hostname for multi-container endpoints
+- `--model-variant VARIANT`: SageMaker model variant (legacy; not used by `test-models`)
+- `--target-container CONTAINER`: Target container hostname (legacy; not used by `test-models`)
+
+**Note**: The single-test CLI does not currently accept `CustomAttributes`. Use a test suite (`--suite`) to set
+`model_selection` and `flood_volume` for per-request routing.
 
 ### Test Suite Options
 

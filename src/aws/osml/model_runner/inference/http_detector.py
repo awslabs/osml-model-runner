@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import logging
 from io import BufferedReader
@@ -160,10 +160,24 @@ class HTTPDetector(Detector):
                 logger=logger,
                 metrics_logger=metrics,
             ):
+                headers = {}
+                if self.endpoint_parameters:
+                    # Forward CustomAttributes via the SageMaker-compatible header.
+                    custom_attributes = self.endpoint_parameters.get("CustomAttributes")
+                    if custom_attributes:
+                        headers["X-Amzn-SageMaker-Custom-Attributes"] = custom_attributes
+
+                    # Forward any remaining parameters as headers for flexibility.
+                    for key, value in self.endpoint_parameters.items():
+                        if key == "CustomAttributes":
+                            continue
+                        headers[key] = str(value)
+
                 response = self.http_pool.request(
                     method="POST",
                     url=self.endpoint,
                     body=payload,
+                    headers=headers or None,
                 )
                 retry_count = self.retry.retry_counts
                 if isinstance(metrics, MetricsLogger):
