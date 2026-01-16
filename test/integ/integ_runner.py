@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 """
 Unified integration test runner for OSML Model Runner.
@@ -143,6 +143,7 @@ class IntegRunner:
                 endpoint=endpoint,
                 endpoint_type=endpoint_type,
                 image_url=image_request.image_url,
+                endpoint_parameters=image_request.model_endpoint_parameters,
                 model_variant=(
                     image_request.model_endpoint_parameters.get("TargetVariant")
                     if image_request.model_endpoint_parameters
@@ -217,6 +218,7 @@ class IntegRunner:
         image_url: str,
         result_stream: str,
         result_bucket: str,
+        endpoint_parameters: Optional[Dict[str, Any]] = None,
         model_variant: Optional[str] = None,
         target_container: Optional[str] = None,
         tile_size: int = 512,
@@ -236,6 +238,7 @@ class IntegRunner:
         :param image_url: URL of image to process.
         :param result_stream: Full Kinesis stream name for results.
         :param result_bucket: Full S3 bucket name for results.
+        :param endpoint_parameters: Optional endpoint parameters (e.g., CustomAttributes).
         :param model_variant: Optional SageMaker model variant.
         :param target_container: Optional target container hostname.
         :param tile_size: Size of image tiles for processing.
@@ -267,12 +270,15 @@ class IntegRunner:
         }
 
         # Add endpoint parameters if provided
-        if model_variant or target_container:
-            request["imageProcessorParameters"] = {}
-            if model_variant:
-                request["imageProcessorParameters"]["TargetVariant"] = model_variant
-            if target_container:
-                request["imageProcessorParameters"]["TargetContainerHostname"] = target_container
+        merged_params: Dict[str, Any] = {}
+        if endpoint_parameters:
+            merged_params.update(endpoint_parameters)
+        if model_variant:
+            merged_params["TargetVariant"] = model_variant
+        if target_container:
+            merged_params["TargetContainerHostname"] = target_container
+        if merged_params:
+            request["imageProcessorParameters"] = merged_params
 
         return request
 
@@ -530,6 +536,23 @@ class IntegRunner:
         result_bucket = image_request.s3_bucket_name or f"{self.config.S3_RESULTS_BUCKET_PREFIX}-{self.config.ACCOUNT}"
         return result_stream, result_bucket
 
+    def _parse_custom_attributes(self, custom_attributes: Optional[str]) -> Dict[str, str]:
+        """
+        Parse CustomAttributes string into a dictionary.
+
+        :param custom_attributes: Raw CustomAttributes string
+        :returns: Parsed key/value pairs
+        """
+        if not isinstance(custom_attributes, str) or not custom_attributes:
+            return {}
+
+        attributes: Dict[str, str] = {}
+        for pair in custom_attributes.split(","):
+            if "=" in pair:
+                key, value = pair.split("=", 1)
+                attributes[key.strip()] = value.strip()
+        return attributes
+
     def _validate_results(
         self,
         image_request: ImageRequest,
@@ -556,12 +579,26 @@ class IntegRunner:
         # Check if this is a flood model test
         endpoint_params = image_request.model_endpoint_parameters or {}
         target_container = endpoint_params.get("TargetContainerHostname")
-        is_flood_test = image_request.model_name == "flood" or target_container == "flood-container"
+        custom_attributes = endpoint_params.get("CustomAttributes")
+        parsed_attributes = self._parse_custom_attributes(custom_attributes)
+        model_selection = parsed_attributes.get("model_selection", "")
+        is_flood_test = (
+            image_request.model_name == "flood" or target_container == "flood-container" or model_selection == "flood"
+        )
 
         if is_flood_test:
             self.logger.info("Validating flood model results (count-based)...")
-            variant = endpoint_params.get("TargetVariant")
-            expected_counts, expected_region = self._get_flood_model_expectations(image_request.image_url, variant)
+            flood_volume = None
+            if "flood_volume" in parsed_attributes:
+                try:
+                    flood_volume = int(parsed_attributes["flood_volume"])
+                except (ValueError, TypeError):
+                    flood_volume = None
+
+            expected_counts, expected_region = self._get_flood_model_expectations(
+                image_request.image_url,
+                flood_volume,
+            )
 
             validation_result = self.validator.validate_by_count(
                 image_id=image_id,
@@ -622,12 +659,12 @@ class IntegRunner:
             return resolved
         return os.path.join(SCRIPT_DIR, path)
 
-    def _get_flood_model_expectations(self, image_url: str, variant: Optional[str] = None) -> Tuple[List[int], int]:
+    def _get_flood_model_expectations(self, image_url: str, flood_volume: Optional[int] = None) -> Tuple[List[int], int]:
         """
         Get expected feature and region counts for flood model based on image type and variant.
 
         :param image_url: URL of the image being processed.
-        :param variant: Optional model variant (e.g., 'flood-50', 'flood-100').
+        :param flood_volume: Optional flood volume override (e.g., 50, 100).
         :returns: Tuple of (expected_feature_counts, expected_region_count).
         """
         # For large.tif images
@@ -639,10 +676,10 @@ class IntegRunner:
             expected = 10000  # Generic fallback
             expected_region_count = 1
 
-        # Adjust based on variant
-        if variant == "flood-50":
+        # Adjust based on flood volume
+        if flood_volume == 50:
             feature_counts = [int(expected / 2)]
-        elif variant == "flood-100":
+        elif flood_volume == 100:
             feature_counts = [expected]
         else:
             # For default flood model, accept either full or half
@@ -781,6 +818,13 @@ class IntegRunner:
             target_container=test_case.get("target_container"),
             region_of_interest=test_case.get("region_of_interest"),
         )
+
+        # Merge any explicit endpoint parameters from the test case
+        endpoint_params = test_case.get("model_endpoint_parameters")
+        if endpoint_params:
+            if image_request.model_endpoint_parameters is None:
+                image_request.model_endpoint_parameters = {}
+            image_request.model_endpoint_parameters.update(endpoint_params)
 
         # Resolve result destination prefixes to full names if provided
         if "kinesis_stream_prefix" in test_case:

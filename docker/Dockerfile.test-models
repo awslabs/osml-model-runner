@@ -1,4 +1,4 @@
-# Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+# Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 # Stage 1: Build environment
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal AS build
@@ -95,4 +95,4 @@ RUN adduser modelrunner && \
 USER modelrunner
 
 # Set entry point
-ENTRYPOINT ["/entry.sh", "/bin/bash", "-c", "python3 osml-model-runner/src/aws/osml/test_models/$MODEL_SELECTION/app.py"]
+ENTRYPOINT ["/entry.sh", "/bin/bash", "-c", "python3 osml-model-runner/src/aws/osml/test_models/app.py"]
