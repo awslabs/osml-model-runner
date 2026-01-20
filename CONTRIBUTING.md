@@ -1,215 +1,197 @@
 # OSML Contributing Guidelines
 
-Thank you for your interest in contributing to our project! This document will guide you through the process of
-contributing to our repository using a Trunk-Based Development workflow. Please read the guidelines carefully to
-submit your pull requests effectively.
+Thank you for your interest in contributing to our project! This guide walks you through the process of setting up your development environment, making changes, and submitting contributions.
 
 ## Table of Contents
 
-- [Trunk-Based Development](#trunk-based-development)
-- [Linting](#linting)
-- [Code Style](#code-style)
-- [Commit Messages](#commit-messages)
-- [Issue Tracking](#issue-tracking)
+- [Getting Started](#getting-started)
+- [Making Changes](#making-changes)
+- [Submitting Contributions](#submitting-contributions)
 
-## Trunk-Based Development
+## Getting Started
 
-![Trunk-Based Development](https://github.com/aws-solutions-library-samples/osml-imagery-toolkit/assets/4109909/0b3c03ae-4518-471e-9331-da850f0d2e22)
+### Prerequisites
 
-We follow a trunk-based development model to manage our codebase.
-This guide provides a step-by-step example of implementing a Trunk-Based Development (TBD) workflow for development.
-The branches developers should create directly off of `main` (our trunk) as part of this workflow are:
+Before you begin, ensure you have the following tools installed:
 
-- `feature/*`: `feature` branches are created for the development of new features or significant enhancements.
+- [Python 3.10+](https://www.python.org/downloads/) (3.10, 3.11, 3.12, or 3.13)
+- [Docker](https://docs.docker.com/get-docker/) for building and running containers
+- [tox](https://tox.wiki/en/latest/installation.html) for running tests across multiple Python versions
+- [Conda](https://docs.conda.io/en/latest/miniconda.html) or [Mamba](https://mamba.readthedocs.io/) for managing Python environments
+- [Node.js and npm](https://nodejs.org/) (required for CDK infrastructure development)
+- [AWS CDK CLI](https://docs.aws.amazon.com/cdk/v2/guide/cli.html) (`npm install -g aws-cdk`) for infrastructure deployment
 
-### 1. Creating Feature (Internal Developer)
+### Repository Structure
 
-#### Step 1: Clone the Repository
-Clone the repository to your local machine.
-```bash
-git clone git@github.com:aws-solutions-library-samples/osml-model-runner.git
+```text
+osml-model-runner/
+├── src/                 # Application source code (Python)
+├── test/                # Unit, integration, and load tests (pytest)
+├── bin/                 # Entry points for the containerized application
+├── scripts/             # Utility scripts for development and operations
+├── cdk/                 # AWS CDK infrastructure as code (TypeScript)
+├── conda/               # Conda environment configurations
+├── docker/              # Dockerfiles for container builds
+├── doc/                 # Sphinx documentation source files
+└── images/              # Documentation images and diagrams
 ```
 
-#### Step 2: Create a New Branch
-Create a new branch off `main`, naming it related to the work being done, in this case a feature.
-```bash
-git checkout -b feature/<feature_id>
-```
+Key directories:
 
-#### Step 3: Develop and Commit Changes
-On the new branch, code, and add commits as necessary.
+- **src/**: The Python implementation of the Model Runner application.
+- **test/**: Tests organized by type - unit tests mirror the `src/` structure, integration tests in `test/integ/`, and load tests in `test/load/`. See [test/load/README.md](./test/load/README.md) for load testing details.
+- **cdk/**: Infrastructure as code for deploying on AWS. See [cdk/README.md](./cdk/README.md) for deployment instructions.
+- **conda/**: Environment definitions used by tox to create isolated test environments with GDAL and other dependencies.
+- **docker/**: Container definitions using multi-stage builds for different deployment targets.
 
-#### Step 4: Push the New Branch
-Push the new branch to trigger unit tests, static code analysis, Sonar cube checks, security checks, etc.,
-before merging to `main`.
-```bash
-git push origin feature/<feature_id>
-```
+### Setting Up Your Environment
 
-#### Step 5: Create a Pull Request (PR)
-Open a PR against `main` to kick off a discussion.
-Open a PR as soon as possible, even if it's not ready (mark it as WIP).
-This ensures ample time for review and discussion, improving code quality.
+1. **Clone the repository:**
 
-#### Step 6: PR Review, Rebase, and Merge
-After your PR is reviewed, make any necessary changes by repeating steps 3 and 4.
-A team member will merge your PR after approval,
-ensuring it's reviewed by someone who has not contributed to the branch.
-Also ensure that your branch is rebased against the latest changes to `main`.
-```bash
-git pull --rebase origin main
-git push origin feature/<feature_id>
-```
-Now you are ready to merge your changes!
-
-### 2. Contributing via Fork and Pull Request (External Developer)
-
-We welcome contributions from the community!
-If you're looking to contribute to our project, please follow these steps to fork the repository,
-make your changes, and submit a pull request (PR) for review.
-
-#### Step 1: Fork the Repository
-
-1. Navigate to the GitHub page of our repository.
-2. In the top-right corner of the page, click the **Fork** button. This creates a copy of the repository in your GitHub account.
-
-#### Step 2: Clone Your Fork
-
-1. On your GitHub page for the forked repository, click the **Clone** or **Download** button and copy the URL.
-2. Open your terminal or command prompt.
-3. Clone your fork using the command:
    ```bash
-   git clone [URL of the forked repository]
-   ```
-4. Navigate into the cloned repository:
-   ```bash
-   cd [repository-name]
+   git clone git@github.com:awslabs/osml-model-runner.git
+   cd osml-model-runner
    ```
 
-#### Step 3: Create a New Branch
+2. **Create a development environment using conda:**
 
-Create a new branch for your changes based off the latest `main`:
    ```bash
-   git checkout -b [branch-name]
+   conda env create -f conda/model-runner.yml
+   conda activate osml_model_runner
    ```
-Follow the branch naming conventions mentioned earlier.
 
-If you wish to work with a stable release version of our project,
-you might want to clone a specific release tag rather than the latest state of the main branch.
-Here's how you can do that:
+3. **Install Build Tools:**
 
-1. **List Available Tags**: First, to see the available tags (release versions), navigate to the repository on GitHub, then go to the **Tags** section in the **Releases** tab. Alternatively, you can list tags from the command line using:
    ```bash
-   git ls-remote --tags [URL of the original repository]
+   conda install -c conda-forge tox
+   conda install -c conda-forge pre-commit
+   pre-commit install
    ```
-2. **Clone the Repository**: If you haven't already, clone the repository using:
-   ```bash
-   git clone [URL of the original repository]
-   ```
-3. **Checkout the Tag**: Navigate into the cloned repository directory:
-   ```bash
-   cd [repository-name]
-   ```
-   Then, checkout the specific tag you're interested in working with:
-   ```bash
-   git checkout tags/[tag-name]
-   ```
-   Replace `[tag-name]` with the desired tag.
-   This will put you in a 'detached HEAD' state, which is fine for browsing a tag.
 
-If you plan to make changes starting from this tag and contribute back,
-it's a good idea to create a new branch from this tag:
+4. **Verify your setup:**
+
+   ```bash
+   tox -e lint
+   ```
+
+## Making Changes
+
+### Code Style and Linting
+
+This project uses automated tools to enforce consistent code style:
+
+- [black](https://github.com/psf/black) for code formatting (125 character line length)
+- [isort](https://github.com/PyCQA/isort) for import organization (black-compatible profile)
+- [flake8](https://github.com/PyCQA/flake8) for style guide enforcement
+- [autopep8](https://github.com/hhatto/autopep8) for additional PEP 8 formatting
+
+Pre-commit hooks run automatically on `git commit`. To run linters manually:
 
 ```bash
-git checkout -b [new-branch-name] tags/[tag-name]
-```
-
-This way, you can start your changes from a specific version of the project.
-
-#### Step 4: Make Your Changes
-
-- Make the necessary changes in your branch. Feel free to add, edit, or remove content as needed.
-
-#### Step 5: Commit Your Changes
-
-1. Stage your changes for commit:
-   ```bash
-   git add .
-   ```
-2. Commit your changes with a meaningful commit message:
-   ```bash
-   git commit -m "A descriptive message explaining your changes"
-   ```
-
-#### Step 6: Push Your Changes
-
-1. Push your changes to your fork:
-   ```bash
-   git push origin [branch-name]
-   ```
-
-#### Step 7: Create a Pull Request
-
-1. Navigate to your forked repository on GitHub.
-2. Click the **Pull Request** button.
-3. Ensure the base repository is the original repository you forked from and the base branch is the one you want your changes pulled into.
-4. Select your branch as the compare branch.
-5. Fill in a title and description for your pull request explaining the changes you've made.
-6. Click **Create Pull Request**.
-
-#### Final Step: Await Review
-
-- Once your pull request is submitted, our team will review your changes. We may request further modifications or provide feedback before merging your changes.
-- Keep an eye on your GitHub notifications for comments or requests for changes from the project maintainers.
-
-## Linting
-
-This package uses a number of tools to enforce formatting, linting, and general best practices:
-* [eslint](https://github.com/pre-commit/mirrors-eslint) to check pep8 compliance and logical errors in code
-* [prettier](https://github.com/pre-commit/mirrors-prettier) to check pep8 compliance and logical errors in code
-* [pre-commit](https://github.com/pre-commit/pre-commit-hooks) to install and control linters in githooks
-
-After pulling the repository, you should enable auto linting git commit hooks by running:
-
-```bash
-python3 -m pip install pre-commit
-pre-commit install
-```
-
-In addition to running the linters against files included in a commit, you can perform linting on all the files
-in the package by running:
-```bash
-pre-commit run --all-files --show-diff-on-failure
-```
-or if using tox
-```bash
+# Run all linting checks
 tox -e lint
-````
+```
 
-## Code Style
+Follow the patterns in the existing codebase for naming conventions, module organization, and documentation style.
 
-We maintain a consistent code style throughout the project, so please ensure your changes align with our existing style.
-Take a look at the existing codebase to understand the patterns and conventions we follow.
+### Running Tests
 
-## Commit Messages
+This project uses **tox** to run tests across multiple Python versions in isolated environments.
 
-The [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#summary) specification is a
-lightweight convention on top of commit messages. It provides an easy set of rules for creating an explicit
-commit history, which makes it easier to write automated tools on top of. This convention dovetails with SemVer
-by describing the features, fixes, and breaking changes made in commit messages. Please refer to the linked
-documentation for examples and additional context.
+```bash
+# Run all tests (excludes integration tests by default)
+tox
 
-<code>&lt;type&gt;[optional scope]: &lt;description&gt;
+# Run tests for a specific Python version
+tox -e py312-prod
+
+# Run a specific test file or test
+tox -- test/aws/osml/model_runner/test_example.py::test_function_name
+
+# Run tests with verbose output
+tox -- -v
+
+# Run integration tests (requires deployed infrastructure)
+tox -- -m integration
+```
+
+For load testing details, see [test/load/README.md](./test/load/README.md).
+
+### Building Documentation
+
+API documentation is generated using Sphinx from docstrings in the source code.
+
+```bash
+tox -e docs
+```
+
+The generated documentation will be available in `doc/_build/html/`.
+
+## Submitting Contributions
+
+### Branching Strategy
+
+We follow [trunk-based development](https://trunkbaseddevelopment.com/). All work branches off `main` and merges back quickly.
+
+**For internal developers:**
+
+1. Create a feature branch: `git checkout -b feature/<feature-name>`
+2. Make commits following our [commit message conventions](#commit-messages)
+3. Push and open a PR against `main` early (mark as WIP if needed)
+4. Rebase before merging: `git pull --rebase origin main`
+
+**For external contributors:**
+
+1. [Fork the repository](https://docs.github.com/en/get-started/quickstart/fork-a-repo)
+2. Create a feature branch in your fork
+3. Make your changes and push to your fork
+4. [Open a pull request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request-from-a-fork) against the upstream `main` branch
+
+To work from a specific release tag:
+
+```bash
+git checkout -b my-branch tags/v1.0.0
+```
+
+### Commit Messages
+
+We use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for clear, structured commit history:
+
+```text
+<type>[optional scope]: <description>
 
 [optional body]
 
 [optional footer(s)]
-</code>
+```
 
-## Issue Tracking
+Common types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
-We use the issue tracking functionality of GitHub to manage our project's roadmap and track bugs or feature requests.
-If you encounter any problems or have a new idea, please search the issues to ensure it hasn't already been reported.
-If necessary, open a new issue providing a clear description, steps to reproduce, and any relevant information.
+### Pull Request Guidelines
 
-We greatly appreciate your effort and contribution to our project! Let's build something awesome together!
+- Open PRs early to enable discussion and feedback
+- Ensure all CI checks pass (tests, linting, security scans)
+- PRs must be reviewed by someone who did not contribute to the branch
+- Keep PRs focused - one feature or fix per PR when possible
+
+### Issue Tracking
+
+Before starting work, check [existing issues](https://github.com/awslabs/osml-model-runner/issues) to avoid duplication. When opening a new issue, provide:
+
+- Clear description of the problem or feature request
+- Steps to reproduce (for bugs)
+- Relevant environment information
+
+### Code of Conduct
+
+This project has adopted the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct). For more information see the [Code of Conduct FAQ](https://aws.github.io/code-of-conduct-faq) or contact opensource-codeofconduct@amazon.com with any additional questions or comments.
+
+### Security Issue Notifications
+
+If you discover a potential security issue in this project we ask that you notify AWS/Amazon Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public GitHub issue.
+
+### Licensing
+
+See the [LICENSE](LICENSE) file for our project's licensing. We will ask you to confirm the licensing of your contribution.
+
+We appreciate your contributions!

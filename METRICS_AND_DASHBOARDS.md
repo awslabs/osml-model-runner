@@ -187,3 +187,42 @@ fields job_id as Job, request.image_url as Image, request.model_name as Model, s
 | sort @timestamp desc
 | limit 50
 ```
+
+## Log Analysis
+
+CloudWatch Logs Insights can be leveraged to provide anything from an overview of processing activity to in-depth
+diagnostics. The ModelRunner application emits structured log entries with tags that make it easy to filter and
+analyze specific types of events.
+
+### Job Timeline
+
+Querying the `/aws/OSML/MRService` log group using the following query will provide a "Timeline" view of a specific job,
+showing key milestones like starting image processing, region processing, feature aggregation, and completion:
+
+```text
+fields @timestamp, message, job_id, region_id, @logStream
+| filter job_id like /<job_id>/
+| filter tag like "TIMELINE EVENT"
+| sort @timestamp desc
+```
+
+Alternatively, the `job_id` filter can be omitted to see events from all jobs for a given time window.
+
+### Scheduler Events
+
+The job scheduler emits events that provide visibility into how image processing requests are being distributed
+across model endpoints. These can be queried using:
+
+```text
+fields @timestamp, message, @logStream
+| filter tag like "SCHEDULER EVENT"
+| sort @timestamp desc
+```
+
+This is useful for understanding scheduling decisions, load balancing behavior, and identifying potential bottlenecks
+in request distribution.
+
+### Log Levels
+
+Note that both `TIMELINE EVENT` and `SCHEDULER EVENT` logs are written at the INFO level. Ensure your log group
+retention and filter settings are configured appropriately to capture these events.

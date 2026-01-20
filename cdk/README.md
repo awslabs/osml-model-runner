@@ -314,16 +314,16 @@ By default, the CDK uses the pre-built container image from the registry. To bui
 npm install
 ```
 
-### 2. Synthesize the Stack
+### 2. Synthesize the Stacks
 
 ```bash
 cdk synth
 ```
 
-### 3. Deploy the Stack
+### 3. Deploy the Stacks
 
 ```bash
-cdk deploy
+cdk deploy --all
 ```
 
 This command will:
