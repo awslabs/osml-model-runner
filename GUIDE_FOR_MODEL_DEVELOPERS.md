@@ -106,8 +106,10 @@ result on the image.
 OversightML expects computer vision models to return results that have not yet been assigned geographic coordinates.
 In this case the features returned from the model are “unlocated” and have a null value for the “geometry” property of
 the feature (see section 3.2 of RFC 7946). Instead we expect the models to specify the locations of each feature in
-pixel coordinates referencing the top left corner of the image chip as 0,0. The GeoJSON specification does not provide
-a standard way to capture non-world coordinates so the following convention has been adopted.
+pixel coordinates referencing the top left corner of the image chip as 0,0. ModelRunner will convert these pixel
+coordinates into WGS84 coordinates by using sensor models described in an image metadata. The details of the
+photogrammetry operations are in the [osml-imagery-toolkit](https://github.com/aws-solutions-library-samples/osml-imagery-toolkit) library. The GeoJSON specification does not provide a standard way to capture non-world coordinates so the following
+convention has been adopted.
 
 Models SHOULD return a imageGeometry key in each feature’s properties. The value of that key will follow the same
 structure and coordinate ordering as a GeoJSON Geometry Object (see section 3.1 of RFC 7946) except the values of the
