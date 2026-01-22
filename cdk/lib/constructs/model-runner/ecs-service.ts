@@ -247,13 +247,6 @@ export class ECSService extends Construct {
   private createContainerDefinition(
     props: ECSServiceProps
   ): ContainerDefinition {
-    // Add port mapping to task definition
-    this.taskDefinition.defaultContainer?.addPortMappings({
-      containerPort: 80,
-      hostPort: 80,
-      protocol: Protocol.TCP
-    });
-
     const containerDef = this.taskDefinition.addContainer(
       "ContainerDefinition",
       {
@@ -262,6 +255,16 @@ export class ECSService extends Construct {
         memoryLimitMiB: props.config.ECS_CONTAINER_MEMORY,
         cpu: props.config.ECS_CONTAINER_CPU,
         environment: this.buildContainerEnvironment(props),
+        healthCheck: {
+          command: [
+            "CMD-SHELL",
+            "/entry.sh python -c \"import aws.osml.model_runner; print('ok')\""
+          ],
+          interval: Duration.seconds(30),
+          timeout: Duration.seconds(10),
+          retries: 3,
+          startPeriod: Duration.seconds(60)
+        },
         startTimeout: Duration.minutes(1),
         stopTimeout: Duration.minutes(1),
         disableNetworking: false,
@@ -271,6 +274,12 @@ export class ECSService extends Construct {
         })
       }
     );
+
+    // Port mapping (kept for compatibility if you later add an internal ALB/NLB).
+    containerDef.addPortMappings({
+      containerPort: 80,
+      protocol: Protocol.TCP
+    });
 
     // Suppress ECS2 findings - environment variables are used for configuration
     NagSuppressions.addResourceSuppressions(
@@ -306,6 +315,12 @@ export class ECSService extends Construct {
       taskDefinition: this.taskDefinition,
       cluster: this.cluster,
       minHealthyPercent: 100,
+      maxHealthyPercent: 200,
+      /**
+       * Fail fast and rollback automatically if new tasks can't reach steady state
+       * (e.g. image has missing runtime libs and crash-loops on startup).
+       */
+      circuitBreaker: { rollback: true },
       securityGroups: props.securityGroups,
       vpcSubnets: props.vpc.selectSubnets(),
       desiredCount: desiredCount
