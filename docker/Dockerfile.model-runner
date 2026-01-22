@@ -1,4 +1,4 @@
-# Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+# Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 # Stage 1: Build environment
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal AS build
@@ -73,7 +73,11 @@ RUN ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 COPY --from=build /home/osml-model-runner /home/osml-model-runner
 
 # Install bash and configure user and permissions
-RUN dnf install -y shadow-utils bash
+RUN dnf install -y \
+        shadow-utils \
+        bash \
+        libxcb \
+    && dnf clean all
 
 # Create entrypoint script
 RUN     (echo '#!/bin/bash' \
