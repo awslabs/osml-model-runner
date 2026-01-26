@@ -1,8 +1,8 @@
 /*
- * Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+ * Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
  */
 
-import { App, Environment, Stack, StackProps } from "aws-cdk-lib";
+import { App, CfnOutput, Environment, Stack, StackProps } from "aws-cdk-lib";
 import { IVpc } from "aws-cdk-lib/aws-ec2";
 
 import { DeploymentConfig } from "../bin/deployment/load-deployment";
@@ -50,5 +50,20 @@ export class ModelRunnerStack extends Stack {
       vpc: this.vpc,
       config: dataplaneConfig
     });
+
+    // Export queue and topic ARNs for downstream consumers
+    new CfnOutput(this, "ImageRequestQueueArn", {
+      value: this.resources.messaging.imageRequestQueue.queueArn,
+      description: "ARN of the Model Runner image request SQS queue",
+      exportName: `${this.stackName}-ImageRequestQueueArn`
+    });
+
+    if (this.resources.messaging.imageStatusTopic) {
+      new CfnOutput(this, "ImageStatusTopicArn", {
+        value: this.resources.messaging.imageStatusTopic.topicArn,
+        description: "ARN of the Model Runner image status SNS topic",
+        exportName: `${this.stackName}-ImageStatusTopicArn`
+      });
+    }
   }
 }
