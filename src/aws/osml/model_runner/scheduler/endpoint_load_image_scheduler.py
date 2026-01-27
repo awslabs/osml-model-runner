@@ -45,7 +45,6 @@ class EndpointUtilizationSummary:
         Calculate the load factor for this endpoint which is just the ratio of load per endpoint instance.
 
         :return: The load factor (current_load / instance_count)
-        :rtype: float
         """
         return self.current_load / max(1, self.instance_count)
 
@@ -105,14 +104,15 @@ class EndpointLoadImageScheduler(ImageScheduler):
         by ensuring sufficient capacity exists to handle the estimated load of each image.
 
         The scheduling process:
+
         1. Retrieve all outstanding requests from the buffered queue
         2. Group requests by endpoint and calculate current utilization
         3. Select the next eligible request based on load balancing
-        4. If throttling is enabled:
-           - Extract the TargetVariant from the request (already set by BufferedImageRequestQueue)
-           - Calculate available capacity for the specific endpoint variant
-           - Check if sufficient capacity exists for this image
-           - Only start the image if capacity is available or single image exception applies
+        4. If throttling is enabled, extract the TargetVariant from the request
+           (already set by BufferedImageRequestQueue), calculate available capacity
+           for the specific endpoint variant, check if sufficient capacity exists
+           for this image, and only start the image if capacity is available or
+           single image exception applies
         5. Atomically start the next attempt via conditional DynamoDB update
 
         :return: The next image request to process, if any

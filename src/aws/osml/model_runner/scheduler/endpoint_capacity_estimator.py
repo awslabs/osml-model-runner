@@ -65,19 +65,16 @@ class EndpointCapacityEstimator:
         This method determines the maximum number of concurrent inference requests
         an endpoint can handle based on its configuration.
 
-        For HTTP endpoints (URLs starting with http:// or https://):
-        - Returns the configured default_http_concurrency
-        - variant_name parameter is ignored
+        For HTTP endpoints (URLs starting with http:// or https://), returns the
+        configured default_http_concurrency and variant_name parameter is ignored.
 
-        For SageMaker endpoints:
-        - If variant_name is specified: returns capacity for that specific variant only
-        - If variant_name is None: returns combined capacity for all variants
-        - For capacity-based throttling, variant_name should always be specified
-          to get accurate capacity for the selected variant
+        For SageMaker endpoints, if variant_name is specified returns capacity for
+        that specific variant only. If variant_name is None, returns combined capacity
+        for all variants. For capacity-based throttling, variant_name should always
+        be specified to get accurate capacity for the selected variant.
 
-        When SageMaker API calls fail, an Errors metric is emitted with dimensions:
-        - Operation=Scheduling
-        - ModelName=<endpoint_name>
+        When SageMaker API calls fail, an Errors metric is emitted with dimensions
+        Operation=Scheduling and ModelName=<endpoint_name>.
 
         :param endpoint_name: Name of SageMaker endpoint or HTTP URL
         :param variant_name: Specific variant to calculate capacity for.
@@ -114,9 +111,8 @@ class EndpointCapacityEstimator:
         configuration and calculates capacity based on variant types.
         Results are cached with automatic TTL-based eviction.
 
-        When SageMaker API calls fail, an Errors metric is emitted with dimensions:
-        - Operation=Scheduling
-        - ModelName=<endpoint_name>
+        When SageMaker API calls fail, an Errors metric is emitted with dimensions
+        Operation=Scheduling and ModelName=<endpoint_name>.
 
         :param endpoint_name: Name of SageMaker endpoint
         :param variant_name: Specific variant to calculate capacity for, or None for all variants

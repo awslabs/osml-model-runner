@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 """
 Endpoint variant selector for SageMaker endpoints.
@@ -50,12 +50,12 @@ class EndpointVariantSelector:
         Select an endpoint variant for the ImageRequest if not already specified.
 
         This method implements the following logic:
-        1. If TargetVariant is already set → return request unchanged (always honor explicit variant)
-        2. If TargetVariant is not set and this is a SageMaker endpoint:
-           - Query endpoint configuration to get ProductionVariants
-           - Use weighted random selection based on CurrentWeight
-           - Set TargetVariant in model_endpoint_parameters
-        3. For HTTP endpoints → return request unchanged (no variants)
+
+        1. If TargetVariant is already set, return request unchanged (always honor explicit variant)
+        2. If TargetVariant is not set and this is a SageMaker endpoint, query endpoint
+           configuration to get ProductionVariants, use weighted random selection based
+           on CurrentWeight, and set TargetVariant in model_endpoint_parameters
+        3. For HTTP endpoints, return request unchanged (no variants)
 
         :param image_request: The image request to process
         :return: ImageRequest with TargetVariant set if selection was needed
