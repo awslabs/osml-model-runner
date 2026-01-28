@@ -64,3 +64,16 @@ jobs:
     with:
       aws_region: ${{ needs.get-aws-region.outputs.aws_region }}
     secrets: inherit
+
+  notify-nightly-failure:
+    if: failure() && github.event_name == 'schedule'
+    needs:
+      - check
+      - deploy
+      - test
+      - destroy
+      - get-aws-region
+    uses: ./.github/workflows/slack-notify-nightly-failure.yml
+    with:
+      run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    secrets: inherit

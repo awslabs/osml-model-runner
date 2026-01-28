@@ -2,6 +2,7 @@ name: Notify Slack
 
 on:
   pull_request:
+    types: [opened]
     branches: ['main']
 
 permissions:
@@ -14,7 +15,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Send PR Created Notification
-        if: github.event_name == 'pull_request' && github.event.action == 'opened'
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
