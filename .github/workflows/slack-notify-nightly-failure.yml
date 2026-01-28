@@ -1,0 +1,25 @@
+name: Notify Slack (Nightly Failure)
+
+on:
+  workflow_call:
+    inputs:
+      run_url:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  notify-nightly-failure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send nightly failure notification
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_OSML_DEV }}
+          SLACK_TITLE: '${{ github.event.repository.name }} nightly build failed'
+          SLACK_FOOTER: ''
+          MSG_MINIMAL: true
+          SLACK_MESSAGE: 'Nightly build failed: ${{ inputs.run_url }}'
