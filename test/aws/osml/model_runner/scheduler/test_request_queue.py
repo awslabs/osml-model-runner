@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import unittest
 from unittest import TestCase
@@ -46,7 +46,7 @@ class TestRequestQueue(TestCase):
         self.sqs_client = boto3.client("sqs", config=BotoConfig.default)
         self.sqs_response = self.sqs.create_queue(QueueName="mock_queue")
         self.mock_queue_url = self.sqs_response.url
-        self.request_queue = RequestQueue(queue_url=self.mock_queue_url)
+        self.request_queue = RequestQueue(queue_url=self.mock_queue_url, wait_seconds=0)
 
     def tearDown(self):
         """
@@ -152,6 +152,18 @@ class TestRequestQueue(TestCase):
         # Simulate client exception
         self.request_queue.sqs_client.receive_message = TEST_MOCK_CLIENT_EXCEPTION
         # Should not raise an exception
+        receipt_handle, request_message = next(request_queue_iter)
+        assert receipt_handle is None
+        assert request_message is None
+
+    def test_iter_request_queue_invalid_json(self):
+        """
+        Test that the iterator skips messages with invalid JSON bodies.
+        """
+        # Send a non-JSON message directly to the queue
+        self.request_queue.sqs_client.send_message(QueueUrl=self.mock_queue_url, MessageBody="not-json")
+
+        request_queue_iter = iter(self.request_queue)
         receipt_handle, request_message = next(request_queue_iter)
         assert receipt_handle is None
         assert request_message is None
