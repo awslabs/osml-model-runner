@@ -1,6 +1,7 @@
 #  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 from unittest import TestCase, main
+from unittest.mock import patch
 
 import boto3
 import pytest
@@ -11,6 +12,12 @@ from aws.osml.model_runner.api import InvalidS3ObjectException
 from aws.osml.model_runner.api.image_request import ImageRequest, ModelInvokeMode
 from aws.osml.model_runner.api.request_utils import validate_image_path
 from aws.osml.model_runner.app_config import BotoConfig
+from aws.osml.model_runner.common import (
+    FeatureDistillationNMS,
+    FeatureDistillationSoftNMS,
+    MRPostProcessing,
+    MRPostprocessingStep,
+)
 from aws.osml.model_runner.sink import Sink, SinkFactory
 
 
@@ -36,6 +43,32 @@ class TestImageRequest(TestCase):
         Test ImageRequest with valid data to ensure it passes validation.
         """
         ir = self.build_request_data()
+        assert ir.is_valid()
+
+    def test_valid_data_without_outputs(self):
+        """
+        Test ImageRequest is valid when outputs are empty.
+        """
+        ir = self.build_request_data()
+        ir.outputs = []
+        assert ir.is_valid()
+
+    @patch("aws.osml.model_runner.api.image_request.shared_properties_are_valid", return_value=True)
+    def test_is_valid_with_empty_outputs_branch(self, mock_shared_valid):
+        """
+        Test is_valid returns True when outputs are empty and shared properties are valid.
+        """
+        ir = ImageRequest(
+            job_id="job",
+            image_id="image-id",
+            image_url="image-url",
+            model_name="model",
+            model_invoke_mode=ModelInvokeMode.SM_ENDPOINT,
+            tile_size=(10, 10),
+            tile_overlap=(0, 0),
+            tile_format="NITF",
+        )
+        ir.outputs = []
         assert ir.is_valid()
 
     def test_invalid_tile_size(self):
@@ -124,6 +157,7 @@ class TestImageRequest(TestCase):
         assert ir.tile_overlap == (50, 50)
         assert ir.tile_format == "NITF"
         assert ir.model_invoke_mode == ModelInvokeMode.NONE
+        assert ir.get_shared_values()["model_endpoint_parameters"] is None
 
     def test_feature_distillation_parsing(self):
         """
@@ -133,6 +167,17 @@ class TestImageRequest(TestCase):
         distillation_option = ir.get_feature_distillation_option()
         assert isinstance(distillation_option, list)
         assert len(distillation_option) == 1
+
+    def test_feature_distillation_multiple_options_invalid(self):
+        """
+        Test that multiple feature distillation options are rejected.
+        """
+        ir = self.build_request_data()
+        ir.post_processing = [
+            MRPostProcessing(step=MRPostprocessingStep.FEATURE_DISTILLATION, algorithm=FeatureDistillationNMS()),
+            MRPostProcessing(step=MRPostprocessingStep.FEATURE_DISTILLATION, algorithm=FeatureDistillationSoftNMS()),
+        ]
+        assert not ir.is_valid()
 
     def test_image_request_from_minimal_message_legacy_output(self):
         """
@@ -179,6 +224,18 @@ class TestImageRequest(TestCase):
 
         # Should fail with an invalid sync type provided
         assert not request.is_valid()
+
+    def test_image_request_invalid_roles(self):
+        """
+        Test invalid role formats are rejected.
+        """
+        ir = self.build_request_data()
+        ir.image_read_role = "not-an-arn"
+        assert not ir.is_valid()
+
+        ir = self.build_request_data()
+        ir.model_invocation_role = "not-an-arn"
+        assert not ir.is_valid()
 
     def test_image_request_invalid_image_path(self):
         """
@@ -281,6 +338,93 @@ class TestImageRequest(TestCase):
         )
 
         assert request.model_endpoint_parameters == empty_params
+
+    def test_parse_tile_dimension(self):
+        """
+        Test parsing tile dimension helper.
+        """
+        assert ImageRequest._parse_tile_dimension("64") == (64, 64)
+        assert ImageRequest._parse_tile_dimension(32) == (32, 32)
+        assert ImageRequest._parse_tile_dimension("invalid") is None
+
+    def test_parse_roi(self):
+        """
+        Test parsing ROI WKT.
+        """
+        roi = ImageRequest._parse_roi("POINT (1 2)")
+        assert roi is not None
+        assert roi.geom_type == "Point"
+        assert ImageRequest._parse_roi(None) is None
+
+    def test_parse_tile_format_and_compression_defaults(self):
+        """
+        Test parsing tile format and compression defaults.
+        """
+        assert ImageRequest._parse_tile_format(None) == "NITF"
+        assert ImageRequest._parse_tile_compression(None) == "NONE"
+
+    def test_parse_tile_format_invalid(self):
+        """
+        Test invalid tile format raises KeyError.
+        """
+        with self.assertRaises(KeyError):
+            ImageRequest._parse_tile_format("NOT_A_FORMAT")
+
+    def test_parse_tile_compression_invalid(self):
+        """
+        Test invalid tile compression raises KeyError.
+        """
+        with self.assertRaises(KeyError):
+            ImageRequest._parse_tile_compression("NOT_A_COMPRESSION")
+
+    def test_parse_model_invoke_mode_default(self):
+        """
+        Test model invoke mode defaults to SM_ENDPOINT.
+        """
+        assert ImageRequest._parse_model_invoke_mode(None) == ModelInvokeMode.SM_ENDPOINT
+
+    def test_parse_outputs_no_outputs(self):
+        """
+        Test outputs parsing when no outputs provided.
+        """
+        with self.assertLogs(level="WARNING") as log:
+            outputs = ImageRequest._parse_outputs({"jobId": "test-job"})
+        assert outputs == []
+        assert "No output syncs were present in this request." in log.output[0]
+
+    def test_parse_post_processing_defaults_and_conversion(self):
+        """
+        Test post-processing parsing defaults and camelCase conversion.
+        """
+        default_ops = ImageRequest._parse_post_processing(None)
+        assert len(default_ops) == 1
+
+        post_processing = [
+            {
+                "step": "FEATURE_DISTILLATION",
+                "algorithm": {
+                    "algorithmType": "SOFT_NMS",
+                    "iouThreshold": 0.5,
+                    "skipBoxThreshold": 0.1,
+                    "sigma": 0.2,
+                },
+            }
+        ]
+        ops = ImageRequest._parse_post_processing(post_processing)
+        assert len(ops) == 1
+        assert ops[0].algorithm.iou_threshold == 0.5
+        assert ops[0].algorithm.skip_box_threshold == 0.1
+        assert ops[0].algorithm.sigma == 0.2
+
+    def test_get_shared_values(self):
+        """
+        Test shared values include key fields.
+        """
+        ir = self.build_request_data()
+        ir.model_endpoint_parameters = {"CustomAttributes": "x=y"}
+        shared = ir.get_shared_values()
+        assert shared["image_id"] == "test-image-id"
+        assert shared["model_endpoint_parameters"] == {"CustomAttributes": "x=y"}
 
     @staticmethod
     def build_request_data():
