@@ -1,7 +1,10 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import os
+from dataclasses import dataclass
+from decimal import Decimal
 from unittest import TestCase
+from unittest.mock import Mock
 
 import boto3
 from botocore.exceptions import ClientError
@@ -55,6 +58,23 @@ class TestDDBHelper(TestCase):
         """
         data_to_put = self.ddb_item.to_put()
         assert data_to_put == {}, "Expected empty dictionary for default DDBItem"
+
+    def test_ddb_item_to_put_and_update_with_fields(self):
+        """
+        Test that DDBItem helpers include only valid fields.
+        """
+        from aws.osml.model_runner.database.ddb_helper import DDBItem, DDBKey
+
+        @dataclass
+        class ExampleItem(DDBItem):
+            pk: str = None
+            name: str = None
+            count: int = None
+
+        item = ExampleItem(pk="123", name="example", count=None)
+        item.ddb_key = DDBKey(hash_key="pk", hash_value="123")
+        assert item.to_put() == {"pk": "123", "name": "example"}
+        assert item.to_update() == {"name": "example"}
 
     def test_ddb_item_to_update(self):
         """
@@ -125,6 +145,19 @@ class TestDDBHelper(TestCase):
             # Expect failure when only update attributes are provided without an expression
             helper.update_ddb_item(self.image_request_item, update_attr={":model_name": "noop"})
 
+    def test_ddb_helper_update_ddb_item_with_explicit_params(self):
+        """
+        Test update with explicit expression and attributes.
+        """
+        from aws.osml.model_runner.database.ddb_helper import DDBHelper
+
+        helper = DDBHelper(self.table_name)
+        helper.put_ddb_item(self.image_request_item)
+        update_exp = "SET model_name = :model_name"
+        update_attr = {":model_name": "noop"}
+        results = helper.update_ddb_item(self.image_request_item, update_exp=update_exp, update_attr=update_attr)
+        assert results["model_name"] == "noop"
+
     def test_ddb_helper_query_items(self):
         """
         Test that the `query_items` method correctly queries and retrieves items based on a hash key.
@@ -136,6 +169,23 @@ class TestDDBHelper(TestCase):
 
         retrieved_items = helper.query_items(self.image_request_item)
         assert len(retrieved_items) == 1, "Expected one item to be retrieved from query"
+
+    def test_ddb_helper_query_items_pagination(self):
+        """
+        Test that query_items handles pagination and converts decimals.
+        """
+        from aws.osml.model_runner.database.ddb_helper import DDBHelper
+
+        helper = DDBHelper(self.table_name)
+        helper.table.query = Mock(
+            side_effect=[
+                {"Items": [{"value": Decimal("1.0")}], "LastEvaluatedKey": {"image_id": "next"}},
+                {"Items": [{"value": Decimal("1.5")}]},
+            ]
+        )
+        items = helper.query_items(self.image_request_item)
+        assert items == [{"value": 1}, {"value": 1.5}]
+        assert helper.table.query.call_count == 2
 
     def test_ddb_helper_get_update_params(self):
         """
@@ -169,3 +219,58 @@ class TestDDBHelper(TestCase):
         helper = DDBHelper(self.table_name)
         keys = helper.get_keys(self.range_image_request_item)
         assert keys == {"image_id": "12345", "other_field": "range"}, "Expected hash and range keys to be correct"
+
+        hash_only_keys = helper.get_keys(self.image_request_item)
+        assert hash_only_keys == {"image_id": TEST_IMAGE_ID}
+
+    def test_convert_decimal(self):
+        """
+        Test decimal conversion for lists and dicts.
+        """
+        from aws.osml.model_runner.database.ddb_helper import DDBHelper
+
+        data = {"int": Decimal("2.0"), "float": Decimal("2.5"), "list": [Decimal("3.0"), {"v": Decimal("4.5")}]}
+        converted = DDBHelper.convert_decimal(data)
+        assert converted == {"int": 2, "float": 2.5, "list": [3, {"v": 4.5}]}
+
+    def test_batch_write_items_with_retries(self):
+        """
+        Test batch_write_items retries unprocessed items.
+        """
+        from aws.osml.model_runner.database.ddb_helper import DDBHelper
+
+        helper = DDBHelper(self.table_name)
+        helper.client.batch_write_item = Mock(
+            side_effect=[
+                {"UnprocessedItems": {self.table_name: [{"PutRequest": {"Item": self.image_request_item.to_put()}}]}},
+                {"UnprocessedItems": {}},
+            ]
+        )
+        helper.batch_write_items([self.image_request_item], max_retries=2, max_delay=0)
+        assert helper.client.batch_write_item.call_count == 2
+
+    def test_batch_write_items_exceeds_retries(self):
+        """
+        Test batch_write_items raises when unprocessed items remain.
+        """
+        from aws.osml.model_runner.database.ddb_helper import DDBBatchWriteException, DDBHelper
+
+        helper = DDBHelper(self.table_name)
+        helper.client.batch_write_item = Mock(
+            return_value={
+                "UnprocessedItems": {self.table_name: [{"PutRequest": {"Item": self.image_request_item.to_put()}}]}
+            }
+        )
+        with self.assertRaises(DDBBatchWriteException):
+            helper.batch_write_items([self.image_request_item], max_retries=1, max_delay=0)
+
+    def test_batch_write_items_retries_on_exception(self):
+        """
+        Test batch_write_items retries on exceptions and succeeds.
+        """
+        from aws.osml.model_runner.database.ddb_helper import DDBHelper
+
+        helper = DDBHelper(self.table_name)
+        helper.client.batch_write_item = Mock(side_effect=[Exception("boom"), {"UnprocessedItems": {}}])
+        helper.batch_write_items([self.image_request_item], max_retries=1, max_delay=0)
+        assert helper.client.batch_write_item.call_count == 2
