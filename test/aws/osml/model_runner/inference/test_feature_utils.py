@@ -1,4 +1,4 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import unittest
 from math import degrees
@@ -231,6 +231,55 @@ class TestFeatureUtils(unittest.TestCase):
         processing_bounds = calculate_processing_bounds(ds, roi, sensor_model)
         assert processing_bounds == ((15, 10), (60, 75))
 
+    def test_calculate_processing_bounds_outside_image(self):
+        """
+        Test calculating processing bounds when ROI is outside the image; should return None.
+        """
+        from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
+        from aws.osml.photogrammetry import ImageCoordinate
+
+        ds, sensor_model = self.get_dataset_and_camera()
+        chip_ul = sensor_model.image_to_world(ImageCoordinate([-200, -200]))
+        chip_lr = sensor_model.image_to_world(ImageCoordinate([-150, -150]))
+        min_vals = np.minimum(chip_ul.coordinate, chip_lr.coordinate)
+        max_vals = np.maximum(chip_ul.coordinate, chip_lr.coordinate)
+        polygon_coords = [
+            [degrees(min_vals[0]), degrees(min_vals[1])],
+            [degrees(min_vals[0]), degrees(max_vals[1])],
+            [degrees(max_vals[0]), degrees(max_vals[1])],
+            [degrees(max_vals[0]), degrees(min_vals[1])],
+            [degrees(min_vals[0]), degrees(min_vals[1])],
+        ]
+        roi = shapely.geometry.Polygon(polygon_coords)
+
+        processing_bounds = calculate_processing_bounds(ds, roi, sensor_model)
+        assert processing_bounds is None
+
+    def test_calculate_processing_bounds_with_3d_roi(self):
+        """
+        Test calculating processing bounds with 3D ROI coordinates.
+        """
+        from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
+        from aws.osml.photogrammetry import ImageCoordinate
+
+        ds, sensor_model = self.get_dataset_and_camera()
+        chip_ul = sensor_model.image_to_world(ImageCoordinate([0, 0]))
+        chip_lr = sensor_model.image_to_world(ImageCoordinate([101, 101]))
+        min_vals = np.minimum(chip_ul.coordinate, chip_lr.coordinate)
+        max_vals = np.maximum(chip_ul.coordinate, chip_lr.coordinate)
+        roi = shapely.geometry.Polygon(
+            [
+                (degrees(min_vals[0]), degrees(min_vals[1]), 10.0),
+                (degrees(min_vals[0]), degrees(max_vals[1]), 10.0),
+                (degrees(max_vals[0]), degrees(max_vals[1]), 10.0),
+                (degrees(max_vals[0]), degrees(min_vals[1]), 10.0),
+                (degrees(min_vals[0]), degrees(min_vals[1]), 10.0),
+            ]
+        )
+
+        processing_bounds = calculate_processing_bounds(ds, roi, sensor_model)
+        assert processing_bounds == ((0, 0), (101, 101))
+
     def test_get_source_property_not_available(self):
         """
         Test retrieving a source property for an unsupported image type; should return None.
@@ -241,6 +290,33 @@ class TestFeatureUtils(unittest.TestCase):
         source_property = get_source_property("./test/data/GeogToWGS84GeoKey5.tif", "UNSUPPORTED", ds)
         assert source_property is None
 
+    def test_get_source_property_nitf_metadata(self):
+        """
+        Test retrieving a source property for a NITF image with metadata.
+        """
+        from aws.osml.model_runner.inference.feature_utils import get_source_property
+
+        class FakeDataset:
+            def GetMetadata(self):
+                return {
+                    "NITF_ICAT": "TEST",
+                    "NITF_FTITLE": "source-id-1",
+                    "NITF_IDATIM": "20240102123456",
+                }
+
+        source_property = get_source_property("./test/data/sample.ntf", "NITF", FakeDataset())
+        assert source_property == {
+            "sourceMetadata": [
+                {
+                    "location": "./test/data/sample.ntf",
+                    "format": "NITF",
+                    "category": "TEST",
+                    "sourceId": "source-id-1",
+                    "sourceDT": "2024-01-02T12:34:56Z",
+                }
+            ]
+        }
+
     def test_get_source_property_exception(self):
         """
         Test that getting a source property handles exceptions gracefully and returns None.
@@ -249,6 +325,66 @@ class TestFeatureUtils(unittest.TestCase):
 
         source_property = get_source_property("./test/data/GeogToWGS84GeoKey5.tif", "NITF", dataset=None)
         assert source_property is None
+
+    def test_add_properties_to_features(self):
+        """
+        Test applying custom properties and pruning unused metadata fields.
+        """
+        from aws.osml.model_runner.inference.feature_utils import add_properties_to_features
+
+        features = [
+            geojson.Feature(
+                geometry=geojson.Point((0, 0)),
+                properties={
+                    "inferenceTime": "2024-01-02T03:04:05Z",
+                    "detection_score": 0.7,
+                    "feature_types": ["car"],
+                    "image_id": "image-1",
+                    "adjusted_feature_types": ["vehicle"],
+                    "bounds_imcoords": [0, 0, 10, 10],
+                    "geom_imcoords": [0, 0],
+                },
+            )
+        ]
+        feature_properties = '[{"custom": "value"}, {"another": 123}]'
+
+        updated = add_properties_to_features("job-1", feature_properties, features)
+        updated_props = updated[0]["properties"]
+
+        assert updated_props["custom"] == "value"
+        assert updated_props["another"] == 123
+        assert updated_props["inferenceMetadata"]["jobId"] == "job-1"
+        assert updated_props["inferenceMetadata"]["inferenceDT"] == "2024-01-02T03:04:05Z"
+        assert "inferenceTime" not in updated_props
+        assert "detection_score" not in updated_props
+        assert "feature_types" not in updated_props
+        assert "image_id" not in updated_props
+        assert "adjusted_feature_types" not in updated_props
+        assert "bounds_imcoords" not in updated_props
+        assert "geom_imcoords" not in updated_props
+
+    def test_add_properties_to_features_invalid_json(self):
+        """
+        Test invalid feature properties raise InvalidFeaturePropertiesException.
+        """
+        from aws.osml.model_runner.inference.feature_utils import (
+            InvalidFeaturePropertiesException,
+            add_properties_to_features,
+        )
+
+        features = [geojson.Feature(geometry=geojson.Point((0, 0)), properties={"inferenceTime": "0"})]
+        with pytest.raises(InvalidFeaturePropertiesException):
+            add_properties_to_features("job-1", "not-json", features)
+
+    def test_get_inference_metadata_property(self):
+        """
+        Test inference metadata property structure.
+        """
+        from aws.osml.model_runner.inference.feature_utils import get_inference_metadata_property
+
+        assert get_inference_metadata_property("job-1", "time-1") == {
+            "inferenceMetadata": {"jobId": "job-1", "inferenceDT": "time-1"}
+        }
 
     @staticmethod
     def build_gdal_sensor_model():
