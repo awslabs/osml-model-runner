@@ -1,4 +1,4 @@
-#  Copyright 2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2025-2026 Amazon.com, Inc. or its affiliates.
 
 import unittest
 
@@ -291,6 +291,111 @@ class TestRequestedJobsTable(unittest.TestCase):
 
         self.assertEqual(updated_record.region_count, region_count)
         self.assertEqual(updated_record.num_attempts, 1)
+
+    def test_add_new_request_client_error_logs_and_raises(self):
+        """Test add_new_request handles ClientError by logging and raising exception."""
+        # Arrange
+        image_request = self.create_sample_image_request()
+
+        # Mock put_item to raise ClientError
+        def mock_put_item(*args, **kwargs):
+            raise ClientError({"Error": {"Code": "ServiceUnavailable", "Message": "Service unavailable"}}, "PutItem")
+
+        original_put_item = self.table.table.put_item
+        self.table.table.put_item = mock_put_item
+
+        # Act / Assert
+        with self.assertRaises(ClientError) as context:
+            self.table.add_new_request(image_request)
+
+        self.assertEqual(context.exception.response["Error"]["Code"], "ServiceUnavailable")
+
+        # Restore original method
+        self.table.table.put_item = original_put_item
+
+    def test_update_request_details_client_error_logs_and_raises(self):
+        """Test update_request_details handles non-conditional ClientError by logging and raising."""
+        # Arrange
+        image_request = self.create_sample_image_request()
+        self.table.add_new_request(image_request)
+        region_count = 10
+
+        # Mock update_item to raise non-conditional ClientError
+        def mock_update_item(*args, **kwargs):
+            raise ClientError(
+                {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Throughput exceeded"}}, "UpdateItem"
+            )
+
+        original_update_item = self.table.table.update_item
+        self.table.table.update_item = mock_update_item
+
+        # Act / Assert
+        with self.assertRaises(ClientError) as context:
+            self.table.update_request_details(image_request, region_count)
+
+        self.assertEqual(context.exception.response["Error"]["Code"], "ProvisionedThroughputExceededException")
+
+        # Restore original method
+        self.table.table.update_item = original_update_item
+
+    def test_get_outstanding_requests_client_error_logs_and_raises(self):
+        """Test get_outstanding_requests handles ClientError by logging and raising exception."""
+
+        # Arrange - Mock scan to raise ClientError
+        def mock_scan(*args, **kwargs):
+            raise ClientError({"Error": {"Code": "ResourceNotFoundException", "Message": "Table not found"}}, "Scan")
+
+        original_scan = self.table.table.scan
+        self.table.table.scan = mock_scan
+
+        # Act / Assert
+        with self.assertRaises(ClientError) as context:
+            self.table.get_outstanding_requests()
+
+        self.assertEqual(context.exception.response["Error"]["Code"], "ResourceNotFoundException")
+
+        # Restore original method
+        self.table.table.scan = original_scan
+
+    def test_complete_request_client_error_logs_and_raises(self):
+        """Test complete_request handles ClientError by logging and raising exception."""
+        # Arrange
+        image_request = self.create_sample_image_request()
+        self.table.add_new_request(image_request)
+
+        # Mock delete_item to raise ClientError
+        def mock_delete_item(*args, **kwargs):
+            raise ClientError({"Error": {"Code": "InternalServerError", "Message": "Internal error"}}, "DeleteItem")
+
+        original_delete_item = self.table.table.delete_item
+        self.table.table.delete_item = mock_delete_item
+
+        # Act / Assert
+        with self.assertRaises(ClientError) as context:
+            self.table.complete_request(image_request)
+
+        self.assertEqual(context.exception.response["Error"]["Code"], "InternalServerError")
+
+        # Restore original method
+        self.table.table.delete_item = original_delete_item
+
+    def test_get_outstanding_requests_pagination_with_many_pages(self):
+        """Test get_outstanding_requests handles multi-page pagination correctly."""
+        # Arrange - Create 35+ requests to force pagination
+        for i in range(35):
+            request = self.create_sample_image_request(job_name=f"test-pagination-job-{i}")
+            self.table.add_new_request(request)
+
+        # Act
+        outstanding = self.table.get_outstanding_requests()
+
+        # Assert - Verify all records returned across multiple pages
+        self.assertEqual(len(outstanding), 35)
+        self.assertIsInstance(outstanding[0], ImageRequestStatusRecord)
+
+        # Verify all unique job IDs are present
+        job_ids = {r.job_id for r in outstanding}
+        self.assertEqual(len(job_ids), 35)
 
 
 if __name__ == "__main__":

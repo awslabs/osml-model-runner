@@ -413,6 +413,216 @@ class TestBufferedImageRequestQueue(unittest.TestCase):
         self.assertEqual(len(requests), 1)
         mock_variant_selector.select_variant.assert_called_once()
 
+    @patch("aws.osml.model_runner.scheduler.buffered_image_request_queue.logger")
+    def test_get_outstanding_requests_handles_exception_returns_empty(self, mock_logger):
+        """Test get_outstanding_requests handles exception and returns empty list"""
+        # Arrange - Mock get_outstanding_requests to raise Exception
+        self.queue.requested_jobs_table.get_outstanding_requests = Mock(side_effect=Exception("DDB error"))
+
+        # Act
+        requests = self.queue.get_outstanding_requests()
+
+        # Assert - returns empty list
+        self.assertEqual(len(requests), 0)
+        # Verify error logged
+        mock_logger.error.assert_called_once()
+        error_args = str(mock_logger.error.call_args)
+        self.assertIn("Error getting outstanding requests", error_args)
+
+    @patch.object(ImageRequest, "is_valid", return_value=False)
+    def test_fetch_new_requests_invalid_request_skips_to_next(self, mock_is_valid):
+        """Test fetch_new_requests skips invalid request and moves to DLQ"""
+        # Arrange - Add two valid-looking messages
+        for i in range(2):
+            message = self.create_sample_image_request_message_body(f"job-{i}")
+            self.sqs.send_message(QueueUrl=self.queue_url, MessageBody=json.dumps(message))
+
+        # Mock is_valid to return False for first request only
+        mock_is_valid.side_effect = [False, True]
+
+        # Act
+        requests = self.queue.get_outstanding_requests()
+
+        # Assert - only second request processed (first invalid)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0].job_id, "job-1-id")
+
+        # Verify invalid message moved to DLQ
+        dlq_messages = self.sqs.receive_message(QueueUrl=self.dlq_url, MaxNumberOfMessages=10).get("Messages", [])
+        self.assertEqual(len(dlq_messages), 1)
+
+    @patch("aws.osml.model_runner.scheduler.buffered_image_request_queue.logger")
+    def test_fetch_new_requests_client_error_on_ddb_add_logs_and_continues(self, mock_logger):
+        """Test fetch_new_requests handles ClientError on DDB add, logs, and continues"""
+        from botocore.exceptions import ClientError
+
+        # Arrange - Add three valid messages
+        for i in range(3):
+            message = self.create_sample_image_request_message_body(f"job-{i}")
+            self.sqs.send_message(QueueUrl=self.queue_url, MessageBody=json.dumps(message))
+
+        # Mock add_new_request to fail on second call only
+        original_add = self.queue.requested_jobs_table.add_new_request
+        call_count = [0]
+
+        def mock_add_with_failure(image_request, region_count=None):
+            call_count[0] += 1
+            if call_count[0] == 2:
+                raise ClientError({"Error": {"Code": "ServiceUnavailable", "Message": "DDB error"}}, "PutItem")
+            return original_add(image_request, region_count)
+
+        self.queue.requested_jobs_table.add_new_request = mock_add_with_failure
+
+        # Act
+        requests = self.queue.get_outstanding_requests()
+
+        # Assert - first and third requests processed successfully
+        self.assertEqual(len(requests), 2)
+        self.assertEqual(requests[0].job_id, "job-0-id")
+        self.assertEqual(requests[1].job_id, "job-2-id")
+
+        # Verify error logged for second request
+        mock_logger.error.assert_called()
+        error_args = str(mock_logger.error.call_args)
+        self.assertIn("Unable to move valid image request", error_args)
+
+    @patch("aws.osml.model_runner.scheduler.buffered_image_request_queue.logger")
+    def test_fetch_new_requests_client_error_on_sqs_receive_breaks_loop(self, mock_logger):
+        """Test fetch_new_requests handles ClientError on SQS receive and breaks loop"""
+        from botocore.exceptions import ClientError
+
+        # Mock sqs_client.receive_message to raise ClientError
+        self.queue.sqs_client.receive_message = Mock(
+            side_effect=ClientError({"Error": {"Code": "ServiceUnavailable"}}, "ReceiveMessage")
+        )
+
+        # Act
+        requests = self.queue.get_outstanding_requests()
+
+        # Assert - returns empty (loop breaks on error)
+        self.assertEqual(len(requests), 0)
+
+        # Verify error logged
+        mock_logger.error.assert_called()
+        error_args = str(mock_logger.error.call_args)
+        self.assertIn("Error receiving messages from SQS", error_args)
+
+    @patch("aws.osml.model_runner.scheduler.buffered_image_request_queue.logger")
+    def test_handle_invalid_message_client_error_logs_exception(self, mock_logger):
+        """Test _handle_invalid_message handles ClientError and logs exception"""
+        from botocore.exceptions import ClientError
+
+        # Arrange - Create invalid message
+        self.sqs.send_message(QueueUrl=self.queue_url, MessageBody="invalid-json")
+
+        # Mock send_message to DLQ to raise ClientError
+        original_send = self.queue.sqs_client.send_message
+
+        def mock_send_with_failure(*args, **kwargs):
+            if kwargs.get("QueueUrl") == self.dlq_url:
+                raise ClientError({"Error": {"Code": "ServiceUnavailable"}}, "SendMessage")
+            return original_send(*args, **kwargs)
+
+        self.queue.sqs_client.send_message = mock_send_with_failure
+
+        # Act
+        requests = self.queue.get_outstanding_requests()
+
+        # Assert
+        self.assertEqual(len(requests), 0)
+
+        # Verify error logged
+        mock_logger.error.assert_called()
+        error_args = str(mock_logger.error.call_args)
+        self.assertIn("Unable to move invalid image request", error_args)
+
+        # Verify exception logged
+        mock_logger.exception.assert_called()
+
+    @patch("aws.osml.model_runner.scheduler.buffered_image_request_queue.logger")
+    def test_purge_finished_requests_client_error_logs_and_skips(self, mock_logger):
+        """Test _purge_finished_requests handles ClientError and logs with job_id"""
+        from botocore.exceptions import ClientError
+
+        # Arrange - Create two requests: one normal, one that should be purged
+        for i in range(2):
+            request_data = self.create_sample_image_request_message_body(f"job-{i}")
+            image_request = ImageRequest.from_external_message(request_data)
+            status_record = self.jobs_table.add_new_request(image_request)
+
+            if i == 0:
+                # First request: exceed max retries (should be purged)
+                self.jobs_table.table.update_item(
+                    Key={"endpoint_id": status_record.endpoint_id, "job_id": status_record.job_id},
+                    UpdateExpression="SET last_attempt = :time, num_attempts = num_attempts + :inc, region_count = :count",
+                    ExpressionAttributeValues={
+                        ":time": int(time.time()) - (self.queue.retry_time + 5),
+                        ":inc": self.queue.max_retry_attempts,
+                        ":count": 1,
+                    },
+                    ReturnValues="UPDATED_NEW",
+                )
+
+        # Mock send_message to raise ClientError when sending to DLQ
+        self.queue.sqs_client.send_message = Mock(
+            side_effect=ClientError({"Error": {"Code": "ServiceUnavailable", "Message": "DLQ error"}}, "SendMessage")
+        )
+
+        # Act
+        requests = self.queue.get_outstanding_requests()
+
+        # Assert - only second request remains (first request purge failed but was removed)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0].job_id, "job-1-id")
+
+        # Verify error logged with job_id
+        mock_logger.error.assert_called()
+        error_args = str(mock_logger.error.call_args)
+        self.assertIn("Unable to cleanup outstanding request", error_args)
+        self.assertIn("job-0-id", error_args)
+
+    def test_emit_buffered_queue_metrics_skips_if_interval_not_reached(self):
+        """Test _emit_buffered_queue_metrics skips emission if interval not reached"""
+        # Arrange - Set last emission time to recent
+        self.queue._last_metric_emission_time = time.time()
+
+        # Mock _do_emit_buffered_queue_metrics to track calls
+        self.queue._do_emit_buffered_queue_metrics = Mock()
+
+        # Act - call _emit_buffered_queue_metrics
+        self.queue._emit_buffered_queue_metrics(num_buffered_requests=10, num_visible_requests=5)
+
+        # Assert - _do_emit_buffered_queue_metrics NOT called
+        self.queue._do_emit_buffered_queue_metrics.assert_not_called()
+
+    @patch("aws.osml.model_runner.scheduler.buffered_image_request_queue.logger")
+    def test_emit_image_access_error_metric_handles_exception(self, mock_logger):
+        """Test _emit_image_access_error_metric handles exception gracefully"""
+        # Arrange - Create mock metrics that raises exception
+        mock_metrics = self.create_mock_metrics_logger()
+        mock_metrics.put_metric.side_effect = Exception("Metrics emission failed")
+
+        # Act - should not propagate exception
+        self.queue._emit_image_access_error_metric.__wrapped__(self.queue, "test-endpoint", metrics=mock_metrics)
+
+        # Assert - error logged, exception doesn't propagate
+        mock_logger.error.assert_called()
+        error_args = str(mock_logger.error.call_args)
+        self.assertIn("Error emitting image access error metric", error_args)
+        self.assertIn("test-endpoint", error_args)
+
+    def create_mock_metrics_logger(self):
+        """Create a mock MetricsLogger that passes isinstance checks"""
+        from unittest.mock import MagicMock, Mock
+
+        from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+
+        mock_metrics = MagicMock(spec=MetricsLogger)
+        mock_metrics.put_dimensions = Mock()
+        mock_metrics.put_metric = Mock()
+        mock_metrics.reset_dimensions = Mock()
+        return mock_metrics
+
     def tearDown(self):
         """Clean up test fixtures after each test method."""
         # Clean up DynamoDB table

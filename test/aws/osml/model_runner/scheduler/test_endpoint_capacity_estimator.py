@@ -330,6 +330,314 @@ class TestEndpointCapacityEstimator(unittest.TestCase):
         self.assertNotIn("test-endpoint-0", small_cache_estimator._endpoint_cache)
         self.assertNotIn("test-endpoint-1", small_cache_estimator._endpoint_cache)
 
+    def test_estimate_capacity_describe_endpoint_fails_returns_default(self):
+        """Test that API failures return default_instance_concurrency when no cache available"""
+        from unittest.mock import Mock
+
+        # Arrange - Mock describe_endpoint to raise exception
+        original_describe = self.sagemaker.describe_endpoint
+        self.sagemaker.describe_endpoint = Mock(side_effect=Exception("API Error"))
+
+        # Act
+        capacity = self.estimator.estimate_capacity("nonexistent-endpoint")
+
+        # Assert - Should return default_instance_concurrency
+        self.assertEqual(capacity, 2)  # default_instance_concurrency=2
+
+        # Cleanup
+        self.sagemaker.describe_endpoint = original_describe
+
+    def test_estimate_capacity_api_fails_uses_cached_fallback(self):
+        """Test that API failures use cached data when available"""
+        from unittest.mock import Mock
+
+        endpoint_name = "test-cache-fallback"
+
+        # Create endpoint to populate cache
+        self.sagemaker.create_model(ModelName=f"{endpoint_name}-model", PrimaryContainer={"Image": "test-image"})
+        self.sagemaker.create_endpoint_config(
+            EndpointConfigName=f"{endpoint_name}-config",
+            ProductionVariants=[
+                {
+                    "VariantName": "AllTraffic",
+                    "ModelName": f"{endpoint_name}-model",
+                    "InstanceType": "ml.m5.xlarge",
+                    "InitialInstanceCount": 3,
+                }
+            ],
+        )
+        self.sagemaker.create_endpoint(EndpointName=endpoint_name, EndpointConfigName=f"{endpoint_name}-config")
+
+        # First call - populate cache
+        first_capacity = self.estimator.estimate_capacity(endpoint_name)
+        self.assertEqual(first_capacity, 6)  # 3 instances × 2 default concurrency
+
+        # Mock API to fail
+        original_describe = self.sagemaker.describe_endpoint
+        self.sagemaker.describe_endpoint = Mock(side_effect=Exception("API temporarily unavailable"))
+
+        # Second call - should use cached data
+        second_capacity = self.estimator.estimate_capacity(endpoint_name)
+        self.assertEqual(second_capacity, 6)  # Same as cached value
+
+        # Cleanup
+        self.sagemaker.describe_endpoint = original_describe
+
+    def test_list_tags_failure_returns_empty_dict(self):
+        """Test that ListTags API failure returns empty dict when no cache"""
+        from unittest.mock import Mock
+
+        endpoint_name = "test-tags-failure"
+
+        # Create endpoint
+        self.sagemaker.create_model(ModelName=f"{endpoint_name}-model", PrimaryContainer={"Image": "test-image"})
+        self.sagemaker.create_endpoint_config(
+            EndpointConfigName=f"{endpoint_name}-config",
+            ProductionVariants=[
+                {
+                    "VariantName": "AllTraffic",
+                    "ModelName": f"{endpoint_name}-model",
+                    "InstanceType": "ml.m5.xlarge",
+                    "InitialInstanceCount": 2,
+                }
+            ],
+        )
+        self.sagemaker.create_endpoint(EndpointName=endpoint_name, EndpointConfigName=f"{endpoint_name}-config")
+
+        # Mock list_tags to fail
+        original_list_tags = self.sagemaker.list_tags
+        self.sagemaker.list_tags = Mock(side_effect=Exception("ListTags failed"))
+
+        # Act - Should proceed with default concurrency despite tag failure
+        capacity = self.estimator.estimate_capacity(endpoint_name)
+
+        # Assert - Should return default capacity (2 instances × 2 default concurrency = 4)
+        self.assertEqual(capacity, 4)
+
+        # Cleanup
+        self.sagemaker.list_tags = original_list_tags
+
+    def test_list_tags_failure_uses_cached_fallback(self):
+        """Test that ListTags API failure uses cached tags when available"""
+        from unittest.mock import Mock
+
+        endpoint_name = "test-tags-cache-fallback"
+
+        # Create endpoint with tag
+        self.sagemaker.create_model(ModelName=f"{endpoint_name}-model", PrimaryContainer={"Image": "test-image"})
+        self.sagemaker.create_endpoint_config(
+            EndpointConfigName=f"{endpoint_name}-config",
+            ProductionVariants=[
+                {
+                    "VariantName": "AllTraffic",
+                    "ModelName": f"{endpoint_name}-model",
+                    "InstanceType": "ml.m5.xlarge",
+                    "InitialInstanceCount": 2,
+                }
+            ],
+        )
+        self.sagemaker.create_endpoint(EndpointName=endpoint_name, EndpointConfigName=f"{endpoint_name}-config")
+
+        # Tag the endpoint with custom concurrency
+        endpoint_arn = self.sagemaker.describe_endpoint(EndpointName=endpoint_name)["EndpointArn"]
+        self.sagemaker.add_tags(ResourceArn=endpoint_arn, Tags=[{"Key": "osml:instance-concurrency", "Value": "5"}])
+
+        # First call - populate cache with tags
+        first_capacity = self.estimator.estimate_capacity(endpoint_name)
+        self.assertEqual(first_capacity, 10)  # 2 instances × 5 tagged concurrency
+
+        # Mock list_tags to fail
+        original_list_tags = self.sagemaker.list_tags
+        self.sagemaker.list_tags = Mock(side_effect=Exception("ListTags API unavailable"))
+
+        # Clear endpoint metadata cache but keep tags cache
+        # This simulates a scenario where tags cache is still valid but endpoint cache expired
+        self.estimator._endpoint_cache.clear()
+
+        # Second call - should use cached tags despite API failure
+        second_capacity = self.estimator.estimate_capacity(endpoint_name)
+        self.assertEqual(second_capacity, 10)  # Same as before, using cached tags
+
+        # Cleanup
+        self.sagemaker.list_tags = original_list_tags
+
+    def test_get_variant_capacity_with_zero_instances(self):
+        """Test that endpoint with 0 instances returns 0 capacity"""
+        endpoint_name = "test-zero-instances"
+
+        # Create endpoint with 0 instances (scaled down)
+        self.sagemaker.create_model(ModelName=f"{endpoint_name}-model", PrimaryContainer={"Image": "test-image"})
+        self.sagemaker.create_endpoint_config(
+            EndpointConfigName=f"{endpoint_name}-config",
+            ProductionVariants=[
+                {
+                    "VariantName": "AllTraffic",
+                    "ModelName": f"{endpoint_name}-model",
+                    "InstanceType": "ml.m5.xlarge",
+                    "InitialInstanceCount": 1,  # Will be manually set to 0
+                }
+            ],
+        )
+        self.sagemaker.create_endpoint(EndpointName=endpoint_name, EndpointConfigName=f"{endpoint_name}-config")
+
+        # Manually modify the endpoint to have 0 instances (simulating scaled down state)
+        # Get endpoint metadata and modify it
+        original_describe = self.sagemaker.describe_endpoint
+
+        def mock_describe(*args, **kwargs):
+            result = original_describe(*args, **kwargs)
+            # Set CurrentInstanceCount to 0
+            for variant in result.get("ProductionVariants", []):
+                variant["CurrentInstanceCount"] = 0
+            return result
+
+        self.sagemaker.describe_endpoint = mock_describe
+
+        # Act
+        capacity = self.estimator.estimate_capacity(endpoint_name)
+
+        # Assert - Should return 0
+        self.assertEqual(capacity, 0)
+
+        # Cleanup
+        self.sagemaker.describe_endpoint = original_describe
+
+    def test_get_variant_capacity_serverless_with_zero_max_concurrency(self):
+        """Test that serverless endpoint with MaxConcurrency=0 returns 0 capacity"""
+        endpoint_name = "test-serverless-zero"
+
+        # Create serverless endpoint
+        self.sagemaker.create_model(ModelName=f"{endpoint_name}-model", PrimaryContainer={"Image": "test-image"})
+        self.sagemaker.create_endpoint_config(
+            EndpointConfigName=f"{endpoint_name}-config",
+            ProductionVariants=[
+                {
+                    "VariantName": "AllTraffic",
+                    "ModelName": f"{endpoint_name}-model",
+                    "ServerlessConfig": {"MemorySizeInMB": 2048, "MaxConcurrency": 10},
+                }
+            ],
+        )
+        self.sagemaker.create_endpoint(EndpointName=endpoint_name, EndpointConfigName=f"{endpoint_name}-config")
+
+        # Mock describe_endpoint to return MaxConcurrency=0
+        original_describe = self.sagemaker.describe_endpoint
+
+        def mock_describe(*args, **kwargs):
+            result = original_describe(*args, **kwargs)
+            # Set MaxConcurrency to 0
+            for variant in result.get("ProductionVariants", []):
+                if "CurrentServerlessConfig" in variant:
+                    variant["CurrentServerlessConfig"]["MaxConcurrency"] = 0
+            return result
+
+        self.sagemaker.describe_endpoint = mock_describe
+
+        # Act
+        capacity = self.estimator.estimate_capacity(endpoint_name)
+
+        # Assert - Should return 0
+        self.assertEqual(capacity, 0)
+
+        # Cleanup
+        self.sagemaker.describe_endpoint = original_describe
+
+    def test_get_variant_capacity_with_invalid_tag_value_uses_default(self):
+        """Test that invalid tag value falls back to default concurrency"""
+        endpoint_name = "test-invalid-tag"
+
+        # Create endpoint
+        self.sagemaker.create_model(ModelName=f"{endpoint_name}-model", PrimaryContainer={"Image": "test-image"})
+        self.sagemaker.create_endpoint_config(
+            EndpointConfigName=f"{endpoint_name}-config",
+            ProductionVariants=[
+                {
+                    "VariantName": "AllTraffic",
+                    "ModelName": f"{endpoint_name}-model",
+                    "InstanceType": "ml.m5.xlarge",
+                    "InitialInstanceCount": 2,
+                }
+            ],
+        )
+        self.sagemaker.create_endpoint(EndpointName=endpoint_name, EndpointConfigName=f"{endpoint_name}-config")
+
+        # Tag with invalid (non-numeric) value
+        endpoint_arn = self.sagemaker.describe_endpoint(EndpointName=endpoint_name)["EndpointArn"]
+        self.sagemaker.add_tags(
+            ResourceArn=endpoint_arn, Tags=[{"Key": "osml:instance-concurrency", "Value": "not-a-number"}]
+        )
+
+        # Act
+        capacity = self.estimator.estimate_capacity(endpoint_name)
+
+        # Assert - Should fall back to default: 2 instances × 2 default concurrency = 4
+        self.assertEqual(capacity, 4)
+
+    def test_calculate_capacity_variant_not_found_returns_zero(self):
+        """Test that requesting non-existent variant returns 0 capacity"""
+        endpoint_name = "test-variant-not-found"
+
+        # Create endpoint with one variant
+        self.sagemaker.create_model(ModelName=f"{endpoint_name}-model", PrimaryContainer={"Image": "test-image"})
+        self.sagemaker.create_endpoint_config(
+            EndpointConfigName=f"{endpoint_name}-config",
+            ProductionVariants=[
+                {
+                    "VariantName": "VariantA",
+                    "ModelName": f"{endpoint_name}-model",
+                    "InstanceType": "ml.m5.xlarge",
+                    "InitialInstanceCount": 2,
+                }
+            ],
+        )
+        self.sagemaker.create_endpoint(EndpointName=endpoint_name, EndpointConfigName=f"{endpoint_name}-config")
+
+        # Act - Request non-existent variant
+        capacity = self.estimator.estimate_capacity(endpoint_name, variant_name="NonExistentVariant")
+
+        # Assert - Should return 0
+        self.assertEqual(capacity, 0)
+
+    def test_calculate_capacity_with_empty_variants_list(self):
+        """Test that empty variants list returns 0 capacity"""
+        # Test the internal method directly with empty variants
+        capacity_all = self.estimator._calculate_capacity_from_variants([], None, "arn:test")
+        capacity_specific = self.estimator._calculate_capacity_from_variants([], "variant-1", "arn:test")
+
+        # Assert - Both should return 0
+        self.assertEqual(capacity_all, 0)
+        self.assertEqual(capacity_specific, 0)
+
+    def test_get_endpoint_tags_with_null_arn_returns_empty_dict(self):
+        """Test that _get_endpoint_tags handles None or empty ARN gracefully"""
+        # Act
+        tags_none = self.estimator._get_endpoint_tags(None)
+        tags_empty = self.estimator._get_endpoint_tags("")
+
+        # Assert - Both should return empty dict
+        self.assertEqual(tags_none, {})
+        self.assertEqual(tags_empty, {})
+
+    def test_emit_error_metric_handles_exception_gracefully(self):
+        """Test that _emit_error_metric handles exceptions during metric emission"""
+        from unittest.mock import MagicMock
+
+        from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+
+        # Arrange - Mock metrics that raises exception
+        mock_metrics = MagicMock(spec=MetricsLogger)
+        mock_metrics.put_metric.side_effect = RuntimeError("Metrics service unavailable")
+
+        # Act - Should not raise exception
+        try:
+            self.estimator._emit_error_metric.__wrapped__(self.estimator, "test-endpoint", metrics=mock_metrics)
+            exception_raised = False
+        except RuntimeError:
+            exception_raised = True
+
+        # Assert - Exception should be caught and logged, not propagated
+        self.assertFalse(exception_raised, "Exception should be handled gracefully")
+
 
 if __name__ == "__main__":
     unittest.main()
