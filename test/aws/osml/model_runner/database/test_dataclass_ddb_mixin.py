@@ -1,4 +1,4 @@
-#  Copyright 2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2025-2026 Amazon.com, Inc. or its affiliates.
 
 import unittest
 from dataclasses import dataclass
@@ -88,6 +88,78 @@ class TestDataclassDDBMixin(unittest.TestCase):
         self.assertIsInstance(test_multipoint, MultiPoint)
         self.assertEqual(test_multipoint.count, 0)
         self.assertIsNone(test_multipoint.points)
+
+    def test_create_dataclass_from_dict_raises_for_non_dataclass(self):
+        """Test create_dataclass_from_dict raises ValueError for non-dataclass"""
+        from aws.osml.model_runner.database.dataclass_ddb_mixin import create_dataclass_from_dict
+
+        # Arrange - regular class (not a dataclass)
+        class RegularClass:
+            def __init__(self, value):
+                self.value = value
+
+        # Act / Assert
+        with self.assertRaises(ValueError) as context:
+            create_dataclass_from_dict(RegularClass, {"value": 10})
+
+        # Verify error message
+        self.assertIn("is not a dataclass", str(context.exception))
+
+    def test_create_dataclass_from_dict_returns_none_for_none_data(self):
+        """Test create_dataclass_from_dict returns None when data is None"""
+        from aws.osml.model_runner.database.dataclass_ddb_mixin import create_dataclass_from_dict
+
+        @dataclass
+        class TestDataclass:
+            value: int
+
+        # Act
+        result = create_dataclass_from_dict(TestDataclass, None)
+
+        # Assert
+        self.assertIsNone(result)
+
+    def test_process_field_value_returns_none_for_none_value(self):
+        """Test _process_field_value returns None when value is None"""
+        from aws.osml.model_runner.database.dataclass_ddb_mixin import _process_field_value
+
+        # Act
+        result = _process_field_value(str, None)
+
+        # Assert
+        self.assertIsNone(result)
+
+    def test_process_field_value_list_without_type_args_returns_unchanged(self):
+        """Test _process_field_value with bare List (no type args) returns value unchanged"""
+        from typing import List
+
+        from aws.osml.model_runner.database.dataclass_ddb_mixin import _process_field_value
+
+        # Arrange - list value
+        test_list = [1, "two", 3.0]
+
+        # Act - use bare List type (no type arguments)
+        result = _process_field_value(List, test_list)
+
+        # Assert - value returned unchanged
+        self.assertEqual(result, test_list)
+        self.assertIs(result, test_list)
+
+    def test_process_field_value_dict_without_type_args_returns_unchanged(self):
+        """Test _process_field_value with bare Dict (no type args) returns value unchanged"""
+        from typing import Dict
+
+        from aws.osml.model_runner.database.dataclass_ddb_mixin import _process_field_value
+
+        # Arrange - dict value
+        test_dict = {"key1": 1, "key2": "value"}
+
+        # Act - use bare Dict type (no type arguments)
+        result = _process_field_value(Dict, test_dict)
+
+        # Assert - value returned unchanged
+        self.assertEqual(result, test_dict)
+        self.assertIs(result, test_dict)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import time
 import unittest
@@ -319,6 +319,95 @@ class TestEndpointVariantSelector(unittest.TestCase):
         # Should have created dict and selected a variant
         self.assertIsNotNone(result.model_endpoint_parameters)
         self.assertIn(result.model_endpoint_parameters["TargetVariant"], ["variant-1", "variant-2"])
+
+    def test_get_endpoint_variants_api_failure_uses_stale_cache(self):
+        """Test that API failure falls back to stale cache."""
+        from unittest.mock import MagicMock
+
+        from cachetools import TTLCache
+
+        endpoint_name = "test-cache-fallback"
+
+        # Create new selector
+        test_selector = EndpointVariantSelector(sm_client=self.sagemaker, cache_ttl_seconds=300)
+
+        # Create a real TTLCache and populate it
+        cached_variants = [{"VariantName": "cached-variant-1", "CurrentWeight": 1.0}]
+        test_selector._endpoint_cache[endpoint_name] = cached_variants
+
+        # Mock the cache's __contains__ to simulate edge case:
+        # - First call (line 129) returns False (expired)
+        # - Second call (line 149) returns True (still accessible for fallback)
+        mock_cache = MagicMock(spec=TTLCache)
+        mock_cache.__getitem__ = lambda self, key: cached_variants
+
+        contains_calls = [0]
+
+        def mock_contains(self_param, key):
+            contains_calls[0] += 1
+            if contains_calls[0] == 1:
+                return False  # First check fails
+            return True  # Fallback check succeeds
+
+        mock_cache.__contains__ = mock_contains
+        test_selector._endpoint_cache = mock_cache
+
+        # Mock describe_endpoint to fail
+        test_selector.sm_client.describe_endpoint = lambda **kwargs: (_ for _ in ()).throw(Exception("API fail"))
+
+        # Act
+        variants = test_selector._get_endpoint_variants(endpoint_name)
+
+        # Assert - returned cached variants
+        self.assertEqual(len(variants), 1)
+        self.assertEqual(variants[0]["VariantName"], "cached-variant-1")
+        # Verify __contains__ was called twice
+        self.assertEqual(contains_calls[0], 2)
+
+    def test_select_weighted_variant_empty_list_raises_value_error(self):
+        """Test _select_weighted_variant with empty list raises ValueError."""
+        # Act / Assert
+        with self.assertRaises(ValueError) as context:
+            self.selector._select_weighted_variant([])
+
+        self.assertIn("empty", str(context.exception).lower())
+
+    def test_select_variant_no_variants_logs_warning_returns_unchanged(self):
+        """Test select_variant with no variants logs warning and returns request unchanged."""
+        endpoint_name = "test-no-variants"
+
+        # Create a selector and mock _get_endpoint_variants to return empty list
+        test_selector = EndpointVariantSelector(sm_client=self.sagemaker, cache_ttl_seconds=300)
+
+        def mock_get_variants(name):
+            return []  # Return empty variants list
+
+        test_selector._get_endpoint_variants = mock_get_variants
+
+        # Create request
+        request = ImageRequest(
+            job_id="test-job",
+            image_id="test-image",
+            image_url="s3://bucket/image.tif",
+            model_name=endpoint_name,
+            model_invoke_mode=ModelInvokeMode.SM_ENDPOINT,
+        )
+
+        # Act - should log warning and return unchanged
+        import logging
+
+        with self.assertLogs(level=logging.WARNING) as log:
+            result = test_selector.select_variant(request)
+
+            # Assert - warning logged
+            self.assertTrue(any("No variants" in message for message in log.output))
+
+        # Assert - request returned unchanged (no TargetVariant set)
+        self.assertEqual(result, request)
+        # If model_endpoint_parameters was None, it should remain None
+        # If it was dict, TargetVariant should not be set
+        if result.model_endpoint_parameters is not None:
+            self.assertNotIn("TargetVariant", result.model_endpoint_parameters)
 
     def _create_multi_variant_endpoint(self, endpoint_name: str, weights=None, num_variants: int = 2):
         """

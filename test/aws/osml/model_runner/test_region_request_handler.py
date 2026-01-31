@@ -158,6 +158,50 @@ class TestRegionRequestHandler(TestCase):
         self.mock_image_request_table.complete_region_request.assert_called_once()
         assert isinstance(result, ImageRequestItem)
 
+    @patch("aws.osml.model_runner.region_request_handler.setup_tile_workers")
+    @patch("aws.osml.model_runner.region_request_handler.process_tiles")
+    def test_process_region_request_with_metrics_logger(self, mock_process_tiles, mock_setup_workers):
+        """Test process_region_request with MetricsLogger sets dimensions"""
+        from unittest.mock import Mock
+
+        from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+
+        # Mock tile processing
+        mock_setup_workers.return_value = (self.mock_tile_queue, self.mock_tile_workers)
+        mock_process_tiles.return_value = (10, 0)
+        self.mock_region_request_table.start_region_request.return_value = self.mock_region_request_item
+        self.mock_region_request_table.update_region_request.return_value = self.mock_region_request_item
+        self.mock_image_request_table.complete_region_request.return_value = MagicMock(spec=ImageRequestItem)
+
+        # Create mock metrics logger
+        mock_metrics = Mock(spec=MetricsLogger)
+
+        # Call with metrics
+        self.handler.process_region_request.__wrapped__(
+            self.handler,
+            region_request=self.mock_region_request,
+            region_request_item=self.mock_region_request_item,
+            raster_dataset=self.mock_raster_dataset,
+            sensor_model=self.mock_sensor_model,
+            metrics=mock_metrics,
+        )
+
+        # Assert metrics methods were called
+        mock_metrics.set_dimensions.assert_called()
+        mock_metrics.put_dimensions.assert_called()
+        mock_metrics.put_metric.assert_called()
+
+    def test_fail_region_request_exception_handling(self):
+        """Test fail_region_request handles exception in status update"""
+        from aws.osml.model_runner.exceptions import ProcessRegionException
+
+        # Mock to raise exception during complete_region_request
+        self.mock_region_request_table.complete_region_request.side_effect = Exception("DDB error")
+
+        # Act / Assert - should raise ProcessRegionException
+        with self.assertRaises(ProcessRegionException):
+            self.handler.fail_region_request(self.mock_region_request_item)
+
 
 if __name__ == "__main__":
     main()

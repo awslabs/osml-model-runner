@@ -897,6 +897,137 @@ class TestEndpointLoadImageScheduler(unittest.TestCase):
         self.assertEqual(len(running_jobs), 1)
         self.assertEqual(running_jobs[0].job_id, "job1-id")
 
+    def test_schedule_next_image_request_no_eligible_requests_returns_none(self):
+        """Test schedule_next_image_request returns None when no requests are eligible"""
+        # Arrange - Mock to return no eligible requests
+        self.mock_queue.get_outstanding_requests.return_value = []
+
+        # Act
+        result = self.scheduler.get_next_scheduled_request()
+
+        # Assert
+        self.assertIsNone(result)
+
+    @patch("aws.osml.model_runner.scheduler.endpoint_load_image_scheduler.logger")
+    def test_schedule_next_image_request_handles_exception_in_scheduling(self, mock_logger):
+        """Test get_next_scheduled_request handles exception and logs error"""
+        # Arrange - Mock to raise exception
+        self.mock_queue.get_outstanding_requests.side_effect = Exception("Test error")
+
+        # Act
+        result = self.scheduler.get_next_scheduled_request()
+
+        # Assert - returns None on error
+        self.assertIsNone(result)
+        # Verify error logged
+        mock_logger.error.assert_called_once()
+        error_args = str(mock_logger.error.call_args)
+        self.assertIn("Error getting next scheduled request", error_args)
+
+    def test_calculate_available_capacity_no_estimator_returns_zeros(self):
+        """Test _calculate_available_capacity returns zeros when estimator not configured"""
+        # Arrange - Create scheduler without capacity estimator
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            throttling_enabled=True,
+        )
+        # Ensure capacity_estimator is None
+        scheduler.capacity_estimator = None
+
+        # Act
+        available, max_cap, current = scheduler._calculate_available_capacity("endpoint1", None, [])
+
+        # Assert - returns (0, 0, 0)
+        self.assertEqual(available, 0)
+        self.assertEqual(max_cap, 0)
+        self.assertEqual(current, 0)
+
+    @patch("aws.osml.model_runner.scheduler.endpoint_load_image_scheduler.logger")
+    def test_calculate_available_capacity_exception_returns_zeros(self, mock_logger):
+        """Test _calculate_available_capacity handles exception and returns zeros"""
+        # Arrange - Mock capacity estimator to raise exception
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            throttling_enabled=True,
+        )
+        mock_estimator = Mock()
+        mock_estimator.estimate_capacity.side_effect = Exception("Estimator error")
+        scheduler.capacity_estimator = mock_estimator
+
+        # Act
+        available, max_cap, current = scheduler._calculate_available_capacity("endpoint1", None, [])
+
+        # Assert - returns (0, 0, 0) on error
+        self.assertEqual(available, 0)
+        self.assertEqual(max_cap, 0)
+        self.assertEqual(current, 0)
+        # Verify error logged
+        mock_logger.error.assert_called()
+        error_args = str(mock_logger.error.call_args)
+        self.assertIn("Error calculating available capacity", error_args)
+
+    def test_get_endpoint_instance_count_http_endpoint_returns_one(self):
+        """Test _get_endpoint_instance_count returns 1 for HTTP endpoints"""
+        # Arrange
+        http_endpoint = "http://example.com/model"
+
+        # Act
+        count = self.scheduler._get_endpoint_instance_count(http_endpoint)
+
+        # Assert - HTTP endpoints default to 1 instance
+        self.assertEqual(count, 1)
+
+    def test_calculate_endpoint_utilization_handles_request_with_started_attempt_no_region_count(self):
+        """Test _calculate_endpoint_utilization handles request with last_attempt > 0 but no region_count (line 563)"""
+        # Arrange - Create request with last_attempt > 0 but region_count = None
+        request = self.create_status_record(
+            "job1", "endpoint1-model", last_attempt=int(time.time()) - 100, region_count=None
+        )
+        grouped = {"endpoint1-model": [request]}
+
+        # Act
+        utilization = self.scheduler._calculate_endpoint_utilization(grouped)
+
+        # Assert - assumes load of 1 for started request without region count
+        self.assertEqual(len(utilization), 1)
+        self.assertEqual(utilization[0].current_load, 1)
+
+    def test_emit_utilization_metric_handles_exception_gracefully(self):
+        """Test _emit_utilization_metric handles exception without propagating"""
+        from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            throttling_enabled=True,
+        )
+
+        # Create mock metrics that raises exception
+        mock_metrics = Mock(spec=MetricsLogger)
+        mock_metrics.put_metric.side_effect = Exception("Metrics error")
+
+        # Act - should not propagate exception
+        scheduler._emit_utilization_metric.__wrapped__(scheduler, "test-endpoint", 100, 50, metrics=mock_metrics)
+
+        # Assert - exception handled, doesn't propagate (test passes if no exception raised)
+
+    def test_emit_throttle_metric_handles_exception_gracefully(self):
+        """Test _emit_throttle_metric handles exception without propagating"""
+        from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
+
+        scheduler = EndpointLoadImageScheduler(
+            image_request_queue=self.mock_queue,
+            throttling_enabled=True,
+        )
+
+        # Create mock metrics that raises exception
+        mock_metrics = Mock(spec=MetricsLogger)
+        mock_metrics.put_metric.side_effect = Exception("Metrics error")
+
+        # Act - should not propagate exception
+        scheduler._emit_throttle_metric.__wrapped__(scheduler, "test-endpoint", metrics=mock_metrics)
+
+        # Assert - exception handled, doesn't propagate (test passes if no exception raised)
+
 
 if __name__ == "__main__":
     unittest.main()
