@@ -13,13 +13,19 @@ src_paths = ["src", "test"]
 
 
 [tool.pytest.ini_options]
-minversion = "6.0"
-addopts = "-ra -q"
+minversion = "7.0"
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "--strict-config",
+]
 testpaths = [
     "test"
 ]
 markers = [
-    "integration: Integration tests",
+    "integration: Integration tests requiring AWS infrastructure",
+    "slow: Slow-running tests",
 ]
 
 [tool.autopep8]

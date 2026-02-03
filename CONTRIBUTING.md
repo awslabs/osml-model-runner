@@ -117,6 +117,74 @@ tox -- -m integration
 
 For load testing details, see [test/load/README.md](./test/load/README.md).
 
+### Writing Tests
+
+This project uses **pytest** for unit tests. Follow these patterns when adding new tests:
+
+**Test Structure:**
+- Use pytest fixtures with `@pytest.fixture` for setup/teardown
+- Place fixtures in `conftest.py` files for reuse across test modules
+- Use plain `assert` statements (not unittest-style assertions)
+- Use `pytest.raises()` for exception testing
+- Test files should mirror the source structure (e.g., `src/foo/bar.py` → `test/foo/test_bar.py`)
+
+**Example Test:**
+```python
+import pytest
+from aws.osml.model_runner.api import ImageRequest
+
+@pytest.fixture
+def sample_image_request():
+    """Create a sample ImageRequest for testing."""
+    return ImageRequest(
+        image_id="test-image-123",
+        image_url="s3://bucket/image.tif",
+        model_name="test-model"
+    )
+
+def test_image_request_validation(sample_image_request):
+    """Test that ImageRequest validates required fields."""
+    assert sample_image_request.image_id == "test-image-123"
+    assert sample_image_request.image_url.startswith("s3://")
+
+def test_invalid_image_request_raises_error():
+    """Test that invalid ImageRequest raises ValueError."""
+    with pytest.raises(ValueError):
+        ImageRequest(image_id="", image_url="invalid")
+```
+
+**Mocking AWS Services:**
+- Use `moto` library for AWS service mocking
+- Create fixtures with `@mock_aws` context manager
+- Example pattern:
+```python
+import pytest
+from moto import mock_aws
+import boto3
+
+@pytest.fixture
+def ddb_table():
+    """Create a mock DynamoDB table."""
+    with mock_aws():
+        ddb = boto3.resource("dynamodb", region_name="us-west-2")
+        table = ddb.create_table(
+            TableName="test-table",
+            KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST"
+        )
+        yield table
+        table.delete()
+```
+
+**Best Practices:**
+- Keep tests focused and independent
+- Use descriptive test names that explain what is being tested
+- Mock external dependencies (AWS services, HTTP endpoints, file I/O)
+- Maintain test coverage ≥83% (enforced by `.coveragerc`)
+- Mark slow tests with `@pytest.mark.slow` if needed
+- Mark integration tests with `@pytest.mark.integration`
+
 ### Building Documentation
 
 API documentation is generated using Sphinx from docstrings in the source code.

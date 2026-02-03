@@ -1,10 +1,7 @@
 #  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
-import unittest
-from unittest import TestCase
-from unittest.mock import Mock
-
 import boto3
+import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
 
@@ -25,149 +22,154 @@ TEST_MOCK_MESSAGE = {
 
 TEST_MOCK_INVALID_MESSAGE = {"BAD_MESSAGE": "INVALID_MESSAGE"}
 
-# Mock exception to simulate client errors
-TEST_MOCK_CLIENT_EXCEPTION = Mock(
-    side_effect=ClientError({"Error": {"Code": 500, "Message": "ClientError"}}, "send_message")
-)
+
+def get_mock_client_exception(mocker):
+    """Create a mock exception to simulate client errors"""
+    return mocker.Mock(side_effect=ClientError({"Error": {"Code": 500, "Message": "ClientError"}}, "send_message"))
 
 
-@mock_aws
-class TestRequestQueue(TestCase):
-    def setUp(self):
-        """
-        Sets up the test environment by creating a mock SQS queue
-        and initializing the RequestQueue object.
-        """
-        from aws.osml.model_runner.app_config import BotoConfig
-        from aws.osml.model_runner.scheduler.request_queue import RequestQueue
+@pytest.fixture
+def request_queue_setup():
+    """
+    Sets up the test environment by creating a mock SQS queue
+    and initializing the RequestQueue object.
+    """
+    from aws.osml.model_runner.app_config import BotoConfig
+    from aws.osml.model_runner.scheduler.request_queue import RequestQueue
 
-        # Set up SQS resource and client
-        self.sqs = boto3.resource("sqs", config=BotoConfig.default)
-        self.sqs_client = boto3.client("sqs", config=BotoConfig.default)
-        self.sqs_response = self.sqs.create_queue(QueueName="mock_queue")
-        self.mock_queue_url = self.sqs_response.url
-        self.request_queue = RequestQueue(queue_url=self.mock_queue_url, wait_seconds=0)
+    with mock_aws():
+        # Set up SQS resource
+        sqs = boto3.resource("sqs", config=BotoConfig.default)
+        sqs_response = sqs.create_queue(QueueName="mock_queue")
+        mock_queue_url = sqs_response.url
+        request_queue = RequestQueue(queue_url=mock_queue_url, wait_seconds=0)
 
-    def tearDown(self):
-        """
-        Cleans up the test environment.
-        """
-        self.sqs = None
-        self.sqs_client = None
-        self.sqs_response = None
-        self.mock_queue_url = None
-        self.request_queue = None
-
-    def test_send_request_succeed(self):
-        """
-        Test that a message can be successfully sent to the SQS queue.
-        """
-        self.request_queue.send_request(TEST_MOCK_MESSAGE)
-
-        # Verify that the message was added to the queue
-        sqs_messages = self.sqs_response.receive_messages()
-        assert sqs_messages[0].receipt_handle is not None
-
-    def test_reset_request_succeed(self):
-        """
-        Test that a message visibility timeout can be successfully reset.
-        """
-        self.request_queue.send_request(TEST_MOCK_MESSAGE)
-        sqs_messages = self.sqs_response.receive_messages()
-        receipt_handle = sqs_messages[0].receipt_handle
-
-        # Reset the visibility timeout
-        self.request_queue.reset_request(receipt_handle)
-        sqs_messages = self.sqs_response.receive_messages()
-        assert sqs_messages[0].receipt_handle is not None
-
-    def test_finish_request_succeed(self):
-        """
-        Test that a message can be successfully deleted from the SQS queue.
-        """
-        self.request_queue.send_request(TEST_MOCK_MESSAGE)
-        sqs_messages = self.sqs_response.receive_messages()
-        receipt_handle = sqs_messages[0].receipt_handle
-
-        # Delete the message
-        self.request_queue.finish_request(receipt_handle)
-        sqs_messages = self.sqs_response.receive_messages()
-        assert len(sqs_messages) == 0
-
-    def test_send_request_failure(self):
-        """
-        Test that the send_request method handles client errors gracefully.
-        """
-        self.request_queue.sqs_client.send_message = TEST_MOCK_CLIENT_EXCEPTION
-        # Should not raise an exception
-        self.request_queue.send_request(TEST_MOCK_MESSAGE)
-
-    def test_reset_request_failure(self):
-        """
-        Test that the reset_request method handles client errors gracefully.
-        """
-        self.request_queue.send_request(TEST_MOCK_MESSAGE)
-        sqs_messages = self.sqs_response.receive_messages()
-        receipt_handle = sqs_messages[0].receipt_handle
-
-        self.request_queue.sqs_client.change_message_visibility = TEST_MOCK_CLIENT_EXCEPTION
-        # Should not raise an exception
-        self.request_queue.reset_request(receipt_handle)
-
-    def test_finish_request_failure(self):
-        """
-        Test that the finish_request method handles client errors gracefully.
-        """
-        self.request_queue.send_request(TEST_MOCK_MESSAGE)
-        sqs_messages = self.sqs_response.receive_messages()
-        receipt_handle = sqs_messages[0].receipt_handle
-
-        self.request_queue.sqs_client.delete_message = TEST_MOCK_CLIENT_EXCEPTION
-        # Should not raise an exception
-        self.request_queue.finish_request(receipt_handle)
-
-    def test_iter_request_queue(self):
-        """
-        Test that the RequestQueue iterator correctly retrieves messages.
-        """
-        request_queue_iter = iter(self.request_queue)
-
-        # Check if there's no pending request in the queue
-        receipt_handle, request_message = next(request_queue_iter)
-        assert receipt_handle is None
-        assert request_message is None
-
-        # Add a pending request to the queue
-        self.request_queue.send_request(TEST_MOCK_MESSAGE)
-        receipt_handle, request_message = next(request_queue_iter)
-        assert receipt_handle is not None
-        assert request_message is not None
-
-    def test_iter_request_queue_exception(self):
-        """
-        Test that the iterator handles exceptions when receiving messages.
-        """
-        request_queue_iter = iter(self.request_queue)
-
-        # Simulate client exception
-        self.request_queue.sqs_client.receive_message = TEST_MOCK_CLIENT_EXCEPTION
-        # Should not raise an exception
-        receipt_handle, request_message = next(request_queue_iter)
-        assert receipt_handle is None
-        assert request_message is None
-
-    def test_iter_request_queue_invalid_json(self):
-        """
-        Test that the iterator skips messages with invalid JSON bodies.
-        """
-        # Send a non-JSON message directly to the queue
-        self.request_queue.sqs_client.send_message(QueueUrl=self.mock_queue_url, MessageBody="not-json")
-
-        request_queue_iter = iter(self.request_queue)
-        receipt_handle, request_message = next(request_queue_iter)
-        assert receipt_handle is None
-        assert request_message is None
+        yield request_queue, sqs_response
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_send_request_succeed(request_queue_setup):
+    """
+    Test that a message can be successfully sent to the SQS queue.
+    """
+    request_queue, sqs_response = request_queue_setup
+    request_queue.send_request(TEST_MOCK_MESSAGE)
+
+    # Verify that the message was added to the queue
+    sqs_messages = sqs_response.receive_messages()
+    assert sqs_messages[0].receipt_handle is not None
+
+
+def test_reset_request_succeed(request_queue_setup):
+    """
+    Test that a message visibility timeout can be successfully reset.
+    """
+    request_queue, sqs_response = request_queue_setup
+    request_queue.send_request(TEST_MOCK_MESSAGE)
+    sqs_messages = sqs_response.receive_messages()
+    receipt_handle = sqs_messages[0].receipt_handle
+
+    # Reset the visibility timeout
+    request_queue.reset_request(receipt_handle)
+    sqs_messages = sqs_response.receive_messages()
+    assert sqs_messages[0].receipt_handle is not None
+
+
+def test_finish_request_succeed(request_queue_setup):
+    """
+    Test that a message can be successfully deleted from the SQS queue.
+    """
+    request_queue, sqs_response = request_queue_setup
+    request_queue.send_request(TEST_MOCK_MESSAGE)
+    sqs_messages = sqs_response.receive_messages()
+    receipt_handle = sqs_messages[0].receipt_handle
+
+    # Delete the message
+    request_queue.finish_request(receipt_handle)
+    sqs_messages = sqs_response.receive_messages()
+    assert len(sqs_messages) == 0
+
+
+def test_send_request_failure(request_queue_setup, mocker):
+    """
+    Test that the send_request method handles client errors gracefully.
+    """
+    request_queue, sqs_response = request_queue_setup
+    request_queue.sqs_client.send_message = get_mock_client_exception(mocker)
+    # Should not raise an exception
+    request_queue.send_request(TEST_MOCK_MESSAGE)
+
+
+def test_reset_request_failure(request_queue_setup, mocker):
+    """
+    Test that the reset_request method handles client errors gracefully.
+    """
+    request_queue, sqs_response = request_queue_setup
+    request_queue.send_request(TEST_MOCK_MESSAGE)
+    sqs_messages = sqs_response.receive_messages()
+    receipt_handle = sqs_messages[0].receipt_handle
+
+    request_queue.sqs_client.change_message_visibility = get_mock_client_exception(mocker)
+    # Should not raise an exception
+    request_queue.reset_request(receipt_handle)
+
+
+def test_finish_request_failure(request_queue_setup, mocker):
+    """
+    Test that the finish_request method handles client errors gracefully.
+    """
+    request_queue, sqs_response = request_queue_setup
+    request_queue.send_request(TEST_MOCK_MESSAGE)
+    sqs_messages = sqs_response.receive_messages()
+    receipt_handle = sqs_messages[0].receipt_handle
+
+    request_queue.sqs_client.delete_message = get_mock_client_exception(mocker)
+    # Should not raise an exception
+    request_queue.finish_request(receipt_handle)
+
+
+def test_iter_request_queue(request_queue_setup):
+    """
+    Test that the RequestQueue iterator correctly retrieves messages.
+    """
+    request_queue, sqs_response = request_queue_setup
+    request_queue_iter = iter(request_queue)
+
+    # Check if there's no pending request in the queue
+    receipt_handle, request_message = next(request_queue_iter)
+    assert receipt_handle is None
+    assert request_message is None
+
+    # Add a pending request to the queue
+    request_queue.send_request(TEST_MOCK_MESSAGE)
+    receipt_handle, request_message = next(request_queue_iter)
+    assert receipt_handle is not None
+    assert request_message is not None
+
+
+def test_iter_request_queue_exception(request_queue_setup, mocker):
+    """
+    Test that the iterator handles exceptions when receiving messages.
+    """
+    request_queue, sqs_response = request_queue_setup
+    request_queue_iter = iter(request_queue)
+
+    # Simulate client exception
+    request_queue.sqs_client.receive_message = get_mock_client_exception(mocker)
+    # Should not raise an exception
+    receipt_handle, request_message = next(request_queue_iter)
+    assert receipt_handle is None
+    assert request_message is None
+
+
+def test_iter_request_queue_invalid_json(request_queue_setup):
+    """
+    Test that the iterator skips messages with invalid JSON bodies.
+    """
+    request_queue, sqs_response = request_queue_setup
+    # Send a non-JSON message directly to the queue
+    request_queue.sqs_client.send_message(QueueUrl=sqs_response.url, MessageBody="not-json")
+
+    request_queue_iter = iter(request_queue)
+    receipt_handle, request_message = next(request_queue_iter)
+    assert receipt_handle is None
+    assert request_message is None
