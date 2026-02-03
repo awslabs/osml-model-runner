@@ -3,83 +3,95 @@
 
 import json
 import os
-import unittest
+
+import pytest
 
 
-class TestModelAppTest(unittest.TestCase):
+@pytest.fixture
+def model_app_setup():
     """
-    Unit test case for the test model app.
+    Set up test fixtures for model app tests.
     """
+    from aws.osml.test_models.app import app
 
-    def setUp(self):
-        from aws.osml.test_models.app import app
+    ctx = app.app_context()
+    ctx.push()
+    client = app.test_client()
 
-        self.app = app
-        self.ctx = app.app_context()
-        self.ctx.push()
-        self.client = app.test_client()
+    # Preserve environment to avoid cross-test contamination
+    saved_default_selection = os.environ.get("DEFAULT_MODEL_SELECTION")
+    saved_model_selection = os.environ.get("MODEL_SELECTION")
+    os.environ.pop("DEFAULT_MODEL_SELECTION", None)
+    os.environ.pop("MODEL_SELECTION", None)
 
-        # Preserve environment to avoid cross-test contamination
-        self._saved_default_selection = os.environ.get("DEFAULT_MODEL_SELECTION")
-        self._saved_model_selection = os.environ.get("MODEL_SELECTION")
+    yield app, client
+
+    # Cleanup
+    ctx.pop()
+    if saved_default_selection is not None:
+        os.environ["DEFAULT_MODEL_SELECTION"] = saved_default_selection
+    else:
         os.environ.pop("DEFAULT_MODEL_SELECTION", None)
+    if saved_model_selection is not None:
+        os.environ["MODEL_SELECTION"] = saved_model_selection
+    else:
         os.environ.pop("MODEL_SELECTION", None)
 
-    def tearDown(self):
-        self.ctx.pop()
-        if self._saved_default_selection is not None:
-            os.environ["DEFAULT_MODEL_SELECTION"] = self._saved_default_selection
-        else:
-            os.environ.pop("DEFAULT_MODEL_SELECTION", None)
-        if self._saved_model_selection is not None:
-            os.environ["MODEL_SELECTION"] = self._saved_model_selection
-        else:
-            os.environ.pop("MODEL_SELECTION", None)
 
-    def test_ping(self):
-        response = self.client.get("/ping")
-        self.assertEqual(response.status_code, 200)
-
-    def test_missing_model_selection(self):
-        response = self.client.post("/invocations", data=b"")
-        self.assertEqual(response.status_code, 400)
-
-    def test_centerpoint_routing(self):
-        with open("test/data/test-model.tif", "rb") as data_binary:
-            response = self.client.post(
-                "/invocations",
-                data=data_binary,
-                headers={"X-Amzn-SageMaker-Custom-Attributes": "model_selection=centerpoint"},
-            )
-        self.assertEqual(response.status_code, 200)
-        actual_geojson_result = json.loads(response.data)
-        self.assertEqual(actual_geojson_result["type"], "FeatureCollection")
-        self.assertIn("features", actual_geojson_result)
-
-    def test_flood_routing_with_volume(self):
-        with open("test/data/test-model.tif", "rb") as data_binary:
-            response = self.client.post(
-                "/invocations",
-                data=data_binary,
-                headers={"X-Amzn-SageMaker-Custom-Attributes": "model_selection=flood,flood_volume=5"},
-            )
-        self.assertEqual(response.status_code, 200)
-        actual_geojson_result = json.loads(response.data)
-        self.assertEqual(actual_geojson_result["type"], "FeatureCollection")
-        self.assertEqual(len(actual_geojson_result["features"]), 5)
-
-    def test_failure_routing(self):
-        with open("test/data/test-model.tif", "rb") as data_binary:
-            response = self.client.post(
-                "/invocations",
-                data=data_binary,
-                headers={"X-Amzn-SageMaker-Custom-Attributes": "model_selection=failure"},
-            )
-        self.assertEqual(response.status_code, 200)
-        actual_geojson_result = json.loads(response.data)
-        self.assertEqual(actual_geojson_result["type"], "FeatureCollection")
-        self.assertIn("features", actual_geojson_result)
+def test_ping(model_app_setup):
+    """Test ping endpoint returns 200"""
+    app, client = model_app_setup
+    response = client.get("/ping")
+    assert response.status_code == 200
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_missing_model_selection(model_app_setup):
+    """Test missing model selection returns 400"""
+    app, client = model_app_setup
+    response = client.post("/invocations", data=b"")
+    assert response.status_code == 400
+
+
+def test_centerpoint_routing(model_app_setup):
+    """Test centerpoint model routing"""
+    app, client = model_app_setup
+    with open("test/data/test-model.tif", "rb") as data_binary:
+        response = client.post(
+            "/invocations",
+            data=data_binary,
+            headers={"X-Amzn-SageMaker-Custom-Attributes": "model_selection=centerpoint"},
+        )
+    assert response.status_code == 200
+    actual_geojson_result = json.loads(response.data)
+    assert actual_geojson_result["type"] == "FeatureCollection"
+    assert "features" in actual_geojson_result
+
+
+def test_flood_routing_with_volume(model_app_setup):
+    """Test flood model routing with volume parameter"""
+    app, client = model_app_setup
+    with open("test/data/test-model.tif", "rb") as data_binary:
+        response = client.post(
+            "/invocations",
+            data=data_binary,
+            headers={"X-Amzn-SageMaker-Custom-Attributes": "model_selection=flood,flood_volume=5"},
+        )
+    assert response.status_code == 200
+    actual_geojson_result = json.loads(response.data)
+    assert actual_geojson_result["type"] == "FeatureCollection"
+    assert len(actual_geojson_result["features"]) == 5
+
+
+def test_failure_routing(model_app_setup):
+    """Test failure model routing"""
+    app, client = model_app_setup
+    with open("test/data/test-model.tif", "rb") as data_binary:
+        response = client.post(
+            "/invocations",
+            data=data_binary,
+            headers={"X-Amzn-SageMaker-Custom-Attributes": "model_selection=failure"},
+        )
+    assert response.status_code == 200
+    actual_geojson_result = json.loads(response.data)
+    assert actual_geojson_result["type"] == "FeatureCollection"
+    assert "features" in actual_geojson_result

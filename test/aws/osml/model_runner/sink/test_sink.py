@@ -1,8 +1,8 @@
-#  Copyright 2023-2024 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
-import unittest
 from typing import List
 
+import pytest
 from geojson import Feature
 
 from aws.osml.model_runner.api import SinkMode
@@ -26,27 +26,18 @@ class MockSink(Sink):
         return True
 
 
-class TestSink(unittest.TestCase):
-    def setUp(self):
-        """
-        Create an instance of the MockSink class for testing.
-        """
-        self.sink = MockSink()
-
-    def tearDown(self):
-        """
-        Clean up any resources used by the tests.
-        """
-        self.sink = None
-
-    def test_str_representation(self):
-        """
-        Test the `__str__` method.
-        Verifies that the string representation combines name and mode.
-        """
-        expected_str = "MockSink AGGREGATE"
-        self.assertEqual(str(self.sink), expected_str)
+@pytest.fixture
+def mock_sink():
+    """
+    Create an instance of the MockSink class for testing.
+    """
+    return MockSink()
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_str_representation(mock_sink):
+    """
+    Test the `__str__` method.
+    Verifies that the string representation combines name and mode.
+    """
+    expected_str = "MockSink AGGREGATE"
+    assert str(mock_sink) == expected_str

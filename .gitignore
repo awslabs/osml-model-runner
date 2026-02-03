@@ -46,3 +46,6 @@ __pycache__/
 # Log file outputs
 *.log
 logs/
+
+# Claude Code project instructions
+CLAUDE.md

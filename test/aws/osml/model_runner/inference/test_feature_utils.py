@@ -1,6 +1,5 @@
 #  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
-import unittest
 from math import degrees
 from typing import List
 
@@ -13,401 +12,416 @@ from osgeo import gdal
 gdal.DontUseExceptions()
 
 
-class TestFeatureUtils(unittest.TestCase):
-    def test_features_conversion_none(self):
-        """
-        Test that converting features with None input returns an empty list.
-        Ensure that an exception is raised if skipping invalid inputs is disabled.
-        """
-        from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
+def build_gdal_sensor_model():
+    """Helper to create a mock GDAL sensor model for testing transformations"""
+    from aws.osml.photogrammetry import GDALAffineSensorModel
 
-        shapes = features_to_image_shapes(self.build_gdal_sensor_model(), None)
-        assert len(shapes) == 0
+    transform = [
+        -43.681640625,
+        4.487879136029412e-06,
+        0.0,
+        -22.939453125,
+        0.0,
+        -4.487879136029412e-06,
+    ]
+    return GDALAffineSensorModel(transform)
 
-        with self.assertRaises(ValueError):
-            features_to_image_shapes(self.build_gdal_sensor_model(), None, False)
 
-    def test_features_conversion_no_geometry(self):
-        """
-        Test that features without 'geometry' are skipped.
-        Ensure that an exception is raised if skipping invalid inputs is disabled.
-        """
-        from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
+def get_dataset_and_camera():
+    """Helper to load GDAL dataset and sensor model"""
+    from aws.osml.gdal.gdal_utils import load_gdal_dataset
 
-        malformed_feature = {"id": "test_feature"}
-        shapes = features_to_image_shapes(self.build_gdal_sensor_model(), [malformed_feature])
-        assert len(shapes) == 0
+    ds, sensor_model = load_gdal_dataset("./test/data/GeogToWGS84GeoKey5.tif")
+    return ds, sensor_model
 
-        with self.assertRaises(ValueError):
-            features_to_image_shapes(self.build_gdal_sensor_model(), [malformed_feature], False)
 
-    def test_features_conversion_unsupported_type(self):
-        """
-        Test that features with unsupported geometry types are skipped.
-        Ensure that an exception is raised if skipping invalid inputs is disabled.
-        """
-        from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
+def test_features_conversion_none():
+    """
+    Test that converting features with None input returns an empty list.
+    Ensure that an exception is raised if skipping invalid inputs is disabled.
+    """
+    from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
 
-        malformed_feature = {
-            "id": "test_feature",
-            "geometry": {"type": "NewType", "coordinates": [-77.0364, 38.8976, 0.0]},
-        }
-        shapes = features_to_image_shapes(self.build_gdal_sensor_model(), [malformed_feature])
-        assert len(shapes) == 0
+    shapes = features_to_image_shapes(build_gdal_sensor_model(), None)
+    assert len(shapes) == 0
 
-        with self.assertRaises(ValueError):
-            features_to_image_shapes(self.build_gdal_sensor_model(), [malformed_feature], False)
+    with pytest.raises(ValueError):
+        features_to_image_shapes(build_gdal_sensor_model(), None, False)
 
-    def test_features_conversion(self):
-        """
-        Test converting valid GeoJSON features to Shapely shapes.
-        Ensure that the conversion matches the expected geometry types.
-        """
-        from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
 
-        with open("./test/data/feature_examples.geojson", "r") as geojson_file:
-            features: List[geojson.Feature] = geojson.load(geojson_file)["features"]
+def test_features_conversion_no_geometry():
+    """
+    Test that features without 'geometry' are skipped.
+    Ensure that an exception is raised if skipping invalid inputs is disabled.
+    """
+    from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
 
-        assert len(features) == 6
-        shapes = features_to_image_shapes(self.build_gdal_sensor_model(), features)
-        assert len(shapes) == len(features)
-        assert isinstance(shapes[0], shapely.geometry.Point)
-        assert isinstance(shapes[1], shapely.geometry.MultiPoint)
-        assert isinstance(shapes[2], shapely.geometry.LineString)
-        assert isinstance(shapes[3], shapely.geometry.MultiLineString)
-        assert isinstance(shapes[4], shapely.geometry.Polygon)
-        assert isinstance(shapes[5], shapely.geometry.MultiPolygon)
+    malformed_feature = {"id": "test_feature"}
+    shapes = features_to_image_shapes(build_gdal_sensor_model(), [malformed_feature])
+    assert len(shapes) == 0
 
-    def test_features_conversion_mixed_skip(self):
-        """
-        Test processing a mix of valid and invalid features with skipping enabled.
-        Ensure that only valid features are converted.
-        """
-        from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
+    with pytest.raises(ValueError):
+        features_to_image_shapes(build_gdal_sensor_model(), [malformed_feature], False)
 
-        with open("./test/data/feature_examples.geojson", "r") as geojson_file:
-            features: List[geojson.Feature] = geojson.load(geojson_file)["features"]
 
-        features.append({"id": "test_feature"})  # Add invalid feature
-        shapes = features_to_image_shapes(self.build_gdal_sensor_model(), features)
-        assert len(shapes) == 6
+def test_features_conversion_unsupported_type():
+    """
+    Test that features with unsupported geometry types are skipped.
+    Ensure that an exception is raised if skipping invalid inputs is disabled.
+    """
+    from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
 
-    def test_features_conversion_mixed_no_skip(self):
-        """
-        Test processing a mix of valid and invalid features with skipping disabled.
-        Ensure that an exception is raised when encountering invalid features.
-        """
-        from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
+    malformed_feature = {
+        "id": "test_feature",
+        "geometry": {"type": "NewType", "coordinates": [-77.0364, 38.8976, 0.0]},
+    }
+    shapes = features_to_image_shapes(build_gdal_sensor_model(), [malformed_feature])
+    assert len(shapes) == 0
 
-        with open("./test/data/feature_examples.geojson", "r") as geojson_file:
-            features: List[geojson.Feature] = geojson.load(geojson_file)["features"]
+    with pytest.raises(ValueError):
+        features_to_image_shapes(build_gdal_sensor_model(), [malformed_feature], False)
 
-        features.append({"id": "test_feature"})  # Add invalid feature
 
-        with self.assertRaises(ValueError):
-            features_to_image_shapes(self.build_gdal_sensor_model(), features, False)
+def test_features_conversion():
+    """
+    Test converting valid GeoJSON features to Shapely shapes.
+    Ensure that the conversion matches the expected geometry types.
+    """
+    from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
 
-    def test_polygon_feature_conversion(self):
-        """
-        Test converting a GeoJSON polygon to a Shapely polygon.
-        Ensure that the resulting shape matches expected coordinates.
-        """
-        from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
+    with open("./test/data/feature_examples.geojson", "r") as geojson_file:
+        features: List[geojson.Feature] = geojson.load(geojson_file)["features"]
 
-        sample_image_bounds = [(0, 0), (19584, 0), (19584, 19584), (0, 19584)]
-        polygon_feature = geojson.Feature(
-            geometry=geojson.geometry.Polygon(
-                [
-                    [
-                        [-43.681640625, -22.939453125, 0.0],
-                        [-43.59375, -22.939453125, 0.0],
-                        [-43.59375, -23.02734375, 0.0],
-                        [-43.681640625, -23.02734375, 0.0],
-                        [-43.681640625, -22.939453125, 0.0],
-                    ]
-                ]
-            )
-        )
-        shape = features_to_image_shapes(self.build_gdal_sensor_model(), [polygon_feature])[0]
-        assert isinstance(shape, shapely.geometry.Polygon)
-        for i in range(len(sample_image_bounds)):
-            assert pytest.approx(sample_image_bounds[i], rel=0.49, abs=0.49) == shape.exterior.coords[i]
+    assert len(features) == 6
+    shapes = features_to_image_shapes(build_gdal_sensor_model(), features)
+    assert len(shapes) == len(features)
+    assert isinstance(shapes[0], shapely.geometry.Point)
+    assert isinstance(shapes[1], shapely.geometry.MultiPoint)
+    assert isinstance(shapes[2], shapely.geometry.LineString)
+    assert isinstance(shapes[3], shapely.geometry.MultiLineString)
+    assert isinstance(shapes[4], shapely.geometry.Polygon)
+    assert isinstance(shapes[5], shapely.geometry.MultiPolygon)
 
-    def test_convert_nested_coordinate_lists_single_vs_nested(self):
-        """
-        Test the conversion of single versus nested coordinates using a mock conversion function.
-        """
-        from aws.osml.model_runner.inference.feature_utils import convert_nested_coordinate_lists
 
-        single_coord = [-77.0364, 38.8976]
-        nested_coords = [[-77.0364, 38.8976], [-77.0365, 38.8977]]
+def test_features_conversion_mixed_skip():
+    """
+    Test processing a mix of valid and invalid features with skipping enabled.
+    Ensure that only valid features are converted.
+    """
+    from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
 
-        converted_single = convert_nested_coordinate_lists(single_coord, lambda x: x)
-        converted_nested = convert_nested_coordinate_lists(nested_coords, lambda x: x)
+    with open("./test/data/feature_examples.geojson", "r") as geojson_file:
+        features: List[geojson.Feature] = geojson.load(geojson_file)["features"]
 
-        assert isinstance(converted_single, tuple)
-        assert isinstance(converted_nested, list)
-        assert len(converted_nested) == 2
+    features.append({"id": "test_feature"})  # Add invalid feature
+    shapes = features_to_image_shapes(build_gdal_sensor_model(), features)
+    assert len(shapes) == 6
 
-    def test_calculate_processing_bounds_no_roi(self):
-        """
-        Test calculating processing bounds without an ROI; should return the full image dimensions.
-        """
-        from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
 
-        ds, sensor_model = self.get_dataset_and_camera()
-        processing_bounds = calculate_processing_bounds(ds, None, sensor_model)
-        assert processing_bounds == ((0, 0), (101, 101))
+def test_features_conversion_mixed_no_skip():
+    """
+    Test processing a mix of valid and invalid features with skipping disabled.
+    Ensure that an exception is raised when encountering invalid features.
+    """
+    from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
 
-    def test_calculate_processing_bounds_full_image(self):
-        """
-        Test calculating processing bounds with an ROI covering the full image.
-        """
-        from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
-        from aws.osml.photogrammetry import ImageCoordinate
+    with open("./test/data/feature_examples.geojson", "r") as geojson_file:
+        features: List[geojson.Feature] = geojson.load(geojson_file)["features"]
 
-        ds, sensor_model = self.get_dataset_and_camera()
-        chip_ul = sensor_model.image_to_world(ImageCoordinate([0, 0]))
-        chip_lr = sensor_model.image_to_world(ImageCoordinate([101, 101]))
-        min_vals = np.minimum(chip_ul.coordinate, chip_lr.coordinate)
-        max_vals = np.maximum(chip_ul.coordinate, chip_lr.coordinate)
-        polygon_coords = [
-            [degrees(min_vals[0]), degrees(min_vals[1])],
-            [degrees(min_vals[0]), degrees(max_vals[1])],
-            [degrees(max_vals[0]), degrees(max_vals[1])],
-            [degrees(max_vals[0]), degrees(min_vals[1])],
-            [degrees(min_vals[0]), degrees(min_vals[1])],
-        ]
-        roi = shapely.geometry.Polygon(polygon_coords)
+    features.append({"id": "test_feature"})  # Add invalid feature
 
-        processing_bounds = calculate_processing_bounds(ds, roi, sensor_model)
-        assert processing_bounds == ((0, 0), (101, 101))
+    with pytest.raises(ValueError):
+        features_to_image_shapes(build_gdal_sensor_model(), features, False)
 
-    def test_calculate_processing_bounds_intersect(self):
-        """
-        Test calculating processing bounds with an ROI partially intersecting the image.
-        """
-        from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
-        from aws.osml.photogrammetry import ImageCoordinate
 
-        ds, sensor_model = self.get_dataset_and_camera()
-        chip_ul = sensor_model.image_to_world(ImageCoordinate([-10, -10]))
-        chip_lr = sensor_model.image_to_world(ImageCoordinate([50, 50]))
-        min_vals = np.minimum(chip_ul.coordinate, chip_lr.coordinate)
-        max_vals = np.maximum(chip_ul.coordinate, chip_lr.coordinate)
-        polygon_coords = [
-            [degrees(min_vals[0]), degrees(min_vals[1])],
-            [degrees(min_vals[0]), degrees(max_vals[1])],
-            [degrees(max_vals[0]), degrees(max_vals[1])],
-            [degrees(max_vals[0]), degrees(min_vals[1])],
-            [degrees(min_vals[0]), degrees(min_vals[1])],
-        ]
-        roi = shapely.geometry.Polygon(polygon_coords)
+def test_polygon_feature_conversion():
+    """
+    Test converting a GeoJSON polygon to a Shapely polygon.
+    Ensure that the resulting shape matches expected coordinates.
+    """
+    from aws.osml.model_runner.inference.feature_utils import features_to_image_shapes
 
-        processing_bounds = calculate_processing_bounds(ds, roi, sensor_model)
-        assert processing_bounds == ((0, 0), (50, 50))
-
-    def test_calculate_processing_bounds_chip(self):
-        """
-        Test calculating processing bounds for a specific chip within the image.
-        """
-        from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
-        from aws.osml.photogrammetry import ImageCoordinate
-
-        ds, sensor_model = self.get_dataset_and_camera()
-        chip_ul = sensor_model.image_to_world(ImageCoordinate([10, 15]))
-        chip_lr = sensor_model.image_to_world(ImageCoordinate([70, 90]))
-        min_vals = np.minimum(chip_ul.coordinate, chip_lr.coordinate)
-        max_vals = np.maximum(chip_ul.coordinate, chip_lr.coordinate)
-        polygon_coords = [
-            [degrees(min_vals[0]), degrees(min_vals[1])],
-            [degrees(min_vals[0]), degrees(max_vals[1])],
-            [degrees(max_vals[0]), degrees(max_vals[1])],
-            [degrees(max_vals[0]), degrees(min_vals[1])],
-            [degrees(min_vals[0]), degrees(min_vals[1])],
-        ]
-        roi = shapely.geometry.Polygon(polygon_coords)
-
-        processing_bounds = calculate_processing_bounds(ds, roi, sensor_model)
-        assert processing_bounds == ((15, 10), (60, 75))
-
-    def test_calculate_processing_bounds_outside_image(self):
-        """
-        Test calculating processing bounds when ROI is outside the image; should return None.
-        """
-        from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
-        from aws.osml.photogrammetry import ImageCoordinate
-
-        ds, sensor_model = self.get_dataset_and_camera()
-        chip_ul = sensor_model.image_to_world(ImageCoordinate([-200, -200]))
-        chip_lr = sensor_model.image_to_world(ImageCoordinate([-150, -150]))
-        min_vals = np.minimum(chip_ul.coordinate, chip_lr.coordinate)
-        max_vals = np.maximum(chip_ul.coordinate, chip_lr.coordinate)
-        polygon_coords = [
-            [degrees(min_vals[0]), degrees(min_vals[1])],
-            [degrees(min_vals[0]), degrees(max_vals[1])],
-            [degrees(max_vals[0]), degrees(max_vals[1])],
-            [degrees(max_vals[0]), degrees(min_vals[1])],
-            [degrees(min_vals[0]), degrees(min_vals[1])],
-        ]
-        roi = shapely.geometry.Polygon(polygon_coords)
-
-        processing_bounds = calculate_processing_bounds(ds, roi, sensor_model)
-        assert processing_bounds is None
-
-    def test_calculate_processing_bounds_with_3d_roi(self):
-        """
-        Test calculating processing bounds with 3D ROI coordinates.
-        """
-        from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
-        from aws.osml.photogrammetry import ImageCoordinate
-
-        ds, sensor_model = self.get_dataset_and_camera()
-        chip_ul = sensor_model.image_to_world(ImageCoordinate([0, 0]))
-        chip_lr = sensor_model.image_to_world(ImageCoordinate([101, 101]))
-        min_vals = np.minimum(chip_ul.coordinate, chip_lr.coordinate)
-        max_vals = np.maximum(chip_ul.coordinate, chip_lr.coordinate)
-        roi = shapely.geometry.Polygon(
+    sample_image_bounds = [(0, 0), (19584, 0), (19584, 19584), (0, 19584)]
+    polygon_feature = geojson.Feature(
+        geometry=geojson.geometry.Polygon(
             [
-                (degrees(min_vals[0]), degrees(min_vals[1]), 10.0),
-                (degrees(min_vals[0]), degrees(max_vals[1]), 10.0),
-                (degrees(max_vals[0]), degrees(max_vals[1]), 10.0),
-                (degrees(max_vals[0]), degrees(min_vals[1]), 10.0),
-                (degrees(min_vals[0]), degrees(min_vals[1]), 10.0),
+                [
+                    [-43.681640625, -22.939453125, 0.0],
+                    [-43.59375, -22.939453125, 0.0],
+                    [-43.59375, -23.02734375, 0.0],
+                    [-43.681640625, -23.02734375, 0.0],
+                    [-43.681640625, -22.939453125, 0.0],
+                ]
             ]
         )
+    )
+    shape = features_to_image_shapes(build_gdal_sensor_model(), [polygon_feature])[0]
+    assert isinstance(shape, shapely.geometry.Polygon)
+    for i in range(len(sample_image_bounds)):
+        assert pytest.approx(sample_image_bounds[i], rel=0.49, abs=0.49) == shape.exterior.coords[i]
 
-        processing_bounds = calculate_processing_bounds(ds, roi, sensor_model)
-        assert processing_bounds == ((0, 0), (101, 101))
 
-    def test_get_source_property_not_available(self):
-        """
-        Test retrieving a source property for an unsupported image type; should return None.
-        """
-        from aws.osml.model_runner.inference.feature_utils import get_source_property
+def test_convert_nested_coordinate_lists_single_vs_nested():
+    """
+    Test the conversion of single versus nested coordinates using a mock conversion function.
+    """
+    from aws.osml.model_runner.inference.feature_utils import convert_nested_coordinate_lists
 
-        ds, sensor_model = self.get_dataset_and_camera()
-        source_property = get_source_property("./test/data/GeogToWGS84GeoKey5.tif", "UNSUPPORTED", ds)
-        assert source_property is None
+    single_coord = [-77.0364, 38.8976]
+    nested_coords = [[-77.0364, 38.8976], [-77.0365, 38.8977]]
 
-    def test_get_source_property_nitf_metadata(self):
-        """
-        Test retrieving a source property for a NITF image with metadata.
-        """
-        from aws.osml.model_runner.inference.feature_utils import get_source_property
+    converted_single = convert_nested_coordinate_lists(single_coord, lambda x: x)
+    converted_nested = convert_nested_coordinate_lists(nested_coords, lambda x: x)
 
-        class FakeDataset:
-            def GetMetadata(self):
-                return {
-                    "NITF_ICAT": "TEST",
-                    "NITF_FTITLE": "source-id-1",
-                    "NITF_IDATIM": "20240102123456",
-                }
+    assert isinstance(converted_single, tuple)
+    assert isinstance(converted_nested, list)
+    assert len(converted_nested) == 2
 
-        source_property = get_source_property("./test/data/sample.ntf", "NITF", FakeDataset())
-        assert source_property == {
-            "sourceMetadata": [
-                {
-                    "location": "./test/data/sample.ntf",
-                    "format": "NITF",
-                    "category": "TEST",
-                    "sourceId": "source-id-1",
-                    "sourceDT": "2024-01-02T12:34:56Z",
-                }
-            ]
-        }
 
-    def test_get_source_property_exception(self):
-        """
-        Test that getting a source property handles exceptions gracefully and returns None.
-        """
-        from aws.osml.model_runner.inference.feature_utils import get_source_property
+def test_calculate_processing_bounds_no_roi():
+    """
+    Test calculating processing bounds without an ROI; should return the full image dimensions.
+    """
+    from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
 
-        source_property = get_source_property("./test/data/GeogToWGS84GeoKey5.tif", "NITF", dataset=None)
-        assert source_property is None
+    ds, sensor_model = get_dataset_and_camera()
+    processing_bounds = calculate_processing_bounds(ds, None, sensor_model)
+    assert processing_bounds == ((0, 0), (101, 101))
 
-    def test_add_properties_to_features(self):
-        """
-        Test applying custom properties and pruning unused metadata fields.
-        """
-        from aws.osml.model_runner.inference.feature_utils import add_properties_to_features
 
-        features = [
-            geojson.Feature(
-                geometry=geojson.Point((0, 0)),
-                properties={
-                    "inferenceTime": "2024-01-02T03:04:05Z",
-                    "detection_score": 0.7,
-                    "feature_types": ["car"],
-                    "image_id": "image-1",
-                    "adjusted_feature_types": ["vehicle"],
-                    "bounds_imcoords": [0, 0, 10, 10],
-                    "geom_imcoords": [0, 0],
-                },
-            )
+def test_calculate_processing_bounds_full_image():
+    """
+    Test calculating processing bounds with an ROI covering the full image.
+    """
+    from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
+    from aws.osml.photogrammetry import ImageCoordinate
+
+    ds, sensor_model = get_dataset_and_camera()
+    chip_ul = sensor_model.image_to_world(ImageCoordinate([0, 0]))
+    chip_lr = sensor_model.image_to_world(ImageCoordinate([101, 101]))
+    min_vals = np.minimum(chip_ul.coordinate, chip_lr.coordinate)
+    max_vals = np.maximum(chip_ul.coordinate, chip_lr.coordinate)
+    polygon_coords = [
+        [degrees(min_vals[0]), degrees(min_vals[1])],
+        [degrees(min_vals[0]), degrees(max_vals[1])],
+        [degrees(max_vals[0]), degrees(max_vals[1])],
+        [degrees(max_vals[0]), degrees(min_vals[1])],
+        [degrees(min_vals[0]), degrees(min_vals[1])],
+    ]
+    roi = shapely.geometry.Polygon(polygon_coords)
+
+    processing_bounds = calculate_processing_bounds(ds, roi, sensor_model)
+    assert processing_bounds == ((0, 0), (101, 101))
+
+
+def test_calculate_processing_bounds_intersect():
+    """
+    Test calculating processing bounds with an ROI partially intersecting the image.
+    """
+    from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
+    from aws.osml.photogrammetry import ImageCoordinate
+
+    ds, sensor_model = get_dataset_and_camera()
+    chip_ul = sensor_model.image_to_world(ImageCoordinate([-10, -10]))
+    chip_lr = sensor_model.image_to_world(ImageCoordinate([50, 50]))
+    min_vals = np.minimum(chip_ul.coordinate, chip_lr.coordinate)
+    max_vals = np.maximum(chip_ul.coordinate, chip_lr.coordinate)
+    polygon_coords = [
+        [degrees(min_vals[0]), degrees(min_vals[1])],
+        [degrees(min_vals[0]), degrees(max_vals[1])],
+        [degrees(max_vals[0]), degrees(max_vals[1])],
+        [degrees(max_vals[0]), degrees(min_vals[1])],
+        [degrees(min_vals[0]), degrees(min_vals[1])],
+    ]
+    roi = shapely.geometry.Polygon(polygon_coords)
+
+    processing_bounds = calculate_processing_bounds(ds, roi, sensor_model)
+    assert processing_bounds == ((0, 0), (50, 50))
+
+
+def test_calculate_processing_bounds_chip():
+    """
+    Test calculating processing bounds for a specific chip within the image.
+    """
+    from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
+    from aws.osml.photogrammetry import ImageCoordinate
+
+    ds, sensor_model = get_dataset_and_camera()
+    chip_ul = sensor_model.image_to_world(ImageCoordinate([10, 15]))
+    chip_lr = sensor_model.image_to_world(ImageCoordinate([70, 90]))
+    min_vals = np.minimum(chip_ul.coordinate, chip_lr.coordinate)
+    max_vals = np.maximum(chip_ul.coordinate, chip_lr.coordinate)
+    polygon_coords = [
+        [degrees(min_vals[0]), degrees(min_vals[1])],
+        [degrees(min_vals[0]), degrees(max_vals[1])],
+        [degrees(max_vals[0]), degrees(max_vals[1])],
+        [degrees(max_vals[0]), degrees(min_vals[1])],
+        [degrees(min_vals[0]), degrees(min_vals[1])],
+    ]
+    roi = shapely.geometry.Polygon(polygon_coords)
+
+    processing_bounds = calculate_processing_bounds(ds, roi, sensor_model)
+    assert processing_bounds == ((15, 10), (60, 75))
+
+
+def test_calculate_processing_bounds_outside_image():
+    """
+    Test calculating processing bounds when ROI is outside the image; should return None.
+    """
+    from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
+    from aws.osml.photogrammetry import ImageCoordinate
+
+    ds, sensor_model = get_dataset_and_camera()
+    chip_ul = sensor_model.image_to_world(ImageCoordinate([-200, -200]))
+    chip_lr = sensor_model.image_to_world(ImageCoordinate([-150, -150]))
+    min_vals = np.minimum(chip_ul.coordinate, chip_lr.coordinate)
+    max_vals = np.maximum(chip_ul.coordinate, chip_lr.coordinate)
+    polygon_coords = [
+        [degrees(min_vals[0]), degrees(min_vals[1])],
+        [degrees(min_vals[0]), degrees(max_vals[1])],
+        [degrees(max_vals[0]), degrees(max_vals[1])],
+        [degrees(max_vals[0]), degrees(min_vals[1])],
+        [degrees(min_vals[0]), degrees(min_vals[1])],
+    ]
+    roi = shapely.geometry.Polygon(polygon_coords)
+
+    processing_bounds = calculate_processing_bounds(ds, roi, sensor_model)
+    assert processing_bounds is None
+
+
+def test_calculate_processing_bounds_with_3d_roi():
+    """
+    Test calculating processing bounds with 3D ROI coordinates.
+    """
+    from aws.osml.model_runner.inference.feature_utils import calculate_processing_bounds
+    from aws.osml.photogrammetry import ImageCoordinate
+
+    ds, sensor_model = get_dataset_and_camera()
+    chip_ul = sensor_model.image_to_world(ImageCoordinate([0, 0]))
+    chip_lr = sensor_model.image_to_world(ImageCoordinate([101, 101]))
+    min_vals = np.minimum(chip_ul.coordinate, chip_lr.coordinate)
+    max_vals = np.maximum(chip_ul.coordinate, chip_lr.coordinate)
+    roi = shapely.geometry.Polygon(
+        [
+            (degrees(min_vals[0]), degrees(min_vals[1]), 10.0),
+            (degrees(min_vals[0]), degrees(max_vals[1]), 10.0),
+            (degrees(max_vals[0]), degrees(max_vals[1]), 10.0),
+            (degrees(max_vals[0]), degrees(min_vals[1]), 10.0),
+            (degrees(min_vals[0]), degrees(min_vals[1]), 10.0),
         ]
-        feature_properties = '[{"custom": "value"}, {"another": 123}]'
+    )
 
-        updated = add_properties_to_features("job-1", feature_properties, features)
-        updated_props = updated[0]["properties"]
+    processing_bounds = calculate_processing_bounds(ds, roi, sensor_model)
+    assert processing_bounds == ((0, 0), (101, 101))
 
-        assert updated_props["custom"] == "value"
-        assert updated_props["another"] == 123
-        assert updated_props["inferenceMetadata"]["jobId"] == "job-1"
-        assert updated_props["inferenceMetadata"]["inferenceDT"] == "2024-01-02T03:04:05Z"
-        assert "inferenceTime" not in updated_props
-        assert "detection_score" not in updated_props
-        assert "feature_types" not in updated_props
-        assert "image_id" not in updated_props
-        assert "adjusted_feature_types" not in updated_props
-        assert "bounds_imcoords" not in updated_props
-        assert "geom_imcoords" not in updated_props
 
-    def test_add_properties_to_features_invalid_json(self):
-        """
-        Test invalid feature properties raise InvalidFeaturePropertiesException.
-        """
-        from aws.osml.model_runner.inference.feature_utils import (
-            InvalidFeaturePropertiesException,
-            add_properties_to_features,
+def test_get_source_property_not_available():
+    """
+    Test retrieving a source property for an unsupported image type; should return None.
+    """
+    from aws.osml.model_runner.inference.feature_utils import get_source_property
+
+    ds, sensor_model = get_dataset_and_camera()
+    source_property = get_source_property("./test/data/GeogToWGS84GeoKey5.tif", "UNSUPPORTED", ds)
+    assert source_property is None
+
+
+def test_get_source_property_nitf_metadata():
+    """
+    Test retrieving a source property for a NITF image with metadata.
+    """
+    from aws.osml.model_runner.inference.feature_utils import get_source_property
+
+    class FakeDataset:
+        def GetMetadata(self):
+            return {
+                "NITF_ICAT": "TEST",
+                "NITF_FTITLE": "source-id-1",
+                "NITF_IDATIM": "20240102123456",
+            }
+
+    source_property = get_source_property("./test/data/sample.ntf", "NITF", FakeDataset())
+    assert source_property == {
+        "sourceMetadata": [
+            {
+                "location": "./test/data/sample.ntf",
+                "format": "NITF",
+                "category": "TEST",
+                "sourceId": "source-id-1",
+                "sourceDT": "2024-01-02T12:34:56Z",
+            }
+        ]
+    }
+
+
+def test_get_source_property_exception():
+    """
+    Test that getting a source property handles exceptions gracefully and returns None.
+    """
+    from aws.osml.model_runner.inference.feature_utils import get_source_property
+
+    source_property = get_source_property("./test/data/GeogToWGS84GeoKey5.tif", "NITF", dataset=None)
+    assert source_property is None
+
+
+def test_add_properties_to_features():
+    """
+    Test applying custom properties and pruning unused metadata fields.
+    """
+    from aws.osml.model_runner.inference.feature_utils import add_properties_to_features
+
+    features = [
+        geojson.Feature(
+            geometry=geojson.Point((0, 0)),
+            properties={
+                "inferenceTime": "2024-01-02T03:04:05Z",
+                "detection_score": 0.7,
+                "feature_types": ["car"],
+                "image_id": "image-1",
+                "adjusted_feature_types": ["vehicle"],
+                "bounds_imcoords": [0, 0, 10, 10],
+                "geom_imcoords": [0, 0],
+            },
         )
+    ]
+    feature_properties = '[{"custom": "value"}, {"another": 123}]'
 
-        features = [geojson.Feature(geometry=geojson.Point((0, 0)), properties={"inferenceTime": "0"})]
-        with pytest.raises(InvalidFeaturePropertiesException):
-            add_properties_to_features("job-1", "not-json", features)
+    updated = add_properties_to_features("job-1", feature_properties, features)
+    updated_props = updated[0]["properties"]
 
-    def test_get_inference_metadata_property(self):
-        """
-        Test inference metadata property structure.
-        """
-        from aws.osml.model_runner.inference.feature_utils import get_inference_metadata_property
-
-        assert get_inference_metadata_property("job-1", "time-1") == {
-            "inferenceMetadata": {"jobId": "job-1", "inferenceDT": "time-1"}
-        }
-
-    @staticmethod
-    def build_gdal_sensor_model():
-        from aws.osml.photogrammetry import GDALAffineSensorModel
-
-        # Create a mock GDAL sensor model for testing transformations
-        transform = [
-            -43.681640625,
-            4.487879136029412e-06,
-            0.0,
-            -22.939453125,
-            0.0,
-            -4.487879136029412e-06,
-        ]
-        return GDALAffineSensorModel(transform)
-
-    @staticmethod
-    def get_dataset_and_camera():
-        from aws.osml.gdal.gdal_utils import load_gdal_dataset
-
-        ds, sensor_model = load_gdal_dataset("./test/data/GeogToWGS84GeoKey5.tif")
-        return ds, sensor_model
+    assert updated_props["custom"] == "value"
+    assert updated_props["another"] == 123
+    assert updated_props["inferenceMetadata"]["jobId"] == "job-1"
+    assert updated_props["inferenceMetadata"]["inferenceDT"] == "2024-01-02T03:04:05Z"
+    assert "inferenceTime" not in updated_props
+    assert "detection_score" not in updated_props
+    assert "feature_types" not in updated_props
+    assert "image_id" not in updated_props
+    assert "adjusted_feature_types" not in updated_props
+    assert "bounds_imcoords" not in updated_props
+    assert "geom_imcoords" not in updated_props
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_add_properties_to_features_invalid_json():
+    """
+    Test invalid feature properties raise InvalidFeaturePropertiesException.
+    """
+    from aws.osml.model_runner.inference.feature_utils import (
+        InvalidFeaturePropertiesException,
+        add_properties_to_features,
+    )
+
+    features = [geojson.Feature(geometry=geojson.Point((0, 0)), properties={"inferenceTime": "0"})]
+    with pytest.raises(InvalidFeaturePropertiesException):
+        add_properties_to_features("job-1", "not-json", features)
+
+
+def test_get_inference_metadata_property():
+    """
+    Test inference metadata property structure.
+    """
+    from aws.osml.model_runner.inference.feature_utils import get_inference_metadata_property
+
+    assert get_inference_metadata_property("job-1", "time-1") == {
+        "inferenceMetadata": {"jobId": "job-1", "inferenceDT": "time-1"}
+    }
