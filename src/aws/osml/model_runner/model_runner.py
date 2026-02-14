@@ -11,7 +11,7 @@ from aws.osml.model_runner.api import get_image_path
 
 from .api import ImageRequest, RegionRequest
 from .app_config import BotoConfig, ServiceConfig
-from .common import ImageDimensions, ThreadingLocalContextFilter
+from .common import ImageDimensions, RequestStatus, ThreadingLocalContextFilter
 from .database import (
     ImageRequestItem,
     ImageRequestTable,
@@ -121,11 +121,7 @@ class ModelRunner:
             throttling_enabled=self.config.scheduler_throttling_enabled,
             capacity_target_percentage=self.config.capacity_target_percentage,
         )
-        self.region_request_handler.on_region_complete.subscribe(
-            lambda image_request, region_request, region_status: self.requested_jobs_table.complete_region(
-                image_request, region_request.region_id
-            )
-        )
+        self.region_request_handler.on_region_complete.subscribe(self._update_requested_jobs_for_region_completion)
         self.image_request_handler.on_image_update.subscribe(
             lambda image_request: self.requested_jobs_table.update_request_details(image_request, image_request.region_count)
         )
@@ -251,6 +247,41 @@ class ModelRunner:
         min_job_id = image_request.job_id if image_request else ""
         minimal_image_request_item = ImageRequestItem(image_id=min_image_id, job_id=min_job_id, processing_duration=0)
         self.image_request_handler.fail_image_request(minimal_image_request_item, error)
+
+    def _update_requested_jobs_for_region_completion(
+        self, image_request: ImageRequestItem, region_request: RegionRequestItem, region_status: RequestStatus
+    ) -> None:
+        """
+        Record region completion in the requested jobs table.
+
+        If tracking fails unexpectedly, downgrade region/image status to failed so downstream consumers do not
+        observe a success state for a partially recorded job.
+        """
+        try:
+            self.requested_jobs_table.complete_region(image_request, region_request.region_id)
+        except Exception as err:
+            logger.error(
+                "Failed to record completed region in requested jobs table. Marking region as failed. "
+                f"job_id={region_request.job_id} region_id={region_request.region_id} prior_status={region_status}"
+            )
+            logger.exception(err)
+
+            try:
+                failed_region_item = self.region_request_table.complete_region_request(region_request, RequestStatus.FAILED)
+                self.region_status_monitor.process_event(
+                    failed_region_item,
+                    RequestStatus.FAILED,
+                    "Failed to update outstanding jobs table during region completion.",
+                )
+            except Exception as status_error:
+                logger.error("Unable to mark region as failed after requested jobs tracking failure.")
+                logger.exception(status_error)
+
+            try:
+                self.image_request_table.complete_region_request(region_request.image_id, error=True)
+            except Exception as image_error:
+                logger.error("Unable to mark image as failed after requested jobs tracking failure.")
+                logger.exception(image_error)
 
     def _get_or_create_region_request_item(self, region_request: RegionRequest) -> RegionRequestItem:
         """

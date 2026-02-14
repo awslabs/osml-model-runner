@@ -1,4 +1,4 @@
-#  Copyright 2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2025-2026 Amazon.com, Inc. or its affiliates.
 
 import logging
 import time
@@ -233,9 +233,12 @@ class RequestedJobsTable:
         try:
             self.table.update_item(
                 Key={"endpoint_id": image_request.model_name, "job_id": image_request.job_id},
-                UpdateExpression="SET regions_complete = list_append(regions_complete, :region)",
-                ConditionExpression="NOT contains(regions_complete, :region_value)",
-                ExpressionAttributeValues={":region": [region_id], ":region_value": region_id},
+                UpdateExpression="SET regions_complete = list_append(if_not_exists(regions_complete, :empty), :region)",
+                ConditionExpression=(
+                    "attribute_exists(job_id) AND "
+                    "(attribute_not_exists(regions_complete) OR NOT contains(regions_complete, :region_value))"
+                ),
+                ExpressionAttributeValues={":region": [region_id], ":region_value": region_id, ":empty": []},
                 ReturnValues="UPDATED_NEW",
             )
             logger.debug(f"Successfully recorded completed region {region_id} for job {image_request.job_id}")
