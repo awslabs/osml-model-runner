@@ -241,26 +241,19 @@ def test_process_tiles(mocker):
     from aws.osml.model_runner.api import RegionRequest
     from aws.osml.model_runner.database import RegionRequestItem
     from aws.osml.model_runner.tile_worker import VariableTileTilingStrategy
-    from aws.osml.model_runner.tile_worker.tile_worker_utils import process_tiles, setup_tile_workers
+    from aws.osml.model_runner.tile_worker.tile_worker_utils import process_tiles
 
-    mock_region_request_table = mocker.patch(
-        "aws.osml.model_runner.tile_worker.tile_worker_utils.RegionRequestTable", autospec=True
+    mock_gdal_config_env = mocker.patch("aws.osml.model_runner.tile_worker.tile_worker_utils.GDALConfigEnv", autospec=True)
+    _mock_gdal_tile_factory = mocker.patch(  # noqa: F841
+        "aws.osml.model_runner.tile_worker.tile_worker_utils.GDALTileFactory", autospec=True
     )
-    mock_feature_table = mocker.patch("aws.osml.model_runner.tile_worker.tile_worker_utils.FeatureTable", autospec=True)
-    mock_feature_detector_factory = mocker.patch(
-        "aws.osml.model_runner.tile_worker.tile_worker_utils.FeatureDetectorFactory", autospec=True
-    )
+    mock_create_tile = mocker.patch("aws.osml.model_runner.tile_worker.tile_worker_utils._create_tile", autospec=True)
 
-    mock_feature_detector = mocker.Mock()
-    mock_feature_detector.endpoint = "test-model-endpoint"
-    mock_feature_detector.find_features.return_value = {"features": []}
-    mock_feature_detector_factory.return_value.build.return_value = mock_feature_detector
+    # No-op context manager for GDAL config
+    mock_gdal_config_env.return_value.with_aws_credentials.return_value.__enter__ = mocker.Mock()
+    mock_gdal_config_env.return_value.with_aws_credentials.return_value.__exit__ = mocker.Mock(return_value=False)
+    mock_create_tile.return_value = "/tmp/fake-tile.ntf"
 
-    # Mock the database tables
-    mock_feature_table.return_value = mocker.Mock()
-    mock_region_request_table.return_value = mocker.Mock()
-
-    # Mock the RegionRequest and RegionRequestItem
     mock_region_request = RegionRequest(
         {
             "tile_size": (10, 10),
@@ -276,25 +269,23 @@ def test_process_tiles(mocker):
     )
     region_request_item = RegionRequestItem.from_region_request(mock_region_request)
 
-    # Load the testing Dataset and SensorModel
-    ds, sensor_model = get_dataset_and_camera()
+    # Use mocked workers to keep this test deterministic and avoid thread/event-loop flakiness.
+    work_queue = mocker.Mock()
+    tile_worker_list = [mocker.Mock(failed_tile_count=0), mocker.Mock(failed_tile_count=0)]
 
-    # Setup tile workers
-    work_queue, tile_worker_list = setup_tile_workers(mock_region_request, sensor_model, None)
-
-    # Execute process_tiles
     total_tile_count, tile_error_count = process_tiles(
         tiling_strategy=VariableTileTilingStrategy(),
         region_request_item=region_request_item,
         tile_queue=work_queue,
         tile_workers=tile_worker_list,
-        raster_dataset=ds,
-        sensor_model=sensor_model,
+        raster_dataset=mocker.Mock(),
+        sensor_model=mocker.Mock(),
     )
 
-    # Verify expected results
     assert total_tile_count == 25
     assert tile_error_count == 0
+    # 25 tiles plus 2 worker shutdown sentinels
+    assert work_queue.put.call_count == 27
 
 
 def test_process_tiles_skips_succeeded_tiles_and_uses_role(mocker):

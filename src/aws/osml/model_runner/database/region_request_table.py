@@ -1,4 +1,4 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import logging
 import time
@@ -207,36 +207,45 @@ class RegionRequestTable(DDBHelper):
             logger.warning(GetRegionRequestItemException(f"Failed to get RegionRequestItem! {err}"))
             return None
 
-    def add_tile(self, image_id: str, region_id: str, tile: ImageRegion, state: TileState) -> RegionRequestItem:
+    def add_tiles(self, image_id: str, region_id: str, tiles: List[ImageRegion], state: TileState) -> RegionRequestItem:
         """
-        Append tile to the with the associated state to associated RegionRequestItem in the table.
+        Append multiple tiles with the associated state to a RegionRequestItem in the table.
 
         :param image_id: str = the id of the image request we want to update
         :param region_id: str = the id of the region request we want to update
-        :param tile: ImageRegion = list of values to append to the 'succeeded_tiles' property
-        :param state: str = state of the tile to add, i.e. succeeded or failed
+        :param tiles: List[ImageRegion] = list of tiles to append
+        :param state: str = state of the tiles to add, i.e. succeeded or failed
         :return: The new updated DDB item.
         """
-        # Validate the tile is a tuple of tuples (ImageRegion format)
-        if not (isinstance(tile, tuple) and isinstance(tile[0], tuple) and isinstance(tile[1], tuple)):
-            raise UpdateRegionException(f"Invalid tile format. Expected a tuple of tuples, got {type(tile)}")
+        if len(tiles) == 0:
+            raise UpdateRegionException("Must provide at least one tile to append.")
+
+        for tile in tiles:
+            # Validate each tile is a tuple of tuples (ImageRegion format)
+            if not (isinstance(tile, tuple) and isinstance(tile[0], tuple) and isinstance(tile[1], tuple)):
+                raise UpdateRegionException(f"Invalid tile format. Expected a tuple of tuples, got {type(tile)}")
 
         try:
             # Build the update expression using list_append to append a value
             update_expr = (
                 f"SET {state.value}_tiles = list_append(if_not_exists({state.value}_tiles, :empty_list), " f":new_values)"
             )
-            update_attr = {":new_values": [[list(coord) for coord in tile]], ":empty_list": []}
+            update_attr = {":new_values": [[list(coord) for coord in tile] for tile in tiles], ":empty_list": []}
 
             # Perform the update on DynamoDB
             new_item = self.update_ddb_item(RegionRequestItem(region_id, image_id), update_expr, update_attr)
 
             # Return the updated item
-            logger.debug(f"Successfully appended {tile} to item with image_id={image_id}, region_id={region_id}.")
+            logger.debug(
+                f"Successfully appended {len(tiles)} {state.value} tiles to item with "
+                f"image_id={image_id}, region_id={region_id}."
+            )
             return from_dict(
                 RegionRequestItem,
                 new_item,
             )
         except Exception as err:
-            logger.error(f"Failed to append {state.value} {tile} to item region_id={region_id}: {str(err)}")
-            raise UpdateRegionException(f"Failed to append {state.value} {tile} to item region_id={region_id}.") from err
+            logger.error(f"Failed to append {len(tiles)} {state.value} tiles to item region_id={region_id}: {str(err)}")
+            raise UpdateRegionException(
+                f"Failed to append {len(tiles)} {state.value} tiles to item region_id={region_id}."
+            ) from err

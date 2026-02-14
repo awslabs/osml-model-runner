@@ -1,11 +1,12 @@
-#  Copyright 2023-2025 Amazon.com, Inc. or its affiliates.
+#  Copyright 2023-2026 Amazon.com, Inc. or its affiliates.
 
 import asyncio
 import logging
+from collections import defaultdict
 from datetime import datetime, timezone
 from queue import Queue
 from threading import Thread
-from typing import Dict, List, Optional
+from typing import DefaultDict, Dict, List, Optional, Tuple
 
 import geojson
 from aws_embedded_metrics.logger.metrics_logger import MetricsLogger
@@ -39,6 +40,7 @@ class TileWorker(Thread):
         self.region_request_table = region_request_table
         self.property_accessor = ImagedFeaturePropertyAccessor()
         self.failed_tile_count: int = 0
+        self._buffered_tile_updates: DefaultDict[Tuple[str, str, TileState], List] = defaultdict(list)
 
     def run(self) -> None:
         thread_event_loop = asyncio.new_event_loop()
@@ -48,6 +50,11 @@ class TileWorker(Thread):
             ThreadingLocalContextFilter.set_context(image_info)
 
             if image_info is None:
+                try:
+                    self.flush_tile_updates()
+                except Exception as e:
+                    logger.error("Failed to flush buffered tile updates during worker shutdown.")
+                    logger.exception(e)
                 logger.debug("All images processed. Stopping tile worker.")
                 logger.debug(
                     (
@@ -103,17 +110,45 @@ class TileWorker(Thread):
                 if len(features) > 0:
                     self.feature_table.add_features(features)
 
-                self.region_request_table.add_tile(
-                    image_info.get("image_id"), image_info.get("region_id"), image_info.get("region"), TileState.SUCCEEDED
-                )
+                self.buffer_tile_update(image_info, TileState.SUCCEEDED)
         except Exception as e:
             self.failed_tile_count += 1
             logger.error(f"Failed to process region tile with error: {e}", exc_info=True)
-            self.region_request_table.add_tile(
-                image_info.get("image_id"), image_info.get("region_id"), image_info.get("region"), TileState.FAILED
-            )
+            self.buffer_tile_update(image_info, TileState.FAILED)
             if isinstance(metrics, MetricsLogger):
                 metrics.put_metric(MetricLabels.ERRORS, 1, str(Unit.COUNT.value))
+
+    def buffer_tile_update(self, image_info: Dict, state: TileState) -> None:
+        """
+        Buffer tile status updates so they can be written in groups instead of one write per tile.
+        """
+        image_id = image_info.get("image_id")
+        region_id = image_info.get("region_id")
+        tile = image_info.get("region")
+        self._buffered_tile_updates[(image_id, region_id, state)].append(tile)
+
+    def flush_tile_updates(self) -> None:
+        """
+        Flush buffered tile state updates to the region request table.
+        """
+        if len(self._buffered_tile_updates) == 0:
+            return
+
+        try:
+            for (image_id, region_id, state), tiles in self._buffered_tile_updates.items():
+                try:
+                    self.region_request_table.add_tiles(image_id, region_id, tiles, state)
+                except Exception:
+                    logger.exception(
+                        "Batched tile status write failed for image_id=%s region_id=%s state=%s tile_count=%s",
+                        image_id,
+                        region_id,
+                        state.value,
+                        len(tiles),
+                    )
+                    raise
+        finally:
+            self._buffered_tile_updates.clear()
 
     @metric_scope
     def _refine_features(self, feature_collection, image_info: Dict, metrics: MetricsLogger = None) -> List[geojson.Feature]:

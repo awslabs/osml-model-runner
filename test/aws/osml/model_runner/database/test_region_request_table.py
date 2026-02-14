@@ -171,7 +171,7 @@ def test_add_tile_success(region_request_table_setup):
     region_request_table, region_request_item = region_request_table_setup
     region_request_table.start_region_request(region_request_item)
     tile = ((0, 0), (256, 256))
-    region_request_table.add_tile(TEST_IMAGE_ID, TEST_REGION_ID, tile, TileState.SUCCEEDED)
+    region_request_table.add_tiles(TEST_IMAGE_ID, TEST_REGION_ID, [tile], TileState.SUCCEEDED)
 
     success_tile_item = region_request_table.get_region_request(TEST_REGION_ID, TEST_IMAGE_ID)
     assert len(success_tile_item.succeeded_tiles) == 1
@@ -186,7 +186,7 @@ def test_add_tile_failed(region_request_table_setup):
     region_request_table, region_request_item = region_request_table_setup
     region_request_table.start_region_request(region_request_item)
     tile = ((0, 0), (256, 256))
-    region_request_table.add_tile(TEST_IMAGE_ID, TEST_REGION_ID, tile, TileState.FAILED)
+    region_request_table.add_tiles(TEST_IMAGE_ID, TEST_REGION_ID, [tile], TileState.FAILED)
     failed_tile_item = region_request_table.get_region_request(TEST_REGION_ID, TEST_IMAGE_ID)
 
     assert len(failed_tile_item.failed_tiles) == 1
@@ -203,7 +203,36 @@ def test_add_tile_invalid_format(region_request_table_setup):
     region_request_table.start_region_request(region_request_item)
 
     with pytest.raises(UpdateRegionException):
-        region_request_table.add_tile(TEST_IMAGE_ID, TEST_REGION_ID, "bad_format", TileState.SUCCEEDED)
+        region_request_table.add_tiles(TEST_IMAGE_ID, TEST_REGION_ID, ["bad_format"], TileState.SUCCEEDED)
+
+
+def test_add_tiles_batch_success(region_request_table_setup):
+    """
+    Validate that multiple tiles can be added in one call.
+    """
+    from aws.osml.model_runner.common import TileState
+
+    region_request_table, region_request_item = region_request_table_setup
+    region_request_table.start_region_request(region_request_item)
+    tiles = [((0, 0), (256, 256)), ((256, 0), (512, 256))]
+    region_request_table.add_tiles(TEST_IMAGE_ID, TEST_REGION_ID, tiles, TileState.SUCCEEDED)
+
+    success_tile_item = region_request_table.get_region_request(TEST_REGION_ID, TEST_IMAGE_ID)
+    assert len(success_tile_item.succeeded_tiles) == 2
+
+
+def test_add_tiles_empty_list_raises(region_request_table_setup):
+    """
+    Validate that add_tiles rejects empty input.
+    """
+    from aws.osml.model_runner.common import TileState
+    from aws.osml.model_runner.database.exceptions import UpdateRegionException
+
+    region_request_table, region_request_item = region_request_table_setup
+    region_request_table.start_region_request(region_request_item)
+
+    with pytest.raises(UpdateRegionException):
+        region_request_table.add_tiles(TEST_IMAGE_ID, TEST_REGION_ID, [], TileState.SUCCEEDED)
 
 
 def test_from_region_request_with_partial_data():
