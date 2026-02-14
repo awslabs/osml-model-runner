@@ -173,9 +173,11 @@ def test_complete_region_nonexistent_record(requested_jobs_table_setup):
     # Arrange
     image_request = create_sample_image_request()
 
-    # Act/Assert
-    with pytest.raises(ClientError):
-        table.complete_region(image_request, "region1")
+    # Act
+    result = table.complete_region(image_request, "region1")
+
+    # Assert - missing record is treated as a conditional failure and returns False
+    assert not result
 
 
 def test_update_request_details_success(requested_jobs_table_setup):
@@ -347,6 +349,25 @@ def test_update_request_details_client_error_logs_and_raises(requested_jobs_tabl
 
     # Restore original method
     table.table.update_item = original_update_item
+
+
+def test_complete_region_handles_missing_regions_complete_attribute(requested_jobs_table_setup):
+    """Test complete_region initializes regions_complete when missing on an existing item."""
+    table, table_name, ddb = requested_jobs_table_setup
+    image_request = create_sample_image_request()
+    table.add_new_request(image_request)
+
+    # Simulate an older record shape that did not include regions_complete.
+    ddb.Table(table_name).update_item(
+        Key={"endpoint_id": image_request.model_name, "job_id": image_request.job_id},
+        UpdateExpression="REMOVE regions_complete",
+    )
+
+    result = table.complete_region(image_request, "region1")
+    assert result
+
+    response = ddb.Table(table_name).get_item(Key={"endpoint_id": image_request.model_name, "job_id": image_request.job_id})
+    assert response["Item"]["regions_complete"] == ["region1"]
 
 
 def test_get_outstanding_requests_client_error_logs_and_raises(requested_jobs_table_setup):

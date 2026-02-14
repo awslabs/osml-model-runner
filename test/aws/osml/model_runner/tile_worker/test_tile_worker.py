@@ -52,14 +52,15 @@ def test_process_tile_handles_detector_exception_increments_failed_count(tile_wo
         }
 
         # Act
-        tile_worker.process_tile(image_info)
+        tile_worker.process_tile.__wrapped__(tile_worker, image_info, metrics=None)
 
         # Assert
         assert tile_worker.failed_tile_count == 1
-        region_request_table.add_tile.assert_called_once()
-        call_args = region_request_table.add_tile.call_args
-        # Verify TileState.FAILED was passed
-        assert call_args[0][3] == TileState.FAILED
+        region_request_table.add_tiles.assert_not_called()
+        # Verify TileState.FAILED was buffered for this tile
+        assert len(tile_worker._buffered_tile_updates) == 1
+        buffered_state = list(tile_worker._buffered_tile_updates.keys())[0][2]
+        assert buffered_state == TileState.FAILED
 
 
 def test_process_tile_emits_error_metric_when_metrics_available(tile_worker_setup, mocker):
@@ -101,6 +102,7 @@ def test_process_tile_handles_metrics_none_gracefully(tile_worker_setup):
     # Arrange
     tile_worker, feature_detector, region_request_table = tile_worker_setup
     feature_detector.find_features.return_value = {"features": []}
+    tile_worker._refine_features = lambda *args, **kwargs: []
 
     with tempfile.TemporaryDirectory() as temp_dir:
         test_tile_path = Path(temp_dir) / "test_tile.tif"
@@ -116,11 +118,12 @@ def test_process_tile_handles_metrics_none_gracefully(tile_worker_setup):
         # Act - Call unwrapped version with metrics=None explicitly
         tile_worker.process_tile.__wrapped__(tile_worker, image_info, metrics=None)
 
-        # Assert - No exception should be raised
-        # Verify processing completed successfully
-        region_request_table.add_tile.assert_called_once()
-        call_args = region_request_table.add_tile.call_args
-        assert call_args[0][3] == TileState.SUCCEEDED
+        # Assert - No exception should be raised and tile status is buffered
+        region_request_table.add_tiles.assert_not_called()
+        region_request_table.add_tile.assert_not_called()
+        assert len(tile_worker._buffered_tile_updates) == 1
+        buffered_state = list(tile_worker._buffered_tile_updates.keys())[0][2]
+        assert buffered_state == TileState.SUCCEEDED
 
 
 def test_run_handles_event_loop_cleanup_exception(tile_worker_setup, mocker):

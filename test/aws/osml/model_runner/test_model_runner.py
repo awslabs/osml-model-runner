@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from aws.osml.model_runner.common import RequestStatus
 from aws.osml.model_runner.model_runner import ModelRunner, RetryableJobException
 
 
@@ -136,6 +137,49 @@ def test_process_region_requests_general_error(
     # Ensure the request was completed and logged
     mock_finish_request.assert_called_once_with("receipt_handle")
     mock_reset_request.assert_not_called()  # Ensure no reset on general errors
+
+
+def test_update_requested_jobs_for_region_completion_success(model_runner_setup):
+    """Test that successful requested-jobs updates do not trigger failure paths."""
+    runner = model_runner_setup
+    runner.requested_jobs_table = MagicMock()
+    runner.region_request_table = MagicMock()
+    runner.image_request_table = MagicMock()
+    runner.region_status_monitor = MagicMock()
+
+    image_request_item = MagicMock()
+    region_request_item = MagicMock()
+    region_request_item.region_id = "region-1"
+
+    runner._update_requested_jobs_for_region_completion(image_request_item, region_request_item, RequestStatus.SUCCESS)
+
+    runner.requested_jobs_table.complete_region.assert_called_once_with(image_request_item, "region-1")
+    runner.region_request_table.complete_region_request.assert_not_called()
+    runner.image_request_table.complete_region_request.assert_not_called()
+
+
+def test_update_requested_jobs_for_region_completion_failure_marks_failed(model_runner_setup):
+    """Test that requested-jobs update failures downgrade region and image status to failed."""
+    runner = model_runner_setup
+    runner.requested_jobs_table = MagicMock()
+    runner.region_request_table = MagicMock()
+    runner.image_request_table = MagicMock()
+    runner.region_status_monitor = MagicMock()
+
+    image_request_item = MagicMock()
+    region_request_item = MagicMock()
+    region_request_item.region_id = "region-1"
+    region_request_item.image_id = "image-1"
+    region_request_item.job_id = "job-1"
+    runner.requested_jobs_table.complete_region.side_effect = Exception("ddb failure")
+    runner.region_request_table.complete_region_request.return_value = region_request_item
+
+    runner._update_requested_jobs_for_region_completion(image_request_item, region_request_item, RequestStatus.SUCCESS)
+
+    runner.requested_jobs_table.complete_region.assert_called_once_with(image_request_item, "region-1")
+    runner.region_request_table.complete_region_request.assert_called_once_with(region_request_item, RequestStatus.FAILED)
+    runner.region_status_monitor.process_event.assert_called_once()
+    runner.image_request_table.complete_region_request.assert_called_once_with("image-1", error=True)
 
 
 @patch("aws.osml.model_runner.model_runner.set_gdal_default_configuration")
