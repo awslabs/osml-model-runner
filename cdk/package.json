@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@aws-cdk/cloud-assembly-schema": "^52.2.0",
+    "@cdklabs/cdk-enterprise-iac": "^0.1.0",
     "aws-cdk-lib": "^2.240.0",
     "constructs": "^10.5.1"
   }
