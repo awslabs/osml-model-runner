@@ -24,7 +24,7 @@
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "globals": "^17.3.0",
     "jest": "^30.2.0",
-    "npm": "^11.10.1",
+    "npm": "^11.11.1",
     "prettier": "^3.8.1",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
