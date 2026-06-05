@@ -65,7 +65,6 @@ LABEL com.amazonaws.sagemaker.capabilities.accept-bind-to-port=true
 ENV CONDA_TARGET_ENV=osml_model_runner
 ENV PATH=/opt/conda/bin:$PATH
 ENV GDAL_DRIVER_PATH=/opt/conda/envs/${CONDA_TARGET_ENV}/lib/gdalplugins
-ENV LD_LIBRARY_PATH=/opt/conda/envs/${CONDA_TARGET_ENV}/lib:$LD_LIBRARY_PATH
 
 # Set working directory
 WORKDIR /home
@@ -78,7 +77,10 @@ RUN ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 COPY --from=build /home/osml-model-runner /home/osml-model-runner
 
 # Install bash and configure user and permissions
-RUN dnf install -y shadow-utils bash
+RUN dnf update -y && dnf install -y shadow-utils bash && dnf clean all
+
+# Prepend conda libs to the loader path after dnf runs
+ENV LD_LIBRARY_PATH=/opt/conda/envs/${CONDA_TARGET_ENV}/lib:$LD_LIBRARY_PATH
 
 # Create entrypoint script
 RUN     (echo '#!/bin/bash' \

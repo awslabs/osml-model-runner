@@ -217,7 +217,7 @@ def test_write_triggers_multipart_upload(mocker):
         )
         sink = S3Sink(bucket=TEST_RESULTS_BUCKET, prefix=TEST_PREFIX)
 
-        features = Feature(geometry={"type": "Point", "coordinates": [0.0, 0.0]})
+        features = [Feature(geometry={"type": "Point", "coordinates": [0.0, 0.0]})]
         result = sink.write(image_id=TEST_IMAGE_ID, features=features)
         assert result
 
