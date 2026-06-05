@@ -1,8 +1,8 @@
 name: Validate
 
 on:
-  schedule:
-    - cron: '0 3 * * *'
+#  schedule:
+#    - cron: '0 3 * * *'
   pull_request:
     branches:
       - main
