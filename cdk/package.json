@@ -13,7 +13,7 @@
     "@types/node": "^25.3.0",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
-    "aws-cdk": "^2.1107.0",
+    "aws-cdk": "^2.1126.0",
     "cdk-nag": "^2.37.55",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^10.1.8",
@@ -24,7 +24,6 @@
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "globals": "^17.3.0",
     "jest": "^30.2.0",
-    "npm": "^11.11.1",
     "prettier": "^3.8.1",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
@@ -33,7 +32,7 @@
   "dependencies": {
     "@aws-cdk/cloud-assembly-schema": "^52.2.0",
     "@cdklabs/cdk-enterprise-iac": "^0.1.0",
-    "aws-cdk-lib": "^2.250.0",
+    "aws-cdk-lib": "^2.258.0",
     "constructs": "^10.5.1"
   }
 }

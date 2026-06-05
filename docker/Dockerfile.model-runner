@@ -73,7 +73,7 @@ RUN ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 COPY --from=build /home/osml-model-runner /home/osml-model-runner
 
 # Install bash and configure user and permissions
-RUN dnf install -y \
+RUN dnf update -y && dnf install -y \
         shadow-utils \
         bash \
         libxcb \
